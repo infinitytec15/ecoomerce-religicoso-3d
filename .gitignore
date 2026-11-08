@@ -1,4 +1,8 @@
 .impeccable/review/
+.impeccable/review-*/
 .impeccable/questions/
 node_modules/
 *.log
+.vercel/
+.env
+.env.*
