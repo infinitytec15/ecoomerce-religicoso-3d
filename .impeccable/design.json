@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-08T14:52:14.466663+00:00",
+  "title": "Design System: Âmago 3D",
+  "extensions": {
+    "colorMeta": {
+      "olive": {
+        "role": "primary",
+        "displayName": "Structured Olive",
+        "tonalRamp": [
+          "oklch(15% 0.0111 130.46)",
+          "oklch(26% 0.0223 130.46)",
+          "oklch(38% 0.0316 130.46)",
+          "oklch(49% 0.0371 130.46)",
+          "oklch(61% 0.0371 130.46)",
+          "oklch(72% 0.0316 130.46)",
+          "oklch(84% 0.0204 130.46)",
+          "oklch(95% 0.0074 130.46)"
+        ]
+      },
+      "olive-light": {
+        "role": "primary",
+        "displayName": "Pale Olive",
+        "tonalRamp": [
+          "oklch(15% 0.0057 119.76)",
+          "oklch(26% 0.0114 119.76)",
+          "oklch(38% 0.0162 119.76)",
+          "oklch(49% 0.0191 119.76)",
+          "oklch(61% 0.0191 119.76)",
+          "oklch(72% 0.0162 119.76)",
+          "oklch(84% 0.0105 119.76)",
+          "oklch(95% 0.0038 119.76)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Warm Paper",
+        "tonalRamp": [
+          "oklch(15% 0.0016 95.10)",
+          "oklch(26% 0.0032 95.10)",
+          "oklch(38% 0.0046 95.10)",
+          "oklch(49% 0.0054 95.10)",
+          "oklch(61% 0.0054 95.10)",
+          "oklch(72% 0.0046 95.10)",
+          "oklch(84% 0.0030 95.10)",
+          "oklch(95% 0.0011 95.10)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(26% 0.0000 89.88)",
+          "oklch(38% 0.0000 89.88)",
+          "oklch(49% 0.0000 89.88)",
+          "oklch(61% 0.0000 89.88)",
+          "oklch(72% 0.0000 89.88)",
+          "oklch(84% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Charcoal Olive",
+        "tonalRamp": [
+          "oklch(15% 0.0041 131.69)",
+          "oklch(26% 0.0082 131.69)",
+          "oklch(38% 0.0117 131.69)",
+          "oklch(49% 0.0137 131.69)",
+          "oklch(61% 0.0137 131.69)",
+          "oklch(72% 0.0117 131.69)",
+          "oklch(84% 0.0075 131.69)",
+          "oklch(95% 0.0027 131.69)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Sage Gray",
+        "tonalRamp": [
+          "oklch(15% 0.0049 124.80)",
+          "oklch(26% 0.0097 124.80)",
+          "oklch(38% 0.0138 124.80)",
+          "oklch(49% 0.0162 124.80)",
+          "oklch(61% 0.0162 124.80)",
+          "oklch(72% 0.0138 124.80)",
+          "oklch(84% 0.0089 124.80)",
+          "oklch(95% 0.0032 124.80)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Paper Divider",
+        "tonalRamp": [
+          "oklch(15% 0.0036 111.78)",
+          "oklch(26% 0.0073 111.78)",
+          "oklch(38% 0.0103 111.78)",
+          "oklch(49% 0.0121 111.78)",
+          "oklch(61% 0.0121 111.78)",
+          "oklch(72% 0.0103 111.78)",
+          "oklch(84% 0.0067 111.78)",
+          "oklch(95% 0.0024 111.78)"
+        ]
+      },
+      "terra": {
+        "role": "secondary",
+        "displayName": "Terracotta",
+        "tonalRamp": [
+          "oklch(15% 0.0361 38.58)",
+          "oklch(26% 0.0723 38.58)",
+          "oklch(38% 0.1024 38.58)",
+          "oklch(49% 0.1205 38.58)",
+          "oklch(61% 0.1205 38.58)",
+          "oklch(72% 0.1024 38.58)",
+          "oklch(84% 0.0663 38.58)",
+          "oklch(95% 0.0241 38.58)"
+        ]
+      },
+      "red": {
+        "role": "error",
+        "displayName": "Validation Red",
+        "tonalRamp": [
+          "oklch(15% 0.0420 28.57)",
+          "oklch(26% 0.0840 28.57)",
+          "oklch(38% 0.1190 28.57)",
+          "oklch(49% 0.1400 28.57)",
+          "oklch(61% 0.1400 28.57)",
+          "oklch(72% 0.1190 28.57)",
+          "oklch(84% 0.0770 28.57)",
+          "oklch(95% 0.0280 28.57)"
+        ]
+      },
+      "olive-hover": {
+        "role": "primary",
+        "displayName": "Deep Olive",
+        "tonalRamp": [
+          "oklch(15% 0.0107 132.55)",
+          "oklch(26% 0.0214 132.55)",
+          "oklch(38% 0.0303 132.55)",
+          "oklch(49% 0.0356 132.55)",
+          "oklch(61% 0.0356 132.55)",
+          "oklch(72% 0.0303 132.55)",
+          "oklch(84% 0.0196 132.55)",
+          "oklch(95% 0.0071 132.55)"
+        ]
+      },
+      "field-line": {
+        "role": "neutral",
+        "displayName": "Field Boundary",
+        "tonalRamp": [
+          "oklch(15% 0.0055 120.76)",
+          "oklch(26% 0.0111 120.76)",
+          "oklch(38% 0.0157 120.76)",
+          "oklch(49% 0.0184 120.76)",
+          "oklch(61% 0.0184 120.76)",
+          "oklch(72% 0.0157 120.76)",
+          "oklch(84% 0.0101 120.76)",
+          "oklch(95% 0.0037 120.76)"
+        ]
+      },
+      "badge-olive-ink": {
+        "role": "neutral",
+        "displayName": "Olive Badge Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0123 130.56)",
+          "oklch(26% 0.0245 130.56)",
+          "oklch(38% 0.0347 130.56)",
+          "oklch(49% 0.0409 130.56)",
+          "oklch(61% 0.0409 130.56)",
+          "oklch(72% 0.0347 130.56)",
+          "oklch(84% 0.0225 130.56)",
+          "oklch(95% 0.0082 130.56)"
+        ]
+      },
+      "badge-terra-bg": {
+        "role": "secondary",
+        "displayName": "Terracotta Wash",
+        "tonalRamp": [
+          "oklch(15% 0.0059 55.14)",
+          "oklch(26% 0.0117 55.14)",
+          "oklch(38% 0.0166 55.14)",
+          "oklch(49% 0.0196 55.14)",
+          "oklch(61% 0.0196 55.14)",
+          "oklch(72% 0.0166 55.14)",
+          "oklch(84% 0.0108 55.14)",
+          "oklch(95% 0.0039 55.14)"
+        ]
+      },
+      "badge-terra-ink": {
+        "role": "secondary",
+        "displayName": "Terracotta Badge Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0307 36.63)",
+          "oklch(26% 0.0614 36.63)",
+          "oklch(38% 0.0870 36.63)",
+          "oklch(49% 0.1023 36.63)",
+          "oklch(61% 0.1023 36.63)",
+          "oklch(72% 0.0870 36.63)",
+          "oklch(84% 0.0563 36.63)",
+          "oklch(95% 0.0205 36.63)"
+        ]
+      },
+      "summary": {
+        "role": "neutral",
+        "displayName": "Summary Paper",
+        "tonalRamp": [
+          "oklch(15% 0.0032 106.60)",
+          "oklch(26% 0.0064 106.60)",
+          "oklch(38% 0.0090 106.60)",
+          "oklch(49% 0.0106 106.60)",
+          "oklch(61% 0.0106 106.60)",
+          "oklch(72% 0.0090 106.60)",
+          "oklch(84% 0.0058 106.60)",
+          "oklch(95% 0.0021 106.60)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Essência hero; other compositions override it."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section subheads; product-card names use DM Sans."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default reading text; component copy commonly overrides size."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Standard action text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "drawer",
+        "value": "0 20px 64px #222b2726",
+        "purpose": "Separate the modal drawer from the dimmed page."
+      },
+      {
+        "name": "toast",
+        "value": "0 6px 24px #1a26152e",
+        "purpose": "Short feedback above page content."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.23,1,.32,1)",
+        "purpose": "Shared transform easing."
+      },
+      {
+        "name": "press",
+        "value": "150ms",
+        "purpose": "Button feedback; pressed transform scale(.975)."
+      },
+      {
+        "name": "drawer-enter",
+        "value": "240ms",
+        "purpose": "Drawer translation from 30px and opacity .8."
+      },
+      {
+        "name": "toast",
+        "value": "220ms",
+        "purpose": "Toast opacity and position."
+      },
+      {
+        "name": "image-hover",
+        "value": "280ms",
+        "purpose": "Product image scale(1.035)."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "large",
+        "value": "1600px"
+      },
+      {
+        "name": "intermediate",
+        "value": "1100px"
+      },
+      {
+        "name": "mobile",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Observed primary purchase/navigation action.",
+      "html": "<button class=\"ds-btn-primary\">Adicionar ao carrinho</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:11px;min-height:48px;padding:13px 23px;border:1px solid transparent;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:550;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease;background:var(--olive,#3e4934);color:var(--white,#fff);}.ds-btn-primary:hover{background:#2d3825;}.ds-btn-primary:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-btn-primary:active{transform:scale(.975)}.ds-btn-primary:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-btn-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Observed secondary purchase/navigation action.",
+      "html": "<button class=\"ds-btn-secondary\">Continuar explorando</button>",
+      "css": ".ds-btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:11px;min-height:48px;padding:13px 23px;border:1px solid transparent;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:550;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease;background:transparent;color:var(--ink,#282c25);border-color:#b4b9a7;}.ds-btn-secondary:hover{background:var(--olive-light,#e9eddf);}.ds-btn-secondary:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-btn-secondary:active{transform:scale(.975)}.ds-btn-secondary:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-btn-secondary{transition:none}}"
+    },
+    {
+      "name": "Light Button",
+      "kind": "button",
+      "refersTo": "button-light",
+      "description": "Observed light purchase/navigation action.",
+      "html": "<button class=\"ds-btn-light\">Encontre sua peça</button>",
+      "css": ".ds-btn-light{display:inline-flex;align-items:center;justify-content:center;gap:11px;min-height:48px;padding:13px 23px;border:1px solid transparent;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:550;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease;background:var(--paper,#faf9f5);color:var(--ink,#282c25);}.ds-btn-light:hover{background:var(--paper,#faf9f5);}.ds-btn-light:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-btn-light:active{transform:scale(.975)}.ds-btn-light:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-btn-light{transition:none}}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labeled field with the shared focus outline.",
+      "html": "<label class=\"ds-field\">E-mail de demonstração<input placeholder=\"cliente@exemplo.com\" type=\"email\"></label>",
+      "css": ".ds-field{display:block;font-family:'DM Sans',sans-serif;font-size:.86rem;font-weight:550;color:var(--ink,#282c25)}.ds-field input{display:block;width:100%;margin-top:8px;border:1px solid #bfc3b6;background:#fff;border-radius:9px;min-height:48px;padding:12px 14px;font:inherit;color:var(--ink,#282c25);caret-color:var(--olive,#3e4934)}.ds-field input::placeholder{color:#707568}.ds-field input:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}"
+    },
+    {
+      "name": "Collection Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Category action; hover and selected state share olive emphasis.",
+      "html": "<button class=\"ds-chip\">Presentes</button>",
+      "css": ".ds-chip{border:1px solid var(--line,#dedfd6);background:transparent;color:var(--ink,#282c25);padding:11px 20px;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:.8rem;display:inline-flex;align-items:center;gap:8px;min-height:43px;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease,color 150ms ease}.ds-chip:hover,.ds-chip[aria-pressed=true]{background:var(--olive,#3e4934);color:white;border-color:var(--olive,#3e4934)}.ds-chip:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-chip:active{transform:scale(.975)}@media(prefers-reduced-motion:reduce){.ds-chip{transition:none}}"
+    },
+    {
+      "name": "Store Navigation",
+      "kind": "nav",
+      "description": "Current-page underline with terracotta hover.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Coleções\"><a href=\"#produtos\" aria-current=\"page\">Todos os produtos</a><a href=\"#presentes\">Presentes</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:32px;font-family:'DM Sans',sans-serif;font-size:.82rem;color:var(--ink,#282c25);border-bottom:1px solid var(--line,#dedfd6)}.ds-nav a{padding-block:19px;position:relative;text-decoration:none;color:inherit}.ds-nav a:hover{color:var(--terra,#aa5438)}.ds-nav a[aria-current=page]::after{position:absolute;content:'';height:2px;bottom:10px;left:0;right:0;background:var(--olive,#3e4934)}.ds-nav a:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}"
+    },
+    {
+      "name": "Olive Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-olive",
+      "description": "Small supporting category or order-status label.",
+      "html": "<span class=\"ds-badge\">Cristãos · Design essencial</span>",
+      "css": ".ds-badge{font-family:'DM Sans',sans-serif;font-size:.69rem;padding:5px 9px;border-radius:4px;background:var(--olive-light,#e9eddf);color:#39452e;display:inline-flex;align-items:center;gap:5px;font-weight:550}"
+    },
+    {
+      "name": "Order Summary",
+      "kind": "card",
+      "refersTo": "summary-card",
+      "description": "Tonal transaction summary, without a raised card shadow.",
+      "html": "<section class=\"ds-summary\"><h2>Resumo do pedido</h2><div class=\"ds-money\"><span>Subtotal</span><strong>R$ 69,90</strong></div><div class=\"ds-total\"><span>Total</span><strong>R$ 69,90</strong></div></section>",
+      "css": ".ds-summary{background:#eeeee6;padding:25px;border-radius:12px;color:var(--ink,#282c25);font-family:'DM Sans',sans-serif}.ds-summary h2{font-family:'Manrope',sans-serif;font-size:1.2rem;font-weight:600;line-height:1.15;letter-spacing:-.035em;margin:0 0 20px}.ds-money,.ds-total{display:flex;justify-content:space-between;gap:16px;font-size:.8rem;margin-bottom:14px;font-variant-numeric:tabular-nums}.ds-total{font-size:1.08rem;font-weight:650;border-top:1px solid var(--line,#dedfd6);padding-top:18px;margin-top:20px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A contemporary object shop",
+    "overview": "The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The implemented system reads as a quiet design shop: warm paper, precise sans typography, generous imagery and useful commerce controls. The phrase above is a code-led interpretation, not a separately approved brand metaphor.\n\nThe interface uses open product layouts and restrained panels for purchasing, account and support tasks. Generated conceptual product imagery supplies tactile filament texture. Three home compositions test the same visual world; none is recorded as the chosen composition or as a global layout requirement.",
+    "keyCharacteristics": [
+      "Warm paper grounds with olive structure and selective terracotta accents.",
+      "Manrope headlines paired with DM Sans controls and reading text.",
+      "Flat product listings, restrained rounded panels and authored stroke icons.",
+      "Compact state feedback with a reduced-motion override."
+    ],
+    "rules": [
+      {
+        "name": "The Olive Structure Rule",
+        "body": "Use olive for primary actions, selected controls and the main structural accent. Keep terracotta for secondary emphasis and contextual status.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Families Rule",
+        "body": "Use Manrope for display and headings; use DM Sans for reading, controls, prices and product-card names.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Product Rule",
+        "body": "Keep product listings flat at rest. Reserve diffuse shadows for the drawer and toast rather than placing every product inside a raised card.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep primary actions olive and preserve visible keyboard focus.",
+      "Do use tactile product imagery and retain its conceptual-image disclosure.",
+      "Do use flat product grids and tonal panels to distinguish reading from task areas.",
+      "Do stack major task columns on mobile and retain a two-column product grid.",
+      "Do place the product-detail category badge below the product title.",
+      "Do preserve the reduced-motion override for transitions and animations."
+    ],
+    "donts": [
+      "Don't use terracotta as the default primary purchase-action color.",
+      "Don't replace the authored SVG stroke icons with font glyphs.",
+      "Don't inherit the prototype picker’s system font, glass treatment or pill shape as storefront brand primitives.",
+      "Don't promote one home composition into a universal layout rule before a direction is chosen."
+    ]
+  }
+}

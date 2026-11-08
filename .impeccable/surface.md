@@ -1,0 +1,10 @@
+# Storefront prototype direction
+MODE: Operate. A complete e-commerce visual prototype; no real transactions.
+AUDIENCE: Portuguese-speaking shoppers of Catholic, Evangelical and Christian decorative 3D prints.
+FORM: seed:93c0d8a2bce1b141. The roll service was unavailable; this is a grounded code-led prototype exploration without quality-board comps. Three requested prototype directions remain selectable; no winner is assumed.
+WORLD: Seven grounded candidates considered: devotional bookshop, quiet gallery, contemporary gift shop, home ceramics atelier, independent design-object store, art publication, community fair. Candidate five informs Essência: modern design-object shop, warm paper ground, olive structure, tangible imagery and precise sans typography. Ateliê tests an immersive olive gallery with three-column imagery; Coleção tests direct browsing with sidebar filtering and a compact opening. The layout differences are primary, not just recoloring.
+FIRST VIEWPORT: Real store header, search, denominational collections, client and cart controls. Essência: split editorial copy and product image. Ateliê: dark olive asymmetrical sculptural gallery. Coleção: browsing shell and product results immediately. Shared task flows beyond the home keep familiar e-commerce navigation.
+SIGNATURE: The generated product photograph provides tactile filament texture; the cart preserves material, size and dedication; split payments transparently reconcile the Pix and card balance. Only drawer and toast feedback animate, under 300ms with reduced-motion support. Picker swaps are instant.
+QUALITY: 1280px desktop and 390px mobile; legible text, restrained radii, authored stroke icons, no fake reviews. No dead purchase buttons. Browser-local fake account, favorites and orders. Real payment credentials are never requested. Product content, generated images, prices, shipping and policies are clearly demonstrative.
+OPEN: User confirmed Âmago 3D and the cream, olive and terracotta direction. No real inventory, gateway, carrier, authentication or support delivery. Asset is built-in Imagegen product photography; provenance lives in assets/products.png.json.
+
