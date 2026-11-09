@@ -4,7 +4,7 @@ Verificado localmente em 9 de novembro de 2026:
 
 - Next.js: build de produção concluído, 44 páginas do App Router.
 - TypeScript estrito e ESLint sem erros ou avisos.
-- Vitest: 45 testes em 7 arquivos, todos passando.
+- Vitest: 46 testes em 8 arquivos, todos passando.
 - Storybook: build concluído, 55 histórias e 7 páginas de documentação.
 - Prettier e `git diff --check` aprovados.
 - `npm audit --omit=dev`: zero vulnerabilidades nas dependências de produção. A instalação apontou 12 avisos moderados na cadeia das ferramentas de desenvolvimento; acompanhe as atualizações compatíveis, sem aplicar `audit fix --force` indiscriminadamente.
@@ -16,7 +16,7 @@ Desktop 1280 × 900, celular 390 × 844 e janela de 853 px: loja, login e admini
 
 Fluxos percorridos: produto e seleção de tamanho, adição ao carrinho, controles de rotação/cor/zoom em 3D, checkout com Pix + cartão em duas parcelas, confirmação fictícia e pedido na conta, adesão ao clube com perfil evangélico, assinatura/itens/cobrança/produção refletidos na gestão, login da equipe e abertura do pedido manual. A migração preservou o carrinho antigo com três itens e os registros operacionais existentes na mesma origem local.
 
-A revisão também conferiu feedback compacto após login, restauração de foco dos diálogos e leitura do e-mail lembrado em formato antigo. Os testes cobrem idempotência, valores em centavos, limites do pagamento combinado, ciclos mensais, permissão/propriedade demonstrativas, migração, isolamento de custos internos, contratos HTTP e proxy de mesma origem.
+A revisão também conferiu feedback compacto após login, restauração de foco dos diálogos e leitura do e-mail lembrado em formato antigo. O primeiro carregamento também busca imediatamente os preços e a mensalidade já salvos na operação demonstrativa, em vez de manter os dados iniciais do servidor. Os testes cobrem idempotência, valores em centavos, limites do pagamento combinado, ciclos mensais, permissão/propriedade demonstrativas, migração, isolamento de custos internos, contratos HTTP e proxy de mesma origem.
 
 ## Limites do resultado
 

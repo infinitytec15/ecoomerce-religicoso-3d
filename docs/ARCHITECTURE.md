@@ -17,7 +17,7 @@ dist/                      Protótipo estático anterior, somente referência
 
 Páginas e layouts do Next.js são componentes de servidor. A home, o catálogo e o produto recebem catálogo/configuração pelo servidor; cache público de 60 segundos no adaptador HTTP. Interações, consultas privadas e formulários são componentes cliente. O rodapé é composto pelo servidor e entregue como slot ao frame cliente.
 
-React Query mantém cache de sessão e dados da operação. Chaves de conta/admin incluem o usuário da sessão; logout remove consultas privadas. Mutações invalidam as consultas relacionadas para que compra, cobrança, produção, envio e suporte se reflitam entre os painéis. O adaptador demonstrativo é importado dinamicamente no primeiro uso.
+React Query mantém cache de sessão e dados da operação. Chaves de conta/admin incluem o usuário da sessão; logout remove consultas privadas. Mutações invalidam as consultas relacionadas para que compra, cobrança, produção, envio e suporte se reflitam entre os painéis. O adaptador demonstrativo é importado dinamicamente no primeiro uso. Nesse modo, catálogo e mensalidade são atualizados imediatamente a partir da operação persistida, inclusive após recarregar a página; o modo HTTP mantém a política de cache dos dados públicos do servidor.
 
 Zustand persiste apenas carrinho e favoritos. A migração lê os namespaces `amago-*`, grava `meo-commerce-v2`/`meo-cart-v2` e preserva os originais. Sessões de demonstração são restritas à aba. Senhas e dados de cartão não são armazenados. A compatibilidade de links antigos `/#/...` redireciona para as rotas nativas após a hidratação. Dados locais pertencem à origem: conserve o mesmo host/porta ao verificar a migração.
 

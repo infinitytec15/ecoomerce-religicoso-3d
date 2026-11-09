@@ -64,6 +64,7 @@ export function useCatalog(initial?: Product[]) {
     queryKey: queryKeys.catalog,
     queryFn: () => gateway.catalog(),
     initialData: initial,
+    initialDataUpdatedAt: gateway.mode === 'demo' ? 0 : undefined,
   });
 }
 export function useSettings(initial: StoreSettings = defaultSettings) {
@@ -72,6 +73,7 @@ export function useSettings(initial: StoreSettings = defaultSettings) {
     queryKey: queryKeys.settings,
     queryFn: () => gateway.settings(),
     initialData: initial,
+    initialDataUpdatedAt: gateway.mode === 'demo' ? 0 : undefined,
   });
 }
 export function useSession() {
