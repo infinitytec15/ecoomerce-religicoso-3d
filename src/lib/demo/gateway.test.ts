@@ -108,6 +108,8 @@ describe('demo gateway workflows', () => {
       consent: true,
     });
     const prayer = (await g.community())[0];
+    await g.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
+    await g.adminCommand({ type: 'prayer.review', id: prayer.id, status: 'Publicado', note: '' });
     await g.reactPrayer(prayer.id);
     expect((await g.community())[0].reactions).toBe(1);
     await g.reactPrayer(prayer.id);

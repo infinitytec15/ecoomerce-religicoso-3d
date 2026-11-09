@@ -1,4 +1,6 @@
+'use client';
 import Image from 'next/image';
+import { useAssetUrl } from '@/lib/media/use-asset';
 export function ProductImage({
   src,
   alt,
@@ -12,16 +14,22 @@ export function ProductImage({
   priority?: boolean;
   sizes?: string;
 }) {
+  const resolved = useAssetUrl(src);
   return (
     <div className={`photo ${className}`}>
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        sizes={sizes}
-        preload={priority}
-        style={{ objectFit: 'cover' }}
-      />
+      {resolved ? (
+        <Image
+          src={resolved}
+          alt={alt}
+          fill
+          sizes={sizes}
+          preload={priority}
+          unoptimized={resolved.startsWith('blob:')}
+          style={{ objectFit: 'cover' }}
+        />
+      ) : (
+        <span className="media-placeholder">Imagem indisponível</span>
+      )}
     </div>
   );
 }

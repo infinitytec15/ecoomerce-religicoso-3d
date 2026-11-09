@@ -1,5 +1,10 @@
 'use client';
 import { useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import type { PaymentToken } from '@/lib/domain/types';
+const MercadoPagoCard = dynamic(() => import('@/features/checkout/mercado-pago-card'), {
+  ssr: false,
+});
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -208,9 +213,38 @@ export function SubscriptionCheckout({ initialSettings }: { initialSettings: Sto
     [address, setAddress] = useState<Address>(emptyAddress),
     [payment, setPayment] = useState<'card' | 'pix'>('card'),
     [submitted, setSubmitted] = useState(false),
+    [cardRequested, setCardRequested] = useState(false),
     key = useRef(''),
     subscribe = useCommand((g, input: SubscribeInput) => g.subscribe(input)),
     router = useRouter();
+  async function complete(paymentToken?: PaymentToken) {
+    if (!key.current) key.current = crypto.randomUUID();
+    const result = await subscribe.mutateAsync({
+      profile,
+      finish,
+      address,
+      payment,
+      consent: true,
+      paymentToken,
+      idempotencyKey: key.current,
+    });
+    setSubmitted(true);
+    router.push('/checkout/sucesso?pedido=' + encodeURIComponent(result.orderId));
+  }
+  if (cardRequested)
+    return (
+      <main id="main" className="container page-top">
+        <MercadoPagoCard
+          subscription
+          amountCents={s.priceCents}
+          email={address.email}
+          onSubmit={complete}
+        />
+        <Button variant="text" onClick={() => setCardRequested(false)}>
+          Voltar à assinatura
+        </Button>
+      </main>
+    );
   if (submitted)
     return (
       <main id="main" className="container">
@@ -255,17 +289,12 @@ export function SubscriptionCheckout({ initialSettings }: { initialSettings: Sto
                 window.scrollTo(0, 0);
                 return;
               }
-              if (!key.current) key.current = crypto.randomUUID();
-              const result = await subscribe.mutateAsync({
-                profile,
-                finish,
-                address,
-                payment,
-                consent: d.has('consent'),
-                idempotencyKey: key.current,
-              });
-              setSubmitted(true);
-              router.push('/checkout/sucesso?pedido=' + encodeURIComponent(result.orderId));
+              if (!d.has('consent')) throw new Error('Confirme os termos da assinatura.');
+              if (!IS_DEMO && payment === 'card') {
+                setCardRequested(true);
+                return;
+              }
+              await complete();
             }}
           >
             {(pending) => (

@@ -34,5 +34,6 @@ export const iconPaths = {
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   eyeOff:
     'm3 3 18 18M9.9 5.2A12 12 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6 6.8A18 18 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.1-1.2M10 10a3 3 0 0 0 4 4',
+  video: 'm9 5 11 7-11 7V5Z',
 } as const;
 export type IconName = keyof typeof iconPaths;

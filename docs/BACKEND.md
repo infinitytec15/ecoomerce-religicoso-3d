@@ -1,5 +1,7 @@
 # Contrato de integração
 
+O plano completo da próxima etapa está em [BACKEND-PLAN.md](BACKEND-PLAN.md): NestJS, Prisma, PostgreSQL, Redis, Railway, Mercado Pago, Melhor Envio e Bunny. O pacote compartilhado em packages/contracts contém os tipos e validações ativos.
+
 O frontend é uma aplicação Next.js real. O backend comercial não acompanha esta entrega. No modo `demo`, a operação é simulada no navegador; no modo `http`, as mesmas telas usam a API e não recorrem aos dados fictícios quando uma chamada falha.
 
 ## Configurar
@@ -12,7 +14,7 @@ NEXT_PUBLIC_SITE_URL=https://sua-loja.com.br
 IMAGE_HOSTS=cdn.sua-empresa.com
 ```
 
-`API_BASE_URL` é exclusivo do servidor. A URL inclui a versão. `IMAGE_HOSTS` permite somente os hosts HTTPS indicados ao otimizador de imagens. Variáveis `NEXT_PUBLIC_*` entram no build: faça um novo build após alterá-las. Disponibilize o catálogo e as configurações públicas durante o build.
+`API_BASE_URL` é exclusivo do servidor. A URL inclui a versão. `IMAGE_HOSTS` permite somente os hosts HTTPS indicados ao otimizador de imagens. Variáveis `NEXT_PUBLIC_*` entram no build: faça um novo build após alterá-las. No modo HTTP, catálogo e configurações públicas são lidos em runtime, permitindo usar a rede privada do Railway sem depender dela no build.
 
 O BFF em `src/app/api/v1/[...path]/route.ts` encaminha caminhos permitidos para a API. Mantém cookies, `Idempotency-Key` e `X-CSRF-Token`; repassa `Set-Cookie`; não armazena respostas privadas em cache; limita mutações a 256 KiB e valida a origem. Não é um banco, provedor de autenticação ou implementação de pagamentos. `/api/health` verifica a aplicação, sem testar o provedor comercial.
 

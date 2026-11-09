@@ -9,7 +9,7 @@ import { cartLine } from '@/lib/domain/commerce';
 import { useCatalog, useGateway } from '@/lib/api/query';
 import { useCartStore } from '@/lib/store/cart';
 import { IS_DEMO } from '@/lib/api/config';
-import { ProductImage } from '@/components/ui/product-image';
+import { ProductGallery } from './product-media';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Form, text } from '@/components/ui/form';
@@ -29,7 +29,6 @@ export function ProductDetail({
     [size, setSize] = useState(0),
     [quantity, setQuantity] = useState(1),
     [dedication, setDedication] = useState(''),
-    [zoom, setZoom] = useState(false),
     [viewer, setViewer] = useState(false),
     [rates, setRates] = useState<ShippingQuote[]>([]),
     gateway = useGateway(),
@@ -54,42 +53,7 @@ export function ProductDetail({
         <span>{p.name}</span>
       </nav>
       <section className="product-detail">
-        <div>
-          <div className={`gallery-main ${zoom ? 'photo-gallery-zoom' : ''}`}>
-            <ProductImage
-              src={p.image}
-              alt={p.name}
-              priority
-              sizes="(max-width:760px) 100vw, 50vw"
-            />
-            <span className="badge">
-              Imagem conceitual · {zoom ? 'detalhe do acabamento' : 'peça completa'}
-            </span>
-            <button className="open-3d" onClick={() => setViewer(true)}>
-              <Icon name="box" />
-              Ver peça em 3D <Icon name="rotate" />
-            </button>
-          </div>
-          <div className="gallery-thumbs">
-            <button
-              className={!zoom ? 'active' : ''}
-              aria-label="Ver peça inteira"
-              onClick={() => setZoom(false)}
-            >
-              <ProductImage src={p.image} alt="" sizes="80px" />
-            </button>
-            <button
-              className={zoom ? 'active' : ''}
-              aria-label="Aproximar textura da peça"
-              onClick={() => setZoom(true)}
-            >
-              <ProductImage src={p.image} alt="" sizes="80px" />
-            </button>
-          </div>
-          <p className="demo-text" style={{ marginTop: 14 }}>
-            Imagem ilustrativa gerada por IA. As cores e proporções são conceituais.
-          </p>
-        </div>
+        <ProductGallery product={p} onView3D={() => setViewer(true)} />
         <div className="detail-copy">
           <h1>{p.name}</h1>
           <span className="badge olive" style={{ marginBottom: 18 }}>
@@ -171,7 +135,11 @@ export function ProductDetail({
             </Button>
           </div>
           <div className="shipping-box">
-            <Form onSubmit={async (d) => setRates(await gateway.shipping(text(d, 'cep')))}>
+            <Form
+              onSubmit={async (d) =>
+                setRates(await gateway.shipping(text(d, 'cep'), [{ productId: p.id, quantity }]))
+              }
+            >
               <label htmlFor="product-cep">
                 <Icon name="truck" />
                 Calcule o frete e o prazo

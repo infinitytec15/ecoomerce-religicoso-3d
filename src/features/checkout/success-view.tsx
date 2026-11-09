@@ -10,7 +10,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { errorMessage } from '@/lib/api/contracts';
 export function SuccessView({ orderId }: { orderId?: string }) {
   const session = useSession(),
-    account = useAccount(),
+    account = useAccount(!IS_DEMO),
     gateway = useGateway(),
     order = account.data?.orders.find((o) => o.id === orderId) || account.data?.orders[0],
     charge = account.data?.charges.find((c) => c.id === order?.chargeId),
@@ -18,6 +18,7 @@ export function SuccessView({ orderId }: { orderId?: string }) {
       queryKey: ['payment', order?.id],
       queryFn: () => gateway.payment(order!.id),
       enabled: !!order && !IS_DEMO,
+      refetchInterval: 5000,
     }),
     confirm = useCommand((g, id: string) => g.confirmDemoPayment(id));
   if (!session.isPending && session.data?.role !== 'customer')

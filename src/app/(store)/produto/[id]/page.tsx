@@ -10,9 +10,13 @@ export async function generateMetadata({
   const p = await getServerProduct((await params).id);
   return p
     ? {
-        title: p.name,
-        description: p.description,
-        openGraph: { title: p.name, description: p.description, images: [p.image] },
+        title: p.seoTitle || p.name,
+        description: p.seoDescription || p.description,
+        openGraph: {
+          title: p.seoTitle || p.name,
+          description: p.seoDescription || p.description,
+          images: [p.image],
+        },
       }
     : { title: 'Peça não encontrada' };
 }

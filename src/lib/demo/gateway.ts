@@ -38,6 +38,7 @@ import { addMonth, monthLabel, today, uid } from '@/lib/domain/format';
 import { filterProducts } from '@/lib/domain/catalog';
 import { DEMO_EMAIL, DEMO_PASSWORD, normalizeAddress, STAFF_PERMISSIONS } from './seed';
 import { MemoryDemoStorage, type DemoStorage } from './storage';
+import { applyAdminExtension } from './admin-commands';
 export class DemoGateway implements CommerceGateway {
   readonly mode = 'demo' as const;
   constructor(private storage: DemoStorage = new MemoryDemoStorage()) {}
@@ -129,11 +130,13 @@ export class DemoGateway implements CommerceGateway {
     const session = this.customerSession(),
       state = this.read();
     return {
-      customer: requireValue(state.clients.find((c) => c.id === session.id)),
+      customer: { ...requireValue(state.clients.find((c) => c.id === session.id)), notes: '' },
       orders: state.orders.filter((o) => o.customerId === session.id),
       subscriptions: state.subscriptions.filter((s) => s.customerId === session.id),
       charges: state.charges.filter((c) => c.customerId === session.id),
-      tickets: state.tickets.filter((t) => t.customerId === session.id),
+      tickets: state.tickets
+        .filter((t) => t.customerId === session.id)
+        .map((t) => ({ ...t, messages: t.messages.filter((m) => !m.internal) })),
     };
   }
   async updateProfile(input: { name: string; email: string; address?: Address }) {
@@ -371,7 +374,9 @@ export class DemoGateway implements CommerceGateway {
     });
   }
   async community() {
-    return this.read().prayers.filter((p) => !p.hidden);
+    return this.read()
+      .prayers.filter((p) => !p.hidden || (p.owned && p.moderation === 'Em análise'))
+      .map((p) => ({ ...p, reports: undefined, moderationNote: undefined }));
   }
   async postPrayer(input: PrayerInput) {
     const data = prayerSchema.parse(input);
@@ -382,7 +387,8 @@ export class DemoGateway implements CommerceGateway {
         name: data.anonymous ? 'Anônimo' : data.name || 'Uma pessoa de fé',
         created: today(),
         example: false,
-        hidden: false,
+        hidden: s.workspace.reviewPrayers,
+        moderation: s.workspace.reviewPrayers ? 'Em análise' : 'Publicado',
         reactions: 0,
         owned: true,
         prayed: false,
@@ -394,6 +400,14 @@ export class DemoGateway implements CommerceGateway {
       const prayer = requireValue(s.prayers.find((p) => p.id === id && !p.hidden));
       prayer.prayed = !prayer.prayed;
       prayer.reactions = Math.max(0, prayer.reactions + (prayer.prayed ? 1 : -1));
+    });
+  }
+  async reportPrayer(id: string, reason: string) {
+    if (reason.trim().length < 5)
+      throw new ApiError('INVALID_REASON', 'Conte o que precisa ser revisado.');
+    this.mutate((s) => {
+      const p = requireValue(s.prayers.find((p) => p.id === id && !p.hidden));
+      p.reports = [...(p.reports || []), { reason: reason.slice(0, 500), date: today() }];
     });
   }
   async deletePrayer(id: string) {
@@ -423,9 +437,78 @@ export class DemoGateway implements CommerceGateway {
     this.staffSession();
     return this.read();
   }
+  async invitation(token: string) {
+    const invite = requireValue(
+      this.read().invitations.find(
+        (i) =>
+          i.token === token && i.status === 'Pendente' && i.expiresAt > new Date().toISOString(),
+      ),
+      'Este convite não está mais disponível.',
+    );
+    return invite;
+  }
+  async acceptInvitation(input: { token: string; name: string }) {
+    const invitation = await this.invitation(input.token);
+    if (input.name.trim().length < 3) throw new ApiError('INVALID_NAME', 'Informe seu nome.');
+    const id = uid('U');
+    this.mutate((s) => {
+      const current = requireValue(
+        s.invitations.find((i) => i.id === invitation.id && i.status === 'Pendente'),
+      );
+      current.status = 'Aceito';
+      s.team.push({
+        id,
+        name: input.name,
+        email: invitation.email,
+        role: invitation.role,
+        status: 'Ativo',
+        permissions: invitation.permissions,
+      });
+      audit(s, 'Convite aceito', id, input.name);
+    });
+    this.storage.saveSession({
+      id,
+      name: input.name,
+      email: invitation.email,
+      role: invitation.role,
+      permissions: invitation.permissions,
+      demo: true,
+    });
+  }
   async adminCommand(command: AdminCommand) {
     const session = this.staffSession();
+    const prefix = command.type.split('.')[0],
+      permission = (
+        {
+          customer: 'customers',
+          product: 'catalog',
+          stock: 'catalog',
+          orders: 'orders',
+          order: 'orders',
+          production: 'production',
+          printer: 'production',
+          shipping: 'shipping',
+          charge: 'finance',
+          expense: 'finance',
+          subscription: 'subscriptions',
+          edition: 'subscriptions',
+          coupon: 'catalog',
+          ticket: 'support',
+          prayer: 'community',
+          campaign: 'marketing',
+          team: 'team',
+          invite: 'team',
+          workspace: 'settings',
+          settings: 'settings',
+        } as Record<string, string>
+      )[prefix];
+    if (session.role !== 'admin' && !session.permissions.some((p) => p === permission))
+      throw new ApiError('FORBIDDEN', 'Seu perfil não permite esta alteração.', 403);
     this.mutate((s) => {
+      if (applyAdminExtension(s, command, session)) {
+        audit(s, command.type, 'id' in command ? command.id : 'Operação', session.name);
+        return;
+      }
       switch (command.type) {
         case 'customer.save': {
           const c = command.customer;
@@ -455,6 +538,12 @@ export class DemoGateway implements CommerceGateway {
         case 'product.save': {
           const product = inventoryProductSchema.parse(command.product),
             existing = s.products.find((p) => p.id === product.id);
+          if (
+            s.products.some(
+              (p) => p.id !== product.id && p.sku.toLowerCase() === product.sku.toLowerCase(),
+            )
+          )
+            throw new ApiError('DUPLICATE_SKU', 'Este SKU já pertence a outro produto.');
           if (existing) Object.assign(existing, product);
           else s.products.push(product);
           break;
@@ -600,7 +689,13 @@ export class DemoGateway implements CommerceGateway {
         case 'ticket.reply': {
           const ticket = requireValue(s.tickets.find((t) => t.id === command.id));
           if (command.message.trim())
-            ticket.messages.push({ by: 'equipe', text: command.message, date: today() });
+            ticket.messages.push({
+              by: 'equipe',
+              text: command.message,
+              date: today(),
+              internal: command.internal || false,
+            });
+          if (command.priority) ticket.priority = command.priority;
           ticket.status = command.status;
           ticket.assignee = command.assignee;
           break;
@@ -608,6 +703,7 @@ export class DemoGateway implements CommerceGateway {
         case 'prayer.moderate': {
           const p = requireValue(s.prayers.find((p) => p.id === command.id));
           p.hidden = !p.hidden;
+          p.moderation = p.hidden ? 'Oculto' : 'Publicado';
           break;
         }
         case 'campaign.create':

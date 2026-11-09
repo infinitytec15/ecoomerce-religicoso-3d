@@ -84,11 +84,12 @@ export function useSession() {
     staleTime: 10000,
   });
 }
-export function useAccount() {
+export function useAccount(poll = false) {
   const gateway = useGateway(),
     session = useSession();
   return useQuery({
     queryKey: queryKeys.account(session.data?.id),
+    refetchInterval: poll ? 5000 : false,
     queryFn: () => gateway.account(),
     enabled: session.data?.role === 'customer',
   });
@@ -98,6 +99,12 @@ export function useOperations() {
     session = useSession();
   return useQuery({
     queryKey: queryKeys.admin(session.data?.id),
+    refetchInterval: (query) =>
+      query.state.data?.products.some(
+        (p) => p.model?.status === 'processing' || p.media?.some((m) => m.status === 'processing'),
+      )
+        ? 5000
+        : false,
     queryFn: () => gateway.admin(),
     enabled: !!session.data && session.data.role !== 'customer',
   });

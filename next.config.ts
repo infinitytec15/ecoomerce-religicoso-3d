@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
   poweredByHeader: false,
+  transpilePackages: ['@maos-em-oracao/contracts'],
   output: process.env.NEXT_STANDALONE === 'true' ? 'standalone' : undefined,
   images: {
     formats: ['image/avif', 'image/webp'],

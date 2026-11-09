@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { invitationSchema } from '@/lib/domain/admin-schemas';
 import { ApiError, type CommerceGateway } from './contracts';
 import {
   accountSchema,
@@ -159,10 +160,11 @@ export class HttpGateway implements CommerceGateway {
       checkoutResultSchema,
     );
   }
-  shipping(cep: string) {
+  shipping(cep: string, items?: { productId: string; quantity: number }[]) {
     return this.client.request(
-      'shipping/quotes?cep=' + encodeURIComponent(cep),
+      items ? 'shipping/quotes' : 'shipping/quotes?cep=' + encodeURIComponent(cep),
       shippingResponseSchema,
+      items ? { method: 'POST', body: { cep, items } } : {},
     );
   }
   changeSubscription(change: SubscriptionChange) {
@@ -225,5 +227,22 @@ export class HttpGateway implements CommerceGateway {
   }
   adminCommand(command: AdminCommand) {
     return this.client.request('admin/commands', voidSchema, { method: 'POST', body: command });
+  }
+  reportPrayer(id: string, reason: string) {
+    return this.client.request(
+      'community/prayers/' + encodeURIComponent(id) + '/report',
+      voidSchema,
+      { method: 'POST', body: { reason } },
+    );
+  }
+  invitation(token: string) {
+    return this.client.request('team/invitations/' + encodeURIComponent(token), invitationSchema);
+  }
+  acceptInvitation(input: { token: string; name: string }) {
+    return this.client.request(
+      'team/invitations/' + encodeURIComponent(input.token) + '/accept',
+      z.void(),
+      { method: 'POST', body: { name: input.name } },
+    );
   }
 }

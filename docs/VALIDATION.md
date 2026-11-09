@@ -1,25 +1,37 @@
-# Validação da migração
+# Validação da operação administrativa
 
-Verificado localmente em 9 de novembro de 2026:
+Verificado em 9 de novembro de 2026. Esta entrega amplia o frontend Next.js e planeja o backend; não implementa serviços comerciais reais.
 
-- Next.js: build de produção concluído, 44 páginas do App Router.
-- TypeScript estrito e ESLint sem erros ou avisos.
-- Vitest: 46 testes em 8 arquivos, todos passando.
-- Storybook: build concluído, 55 histórias e 7 páginas de documentação.
-- Prettier e `git diff --check` aprovados.
-- `npm audit --omit=dev`: zero vulnerabilidades nas dependências de produção. A instalação apontou 12 avisos moderados na cadeia das ferramentas de desenvolvimento; acompanhe as atualizações compatíveis, sem aplicar `audit fix --force` indiscriminadamente.
-- Revisão visual independente Impeccable: **ship**, sem correções materiais. O sistema visual existente foi preservado. O detector de código teve zero achados primários; os avisos consultivos de escala/cor/raio refletem principalmente os valores legados e não equivalem a falhas funcionais.
+## Checks executados
 
-## Conferência no navegador
+- TypeScript estrito e ESLint aprovados.
+- Vitest: 65 testes em 12 arquivos, todos passando.
+- Next.js: build de produção aprovado; 45 páginas de aplicação no fonte (47 entradas incluindo páginas internas do framework no manifesto).
+- Storybook: build aprovado, 60 histórias e 8 páginas de documentação; histórias adicionais para cadastro, condição de arquivo 3D e drawers.
+- Docker Linux: imagem standalone construída com Node 24.14.1 fixado por digest; execução como usuário node; /api/health, /admin e produto responderam 200.
+- Docker em modo HTTP: build aprovado sem acesso à futura API durante o build; leituras públicas são resolvidas em runtime.
+- BFF sem API configurada: respondeu 503, sem recorrer a pagamentos ou fretes fictícios no modo HTTP.
+- npm audit --omit=dev: zero vulnerabilidades de produção. Permanecem 12 avisos moderados na cadeia de ferramentas de desenvolvimento, sem atualização forçada incompatível.
+- Prettier e git diff --check compõem os checks finais e o CI.
 
-Desktop 1280 × 900, celular 390 × 844 e janela de 853 px: loja, login e administrador. Catálogo de componentes também conferido no Storybook. Capturas locais e pacote de revisão ficam em `.impeccable/review-next/` (não versionados).
+## Navegador e dados
 
-Fluxos percorridos: produto e seleção de tamanho, adição ao carrinho, controles de rotação/cor/zoom em 3D, checkout com Pix + cartão em duas parcelas, confirmação fictícia e pedido na conta, adesão ao clube com perfil evangélico, assinatura/itens/cobrança/produção refletidos na gestão, login da equipe e abertura do pedido manual. A migração preservou o carrinho antigo com três itens e os registros operacionais existentes na mesma origem local.
+Conferidos desktop 1280×900, celular 390×844 e largura intermediária 853×844. Capturas completas e overlays ficam em .impeccable/review/ (não versionados). O build Linux foi servido em http://127.0.0.1:8767/admin; o ambiente anterior em 8766 foi preservado.
 
-A revisão também conferiu feedback compacto após login, restauração de foco dos diálogos e leitura do e-mail lembrado em formato antigo. O primeiro carregamento também busca imediatamente os preços e a mensalidade já salvos na operação demonstrativa, em vez de manter os dados iniciais do servidor. Os testes cobrem idempotência, valores em centavos, limites do pagamento combinado, ciclos mensais, permissão/propriedade demonstrativas, migração, isolamento de custos internos, contratos HTTP e proxy de mesma origem.
+Fluxos conferidos: login da equipe, gráficos e filtros, drawers de pedido e produção, Escape e retorno ao acionador; cadastro de produto oculto com foto e STL, persistência após recarregar, rejeição de STL inválido, leitura de STL e 3MF válidos, geometria real com rotação/zoom, remoção do modelo desativando 3D; convite demonstrativo criado, link copiado e aceito no mesmo navegador. O fixture geométrico é um tetraedro de teste, não um produto comercial. Arquivos ficam no IndexedDB e dados comerciais continuam separados no armazenamento local. Não houve limpeza dos dados existentes da origem anterior.
 
-## Limites do resultado
+A saída móvel foi conferida por ativação por ponteiro e pela tecla Enter: ambas exibiram /admin/login com o botão Entrar na gestão; em seguida o acesso de equipe foi restaurado. O botão mede 44px de altura e permanece dentro do viewport de 390px.
 
-Esta validação cobre o frontend e a operação demonstrativa, não serviços comerciais. Não representa certificação de segurança, acessibilidade integral, desempenho em dispositivos reais ou transações reais. A API deve implementar identidade/autorização, banco, cálculo comercial, gateway/webhooks, recorrência agendada, frete e e-mail segundo `BACKEND.md`.
+Os testes cobrem migração, idempotência e regras comerciais anteriores, estoque negativo e ajuste com motivo, SKU duplicado, arquivamento sem apagar pedidos, convites expirados/revogados/aceitos uma vez, permissões demonstrativas, notas internas ausentes da conta do cliente, edição mensal sem reescrever pedidos, preparação de etiqueta, privacidade da moderação, biblioteca de bytes, arquivos/modelos inválidos e limite de descompactação, remoção da capa, condição de publicação, links de vídeo, contratos HTTP e streaming limitado do BFF.
 
-O build do Storybook informa chunks grandes das ferramentas de documentação/acessibilidade e diretivas React de cliente removidas pelo empacotador de preview. O catálogo é uma aplicação cliente separada. O Three.js da loja é importado sob demanda; as ferramentas de documentação não entram no build publicado do Next.js.
+## Revisão visual
+
+Skills Emil Kowalski e Impeccable aplicadas. O detector manual rodou uma vez: 44 achados consultivos de escala/cor/raio e nenhum achado material. Houve alinhamento mecânico com a paleta e escala existentes; não houve segunda execução. A revisão independente preservou a direção Essência e pediu três correções: legenda financeira persistente e unidade BRL; assunto e metadados separados no atendimento; saída da gestão acessível no celular. O reviewer avaliou as três correções como resolvidas, com disposition ship no escopo desses três itens e sem regressões materiais observadas nas recapturas. Isso não constitui auditoria integral de toda a plataforma.
+
+O relatório de preservação do sistema está em DESIGN-VALIDATION-ADMIN.md. DESIGN.md e .impeccable/design.json são a referência existente e permanecem preservados.
+
+## Limites e próxima etapa
+
+Pagamentos, assinatura, etiquetas, envio de e-mail, autenticação e permissões continuam demonstrativos. O frontend contém os DTOs compartilhados, adaptador HTTP, tokenização por Card Payment Brick, sessão de upload e transporte TUS/streaming preparados; nenhum teste foi executado contra contas comerciais de Mercado Pago, Melhor Envio ou Bunny. O plano completo para implementar e homologar NestJS/Prisma/PostgreSQL/Redis no Railway está em BACKEND-PLAN.md, com módulos, entidades, rotas, filas, webhooks, conciliação, deploy e critérios de aceite.
+
+Docker e railway.toml descrevem o serviço web; não foi feito provisionamento nem deploy no Railway. A entrega não representa certificação de segurança, acessibilidade integral, desempenho em aparelhos físicos ou transações reais. Os avisos de empacotamento do Storybook sobre diretivas de cliente e tamanho de chunks das ferramentas não impedem seu build e não entram como ferramentas de documentação na loja publicada.

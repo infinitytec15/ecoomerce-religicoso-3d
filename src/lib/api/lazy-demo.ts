@@ -11,6 +11,9 @@ export function createLazyDemoGateway(): CommerceGateway {
     ));
   return {
     mode: 'demo',
+    reportPrayer: async (...args) => (await load()).reportPrayer(...args),
+    invitation: async (...args) => (await load()).invitation(...args),
+    acceptInvitation: async (...args) => (await load()).acceptInvitation(...args),
     catalog: async (...args) => (await load()).catalog(...args),
     product: async (...args) => (await load()).product(...args),
     settings: async (...args) => (await load()).settings(...args),

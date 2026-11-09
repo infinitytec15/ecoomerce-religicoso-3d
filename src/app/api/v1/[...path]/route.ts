@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 const routes =
-  /^(catalog\/products(?:\/[a-zA-Z0-9_-]+)?|store\/settings|auth\/(session|login|logout|recover)|account(?:\/profile)?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/reaction)?)?|newsletter(?:\/unsubscribe)?|admin\/(operations|commands))$/;
+  /^(catalog\/products(?:\/[a-zA-Z0-9_-]+)?|store\/settings|auth\/(session|login|logout|recover)|account(?:\/profile)?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/unsubscribe)?|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content))?))$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params,
     pathname = path.join('/');
@@ -26,12 +26,68 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       { error: { code: 'INVALID_ORIGIN', message: 'Origem da solicitação não permitida.' } },
       { status: 403 },
     );
-  const text = mutation ? await request.text() : undefined;
-  if (text && new TextEncoder().encode(text).length > 262144)
+  const binary =
+    request.method === 'PUT' && /^admin\/media\/uploads\/[a-zA-Z0-9_-]+\/content$/.test(pathname);
+  if (request.method === 'PUT' && !binary)
     return NextResponse.json(
-      { error: { code: 'PAYLOAD_TOO_LARGE', message: 'A solicitação excede o limite permitido.' } },
+      { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' } },
+      { status: 405 },
+    );
+  const length = Number(request.headers.get('content-length'));
+  if (binary && (!length || length > 32 * 1024 * 1024))
+    return NextResponse.json(
+      {
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Arquivo acima do limite ou tamanho não informado.',
+        },
+      },
       { status: 413 },
     );
+  let text: string | undefined;
+  if (mutation && !binary && request.body) {
+    const reader = request.body.getReader(),
+      chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 262144) {
+        await reader.cancel();
+        return NextResponse.json(
+          {
+            error: {
+              code: 'PAYLOAD_TOO_LARGE',
+              message: 'A solicitação excede o limite permitido.',
+            },
+          },
+          { status: 413 },
+        );
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    text = new TextDecoder().decode(bytes);
+  }
+  let streamed = 0;
+  const binaryBody = binary
+    ? request.body?.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            streamed += chunk.byteLength;
+            if (streamed > 32 * 1024 * 1024 || streamed > length)
+              throw new Error('Upload excedeu o tamanho declarado.');
+            controller.enqueue(chunk);
+          },
+        }),
+      )
+    : undefined;
   try {
     const headers = new Headers({ Accept: 'application/json' });
     for (const name of ['cookie', 'content-type', 'idempotency-key', 'x-csrf-token']) {
@@ -43,10 +99,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       {
         method: request.method,
         headers,
-        body: text,
+        body: binary ? binaryBody : text,
+        ...(binary ? { duplex: 'half' } : {}),
         redirect: 'manual',
         cache: 'no-store',
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(binary ? 120000 : 15000),
       },
     );
     const response = new NextResponse(upstream.body, {
@@ -75,3 +132,4 @@ export const GET = proxy;
 export const POST = proxy;
 export const PATCH = proxy;
 export const DELETE = proxy;
+export const PUT = proxy;

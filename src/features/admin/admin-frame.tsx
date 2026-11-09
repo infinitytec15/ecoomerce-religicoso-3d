@@ -1,6 +1,7 @@
 'use client';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
+import { RecordWorkspace } from './record-drawer';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEndSession, useOperations, useSession } from '@/lib/api/query';
 import type { Operations, Permission } from '@/lib/domain/types';
@@ -10,6 +11,7 @@ import { AuthScreen } from '@/features/auth/auth-screen';
 import { Logo } from '@/components/layout/logo';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { LoadingState, ErrorState } from '@/components/ui/states';
+import { useNotify } from '@/components/ui/feedback';
 export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['', 'Visão geral', 'spark'],
   ['pedidos', 'Pedidos', 'bag', 'orders'],
@@ -39,7 +41,30 @@ export function AdminFrame({ children }: { children: ReactNode }) {
     session = useSession(),
     operations = useOperations(),
     logout = useEndSession(),
-    router = useRouter();
+    router = useRouter(),
+    notify = useNotify();
+  async function handleLogout() {
+    try {
+      await logout.mutateAsync();
+      router.replace('/admin/login');
+    } catch (error) {
+      notify(errorMessage(error));
+    }
+  }
+  useEffect(() => {
+    const keyboard = () => {
+      document.documentElement.dataset.input = 'keyboard';
+    };
+    const pointer = () => {
+      document.documentElement.dataset.input = 'pointer';
+    };
+    document.addEventListener('keydown', keyboard, true);
+    document.addEventListener('pointerdown', pointer, true);
+    return () => {
+      document.removeEventListener('keydown', keyboard, true);
+      document.removeEventListener('pointerdown', pointer, true);
+    };
+  }, []);
   if (section === 'login') return <>{children}</>;
   if (session.isPending)
     return (
@@ -71,6 +96,14 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           <div className="admin-brand">
             <Logo />
             <span>gestão</span>
+            <button
+              className="admin-mobile-logout"
+              disabled={logout.isPending}
+              onClick={handleLogout}
+            >
+              <Icon name="logout" />
+              <span>Sair da gestão</span>
+            </button>
           </div>
           <nav aria-label="Administração">
             {adminNavigation
@@ -96,10 +129,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
             <button
               className="admin-session-end"
               disabled={logout.isPending}
-              onClick={async () => {
-                await logout.mutateAsync();
-                router.replace('/admin/login');
-              }}
+              onClick={handleLogout}
             >
               <Icon name="logout" />
               Sair da gestão
@@ -180,7 +210,9 @@ export function AdminFrame({ children }: { children: ReactNode }) {
                 onRetry={() => void operations.refetch()}
               />
             ) : (
-              <AdminDataContext.Provider value={data}>{children}</AdminDataContext.Provider>
+              <AdminDataContext.Provider value={data}>
+                <RecordWorkspace key={path}>{children}</RecordWorkspace>
+              </AdminDataContext.Provider>
             )}
           </main>
           <footer className="admin-footnote">

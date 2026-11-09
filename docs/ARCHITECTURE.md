@@ -26,7 +26,7 @@ Zustand persiste apenas carrinho e favoritos. A migração lê os namespaces `am
 - Rotas separadas e renderização pública no servidor; estado interativo limitado a componentes cliente.
 - Imagens de produto individuais em WebP, `next/image`, tamanhos responsivos e prioridade na imagem principal.
 - Fontes WOFF2 locais com caracteres do português, sem chamadas ao Google Fonts.
-- Three.js e os seis modelos só são importados quando o visitante abre o 3D. Geometria, materiais, eventos e renderer são liberados ao fechar.
+- Three.js e loaders STL/3MF/GLB só são importados ao enviar um modelo ou abrir o 3D. A visualização é condicionada a arquivo válido; não há modelos procedurais substitutos. Geometria, materiais, eventos e renderer são liberados ao fechar.
 - Cart drawer e recursos devocionais usam importação dinâmica.
 - Páginas de erro, carregamento, 404, dados vazios, submissão e falhas de API têm estados próprios.
 - `robots.txt`, sitemap e metadados por produto; conta, login, checkout e gestão não indexáveis.
@@ -44,3 +44,11 @@ Storybook usa `@storybook/nextjs-vite`, os componentes reais, dados em memória 
 Vercel: framework Next.js, comando `npm run build`, diretório de saída padrão; não configure `dist`. O `vercel.json` já aponta para Next.js. Use as variáveis do ambiente e configure o domínio em `NEXT_PUBLIC_SITE_URL` antes do build. Storybook é um build separado: `npm run build-storybook`, saída `storybook-static/`.
 
 Servidor Node: `npm ci && npm run build && npm start -- --port 8766`. Para gerar standalone em Linux/contêiner, use `NEXT_STANDALONE=true npm run build`; copie também `public` e `.next/static` para a distribuição standalone. O build padrão funciona em Windows sem exigir privilégios de criação de links.
+
+## Operação e monorepo
+
+O frontend na raiz agora consome o workspace npm packages/contracts. Os arquivos antigos src/lib/domain/types, schemas, admin-types e admin-schemas são reexports. Tipos e validações não dependem de React/Next; serão usados pela API NestJS. O plano detalhado está em BACKEND-PLAN.md.
+
+Biblioteca de mídia demonstrativa no IndexedDB (meo-media-v1), operação JSON separada. Fotos resolvem URLs temporárias com cleanup; STL/3MF são validados e têm geometria real carregada sob demanda. Modelos remotos usam preview GLB preparado pelo worker. O adaptador HTTP de mídia negocia sessão e finalização validada; Storage passa por streaming do BFF, vídeo vai a Bunny Stream por TUS com assinatura curta. O Card Payment Brick só é carregado em HTTP e recebe chave pública; tokens transitórios nunca entram na operação local. Cotação HTTP aceita itens e devolve serviço, orçamento e validade para Melhor Envio.
+
+Drawers Radix preservam foco e contexto da lista, incluindo entrada/saída reduzida e teclado sem animação. Gráficos Recharts usam cobranças/despesas reais do estado demonstrativo e oferecem tabela alternativa. Convites, edições, movimentos, moderação, campanhas e preferências têm comandos próprios; a API deverá autorizar cada comando e filtrar respostas por perfil. O modo local é uma simulação, não autenticação nem proteção de dados.

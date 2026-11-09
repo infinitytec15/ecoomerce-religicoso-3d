@@ -33,7 +33,15 @@ export class BrowserDemoStorage implements DemoStorage {
       if (current) {
         const state = JSON.parse(current) as Operations;
         if (state.version === 2 && Array.isArray(state.products) && Array.isArray(state.orders))
-          return state;
+          return {
+            ...createSeed(),
+            ...state,
+            workspace: { ...createSeed().workspace, ...state.workspace },
+            invitations: state.invitations || [],
+            editions: state.editions || createSeed().editions,
+            coupons: state.coupons || [],
+            stockMovements: state.stockMovements || [],
+          };
       }
       const previous = localStorage.getItem('amago-operations-v1');
       let state = createSeed();

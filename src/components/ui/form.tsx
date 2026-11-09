@@ -7,11 +7,13 @@ export function Form({
   onSubmit,
   className = 'stack',
   id,
+  onInvalid,
 }: {
   children: ReactNode | ((pending: boolean) => ReactNode);
   onSubmit: (data: FormData, form: HTMLFormElement) => Promise<void> | void;
   className?: string;
   id?: string;
+  onInvalid?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [pending, setPending] = useState(false),
     [error, setError] = useState('');
@@ -32,7 +34,7 @@ export function Form({
     }
   }
   return (
-    <form id={id} className={className} onSubmit={submit}>
+    <form id={id} className={className} onSubmit={submit} onInvalidCapture={onInvalid}>
       <fieldset disabled={pending} className="form-fieldset">
         {typeof children === 'function' ? children(pending) : children}
       </fieldset>

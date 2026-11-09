@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useAdminData } from './admin-frame';
+import { AdminAnalytics } from './analytics';
 import { AdminHeading, AdminMetrics, AuditList } from './shared';
 import { financialSummary } from '@/lib/domain/commerce';
 import { money, monthLabel } from '@/lib/domain/format';
@@ -8,19 +9,10 @@ import { ButtonLink } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Icon } from '@/components/ui/icon';
-import type { OrderStatus } from '@/lib/domain/types';
 export function AdminOverview() {
   const data = useAdminData(),
     f = financialSummary(data),
     active = data.subscriptions.filter((s) => s.status === 'Ativa').length;
-  const flow: [OrderStatus, string, string][] = [
-    ['Aguardando pagamento', 'Pagamento', 'financeiro'],
-    ['Confirmado', 'Confirmados', 'pedidos'],
-    ['Em produção', 'Produção', 'producao'],
-    ['Em acabamento', 'Acabamento', 'producao'],
-    ['Pronto para envio', 'Expedição', 'expedicao'],
-    ['Enviado', 'A caminho', 'expedicao'],
-  ];
   return (
     <>
       <AdminHeading
@@ -54,24 +46,14 @@ export function AdminOverview() {
           { label: 'A receber', value: money(f.pending), note: 'Cobranças pendentes' },
         ]}
       />
+      <AdminAnalytics />
       <div className="admin-dashboard-grid">
         <section className="admin-panel">
           <div className="admin-panel-heading">
-            <h2>O caminho de cada pedido</h2>
+            <h2>Pedidos recentes</h2>
             <Link href="/admin/pedidos">
               Ver todos <Icon name="arrow" />
             </Link>
-          </div>
-          <div className="admin-flow">
-            {flow.map(([status, label, route]) => (
-              <Link key={status} href={'/admin/' + route}>
-                <strong>{data.orders.filter((o) => o.status === status).length}</strong>
-                <span>{label}</span>
-              </Link>
-            ))}
-          </div>
-          <div className="admin-panel-subhead">
-            <h3>Pedidos recentes</h3>
           </div>
           <DataTable
             rows={data.orders.slice(0, 6)}

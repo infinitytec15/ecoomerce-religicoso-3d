@@ -1,5 +1,8 @@
 'use client';
 import { useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import type { PaymentToken } from '@/lib/domain/types';
+const MercadoPagoCard = dynamic(() => import('./mercado-pago-card'), { ssr: false });
 import { useRouter } from 'next/navigation';
 import type { Address, CheckoutInput, PaymentMethod, ShippingQuote } from '@/lib/domain/types';
 import { addressSchema } from '@/lib/domain/schemas';
@@ -20,7 +23,7 @@ export function CheckoutView() {
     clear = useCartStore((s) => s.clear),
     [step, setStep] = useState(0),
     [address, setAddress] = useState<Address>(emptyAddress),
-    [shipping, setShipping] = useState<'standard' | 'express'>('standard'),
+    [shipping, setShipping] = useState<string>('standard'),
     [rates, setRates] = useState<ShippingQuote[]>([]),
     [payment, setPayment] = useState<PaymentMethod>('pix'),
     [pixValue, setPixValue] = useState('50'),
@@ -28,12 +31,56 @@ export function CheckoutView() {
     [coupon, setCoupon] = useState(''),
     [couponError, setCouponError] = useState(''),
     [submitted, setSubmitted] = useState(false),
+    [cardRequested, setCardRequested] = useState(false),
     key = useRef<string>(''),
     gateway = useGateway(),
     router = useRouter(),
     create = useCommand((g, input: CheckoutInput) => g.checkout(input)),
     shippingCents = rates.find((r) => r.id === shipping)?.cents ?? 1890,
     totals = calculateTotals(items, shippingCents, coupon);
+  async function complete(paymentToken?: PaymentToken) {
+    if (payment === 'split') validateSplit(totals.totalCents, centsFromInput(pixValue));
+    if (!key.current) key.current = crypto.randomUUID();
+    const result = await create.mutateAsync({
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        color: i.color,
+        sizeIndex: i.sizeIndex,
+        dedication: i.dedication,
+      })),
+      address,
+      shipping,
+      coupon,
+      payment,
+      pixCents:
+        payment === 'split' ? centsFromInput(pixValue) : payment === 'pix' ? totals.totalCents : 0,
+      installments: paymentToken?.installments || installments,
+      consent: true,
+      paymentToken,
+      shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
+      shippingServiceId: rates.find((r) => r.id === shipping)?.serviceId,
+      idempotencyKey: key.current,
+    });
+    setSubmitted(true);
+    clear();
+    router.push('/checkout/sucesso?pedido=' + encodeURIComponent(result.orderId));
+  }
+  if (cardRequested)
+    return (
+      <main id="main" className="container page-top">
+        <MercadoPagoCard
+          amountCents={
+            payment === 'split' ? totals.totalCents - centsFromInput(pixValue) : totals.totalCents
+          }
+          email={address.email}
+          onSubmit={complete}
+        />
+        <Button variant="text" onClick={() => setCardRequested(false)}>
+          Voltar ao pedido
+        </Button>
+      </main>
+    );
   if (submitted)
     return (
       <main id="main" className="container">
@@ -71,7 +118,13 @@ export function CheckoutView() {
               className="stack"
               onSubmit={async () => {
                 addressSchema.parse(address);
-                setRates(await gateway.shipping(address.cep));
+                const quoted = await gateway.shipping(
+                  address.cep,
+                  items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+                );
+                if (!quoted.length) throw new Error('Nenhum frete disponível para este CEP.');
+                setRates(quoted);
+                setShipping(quoted[0].id);
                 setStep(1);
                 window.scrollTo(0, 0);
               }}
@@ -129,33 +182,12 @@ export function CheckoutView() {
             <Form
               className="stack"
               onSubmit={async (d) => {
-                if (payment === 'split') validateSplit(totals.totalCents, centsFromInput(pixValue));
-                if (!key.current) key.current = crypto.randomUUID();
-                const result = await create.mutateAsync({
-                  items: items.map((i) => ({
-                    productId: i.productId,
-                    quantity: i.quantity,
-                    color: i.color,
-                    sizeIndex: i.sizeIndex,
-                    dedication: i.dedication,
-                  })),
-                  address,
-                  shipping,
-                  coupon,
-                  payment,
-                  pixCents:
-                    payment === 'split'
-                      ? centsFromInput(pixValue)
-                      : payment === 'pix'
-                        ? totals.totalCents
-                        : 0,
-                  installments,
-                  consent: d.has('consent'),
-                  idempotencyKey: key.current,
-                });
-                setSubmitted(true);
-                clear();
-                router.push('/checkout/sucesso?pedido=' + encodeURIComponent(result.orderId));
+                if (!d.has('consent')) throw new Error('Confirme os dados para continuar.');
+                if (!IS_DEMO && payment !== 'pix') {
+                  setCardRequested(true);
+                  return;
+                }
+                await complete();
               }}
             >
               {(pending) => (

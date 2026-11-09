@@ -1,5 +1,6 @@
 import { productSchema } from '@/lib/domain/schemas';
 import source from '@/data/legacy-seed.json';
+import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
 import type {
   Charge,
   Collection,
@@ -127,6 +128,22 @@ export function createSeed(legacy = source.operations): Operations {
   }));
   return {
     version: 2,
+    workspace: { ...defaultWorkspaceSettings },
+    invitations: [],
+    editions: [
+      {
+        id: 'edition-current',
+        name: legacy.settings.edition,
+        month: legacy.settings.editionMonth,
+        dispatchDay: legacy.settings.dispatchDay,
+        status: 'Programada',
+        profiles: legacy.settings.profiles,
+        message: 'Que a esperança encontre espaço em seu lar.',
+        notes: '',
+      },
+    ],
+    coupons: [],
+    stockMovements: [],
     products,
     clients,
     orders,

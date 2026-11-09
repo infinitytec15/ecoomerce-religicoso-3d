@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  workspaceSchema,
+  invitationSchema,
+  editionSchema,
+  couponSchema,
+  stockMovementSchema,
+  productMediaSchema,
+} from '@/lib/domain/admin-schemas';
 import { addressSchema, inventoryProductSchema, publicSettingsSchema } from '@/lib/domain/schemas';
 const id = z.string().min(1),
   cents = z.number().int().nonnegative(),
@@ -77,6 +85,10 @@ export const orderSchema = z.object({
   priority: z.enum(['Normal', 'Alta']),
   notes: text,
   sourceOrderId: text.optional(),
+  shippingServiceId: text.optional(),
+  shippingQuoteId: text.optional(),
+  labelStatus: z.enum(['Não solicitada', 'Preparada', 'Gerada', 'Cancelada']).optional(),
+  labelUrl: z.url().optional(),
 });
 export const subscriptionResponseSchema = z.object({
   id,
@@ -118,7 +130,15 @@ export const ticketSchema = z.object({
   priority: z.enum(['Normal', 'Alta']),
   assignee: text,
   created: text,
-  messages: z.array(z.object({ by: z.enum(['cliente', 'equipe']), text, date: text })),
+  messages: z.array(
+    z.object({
+      by: z.enum(['cliente', 'equipe']),
+      text,
+      date: text,
+      internal: z.boolean().optional(),
+      attachments: z.array(productMediaSchema).optional(),
+    }),
+  ),
 });
 export const prayerResponseSchema = z.object({
   id,
@@ -133,6 +153,9 @@ export const prayerResponseSchema = z.object({
   reactions: z.number().int().nonnegative(),
   owned: z.boolean(),
   prayed: z.boolean(),
+  moderation: z.enum(['Publicado', 'Em análise', 'Oculto']).optional(),
+  reports: z.array(z.object({ reason: text, date: text })).optional(),
+  moderationNote: text.optional(),
 });
 export const accountSchema = z.object({
   customer: customerSchema,
@@ -143,6 +166,11 @@ export const accountSchema = z.object({
 });
 export const operationsSchema = z.object({
   version: z.literal(2),
+  workspace: workspaceSchema,
+  invitations: z.array(invitationSchema),
+  editions: z.array(editionSchema),
+  coupons: z.array(couponSchema),
+  stockMovements: z.array(stockMovementSchema),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),
@@ -159,6 +187,11 @@ export const operationsSchema = z.object({
       assignee: text,
       priority: z.enum(['Normal', 'Alta']),
       due: text,
+      notes: text.optional(),
+      material: text.optional(),
+      grams: z.number().nonnegative().optional(),
+      startedAt: text.optional(),
+      completedAt: text.optional(),
     }),
   ),
   printers: z.array(
@@ -180,7 +213,15 @@ export const operationsSchema = z.object({
     }),
   ),
   team: z.array(
-    z.object({ id, name: text, email: text, role: text, status: z.enum(['Ativo', 'Inativo']) }),
+    z.object({
+      id,
+      name: text,
+      email: text,
+      role: text,
+      status: z.enum(['Ativo', 'Inativo']),
+      permissions: sessionSchema.shape.permissions.optional(),
+      lastSeen: text.optional(),
+    }),
   ),
   settings: publicSettingsSchema,
   campaigns: z.array(
@@ -191,6 +232,9 @@ export const operationsSchema = z.object({
       date: text,
       recipients: z.number(),
       status: text,
+      previewText: text.optional(),
+      scheduledAt: text.optional(),
+      audience: z.enum(['Inscritos em oração', 'Assinantes do clube']).optional(),
     }),
   ),
   audit: z.array(z.object({ id, date: text, actor: text, action: text, entity: text })),
@@ -213,5 +257,14 @@ export const checkoutResultSchema = z.object({
   ]),
 });
 export const shippingResponseSchema = z.array(
-  z.object({ id: z.enum(['standard', 'express']), label: text, cents, estimate: text }),
+  z.object({
+    id: text,
+    label: text,
+    cents,
+    estimate: text,
+    quoteId: text.optional(),
+    serviceId: text.optional(),
+    carrier: text.optional(),
+    expiresAt: text.optional(),
+  }),
 );

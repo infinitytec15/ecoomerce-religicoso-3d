@@ -30,7 +30,10 @@ export interface CommerceGateway {
   subscribe(input: SubscribeInput): Promise<CheckoutResult>;
   confirmDemoPayment(id: string): Promise<void>;
   payment(id: string): Promise<CheckoutResult>;
-  shipping(cep: string): Promise<ShippingQuote[]>;
+  shipping(
+    cep: string,
+    items?: { productId: string; quantity: number }[],
+  ): Promise<ShippingQuote[]>;
   changeSubscription(change: SubscriptionChange): Promise<void>;
   createTicket(input: {
     subject: string;
@@ -44,10 +47,13 @@ export interface CommerceGateway {
   postPrayer(input: PrayerInput): Promise<void>;
   reactPrayer(id: string): Promise<void>;
   deletePrayer(id: string): Promise<void>;
+  reportPrayer(id: string, reason: string): Promise<void>;
   newsletter(input: NewsletterInput): Promise<{ message: string; token?: string }>;
   unsubscribeNewsletter(token?: string): Promise<void>;
   admin(): Promise<Operations>;
   adminCommand(command: AdminCommand): Promise<void>;
+  invitation(token: string): Promise<import('@/lib/domain/types').TeamInvitation>;
+  acceptInvitation(input: { token: string; name: string }): Promise<void>;
 }
 export class ApiError extends Error {
   constructor(

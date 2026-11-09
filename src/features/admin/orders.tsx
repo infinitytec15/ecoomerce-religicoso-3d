@@ -122,6 +122,11 @@ export function NewOrderForm({ onSuccess }: { onSuccess: () => void }) {
 export function AdminOrders({ initialCreate = false }: { initialCreate?: boolean }) {
   const data = useAdminData(),
     [create, setCreate] = useState(initialCreate),
+    [selected, setSelected] = useState<string[]>([]),
+    [origin, setOrigin] = useState('Todos'),
+    [from, setFrom] = useState(''),
+    [to, setTo] = useState(''),
+    batch = useAdminAction(),
     filter = useAdminFilter(
       data.orders,
       (o) =>
@@ -157,9 +162,86 @@ export function AdminOrders({ initialCreate = false }: { initialCreate?: boolean
         }
       />
       {filter.toolbar}
+      <div className="admin-toolbar order-bulk">
+        <label>
+          Origem
+          <select value={origin} onChange={(e) => setOrigin(e.target.value)}>
+            <option>Todos</option>
+            <option>Loja</option>
+            <option>Clube</option>
+          </select>
+        </label>
+        <label>
+          De
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+        <label>
+          Até
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
+        <span>{selected.length} selecionados</span>
+        {selected.length > 0 && (
+          <>
+            <Button
+              variant="secondary"
+              className="small"
+              disabled={batch.pending}
+              onClick={() =>
+                batch.execute({ type: 'orders.batch', ids: selected, action: 'priority' })
+              }
+            >
+              Priorizar
+            </Button>
+            <Button
+              variant="secondary"
+              className="small"
+              disabled={batch.pending}
+              onClick={() =>
+                batch.execute({ type: 'orders.batch', ids: selected, action: 'production' })
+              }
+            >
+              Enviar à produção
+            </Button>
+            <Button variant="text" onClick={() => setSelected([])}>
+              Limpar seleção
+            </Button>
+          </>
+        )}
+      </div>
       <DataTable
-        rows={filter.rows}
+        rows={filter.rows.filter(
+          (o) =>
+            (origin === 'Todos' || o.type === origin) &&
+            (!from || o.created.slice(0, 10) >= from) &&
+            (!to || o.created.slice(0, 10) <= to),
+        )}
         columns={[
+          {
+            key: 'select',
+            label: 'Selecionar',
+            render: (o) => (
+              <input
+                type="checkbox"
+                aria-label={'Selecionar ' + o.number}
+                checked={selected.includes(o.id)}
+                onChange={(e) =>
+                  setSelected(
+                    e.target.checked ? [...selected, o.id] : selected.filter((id) => id !== o.id),
+                  )
+                }
+              />
+            ),
+          },
           {
             key: 'id',
             label: 'Pedido / data',

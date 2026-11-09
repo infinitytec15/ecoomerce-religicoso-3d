@@ -71,3 +71,11 @@ Marca: **Mãos em Oração**, creme, oliva e terracota; Cormorant Garamond, DM S
 As fotos são cenas conceituais geradas por IA e os modelos 3D são procedurais ilustrativos, sem correspondência com arquivos de fabricação. Produtos, valores e políticas precisam de aprovação comercial antes de vendas reais.
 
 Links antigos `/#/...` redirecionam para rotas nativas. A migração lê os dados `amago-*`, grava o novo formato e preserva os originais. Armazenamento pertence ao mesmo host/porta. `dist/` conserva o protótipo estático anterior para referência; não é a aplicação publicada nem a saída do Next.js.
+
+## Administração ampliada e monorepo
+
+Visão geral e financeiro com gráficos derivados dos registros; drawers de pedidos, contratos, clientes, produção, expedição e cobranças; cadastro com fotos/vídeos e STL/3MF, estoque e embalagem; várias edições do clube; convites com aceitação local; notas internas de suporte; revisão do mural; oração diária; relatórios CSV por módulo. A visualização 3D só existe quando um arquivo válido foi enviado.
+
+Os arquivos da demonstração ficam no IndexedDB deste navegador; metadados e operação permanecem separados. Limites: imagem 12 MB, vídeo 150 MB, modelo 30 MB e 1 milhão de triângulos. Não usar o protótipo para guardar arquivos únicos sem cópia: limpar dados do navegador remove a biblioteca. Remover uma referência não apaga imediatamente os bytes que ainda podem ser usados em histórico.
+
+O workspace `packages/contracts` fornece DTOs e validações ao web e à futura API. [Plano completo do backend](docs/BACKEND-PLAN.md) para NestJS/Prisma/Postgres/Redis e Railway. Bunny Storage/Stream, Melhor Envio e Mercado Pago estão definidos nos contratos; serviços reais aguardam implementação, credenciais e homologação. Dockerfile e railway.toml descrevem somente o web. O frontend permanece na raiz para manter o deploy Vercel existente.

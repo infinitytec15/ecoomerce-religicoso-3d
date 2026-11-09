@@ -61,7 +61,10 @@ export function useAdminAction() {
       notify(message);
     },
     execute: (command: AdminCommand, message = 'Alteração salva.') =>
-      mutation.mutate(command, { onSuccess: () => notify(message) }),
+      mutation.mutate(command, {
+        onSuccess: () => notify(message),
+        onError: (error) => notify(errorMessage(error)),
+      }),
   };
 }
 export function useAdminFilter<T>(

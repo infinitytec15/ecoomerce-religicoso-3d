@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { RecordButton } from './record-drawer';
 import type { Printer, ProductionStage } from '@/lib/domain/types';
 import { useAdminData } from './admin-frame';
 import {
@@ -81,7 +82,12 @@ export function AdminProduction() {
                       <StatusBadge status={j.priority === 'Alta' ? 'Prioridade alta' : 'Normal'} />
                       <small>{j.id}</small>
                     </div>
-                    <h3>{order?.items[0]?.name || 'Cesta do clube'}</h3>
+                    <RecordButton
+                      record={{ kind: 'production', id: j.id }}
+                      className="production-card-title"
+                    >
+                      {order?.items[0]?.name || 'Cesta do clube'}
+                    </RecordButton>
                     <Link href={'/admin/pedidos/' + j.orderId}>{order?.number || j.orderId}</Link>
                     <p>
                       {data.clients.find((c) => c.id === order?.customerId)?.name}
@@ -121,9 +127,7 @@ export function AdminProduction() {
               key: 'order',
               label: 'Pedido',
               render: (o) => (
-                <Link className="admin-link" href={'/admin/pedidos/' + o.id}>
-                  {o.number}
-                </Link>
+                <RecordButton record={{ kind: 'order', id: o.id }}>{o.number}</RecordButton>
               ),
             },
             {
@@ -303,9 +307,7 @@ export function AdminShipping() {
             label: 'Pedido / cliente',
             render: (o) => (
               <>
-                <Link className="admin-link" href={'/admin/pedidos/' + o.id}>
-                  {o.number}
-                </Link>
+                <RecordButton record={{ kind: 'shipping', id: o.id }}>{o.number}</RecordButton>
                 <small>{data.clients.find((c) => c.id === o.customerId)?.name}</small>
               </>
             ),

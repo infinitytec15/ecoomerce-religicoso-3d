@@ -14,8 +14,17 @@ export function TicketMessages({ ticket }: { ticket: Ticket }) {
   return (
     <div className="ticket-thread">
       {ticket.messages.map((m, index) => (
-        <div className={`ticket-message ${m.by === 'equipe' ? 'staff' : ''}`} key={index}>
-          <strong>{m.by === 'equipe' ? 'Equipe Mãos em Oração' : 'Você'}</strong>
+        <div
+          className={`ticket-message ${m.by === 'equipe' ? 'staff' : ''} ${m.internal ? 'internal-note' : ''}`}
+          key={index}
+        >
+          <strong>
+            {m.internal
+              ? 'Nota interna da equipe'
+              : m.by === 'equipe'
+                ? 'Equipe Mãos em Oração'
+                : 'Você'}
+          </strong>
           <p>{m.text}</p>
           <small>{dateLabel(m.date)}</small>
         </div>

@@ -165,8 +165,8 @@ function ViewerCanvas({ product, initialColor }: { product: Product; initialColo
       </div>
       <p className="viewer-disclosure">
         Arraste para girar, use a roda ou o gesto de pinça para aproximar. As setas do teclado giram
-        a peça; + e − controlam o zoom. Modelo procedural ilustrativo, sem correspondência com
-        arquivos de fabricação.
+        a peça; + e − controlam o zoom. Visualização do arquivo enviado. Cores e acabamento na tela
+        podem variar da peça impressa.
       </p>
     </>
   );

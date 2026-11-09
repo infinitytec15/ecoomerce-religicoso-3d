@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.env*
+storybook-static
+coverage
+dist
+tests
+.impeccable
+*.log

@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useAdminData } from './admin-frame';
+import { AdminAnalytics } from './analytics';
+import { RecordButton } from './record-drawer';
 import {
   AdminHeading,
   AdminMetrics,
@@ -68,6 +70,7 @@ export function AdminFinance() {
           },
         ]}
       />
+      <AdminAnalytics finance />
       <AdminError error={action.error} />
       <section className="admin-panel">
         <h2>Cobranças e transações</h2>
@@ -80,7 +83,7 @@ export function AdminFinance() {
               label: 'Cobrança / descrição',
               render: (c) => (
                 <>
-                  <strong>{c.id}</strong>
+                  <RecordButton record={{ kind: 'charge', id: c.id }}>{c.id}</RecordButton>
                   <small>{c.description}</small>
                 </>
               ),

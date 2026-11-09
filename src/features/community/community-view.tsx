@@ -10,16 +10,23 @@ import type { PrayerInput } from '@/lib/domain/schemas';
 import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Form, text } from '@/components/ui/form';
+import { Modal } from '@/components/ui/modal';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { useUiStore } from '@/lib/store/ui';
 import { useNotify } from '@/components/ui/feedback';
 const categories = ['Família', 'Saúde', 'Gratidão', 'Direção', 'Fé', 'Trabalho'] as const;
 export function PrayerCard({ prayer: p }: { prayer: Prayer }) {
+  const [reporting, setReporting] = useState(false),
+    report = useCommand((g, reason: string) => g.reportPrayer(p.id, reason)),
+    notify = useNotify();
   const react = useCommand((g, id: string) => g.reactPrayer(id)),
     remove = useCommand((g, id: string) => g.deletePrayer(id));
   return (
     <article className="prayer-card">
       <h3>{p.title}</h3>
+      {p.moderation === 'Em análise' && (
+        <p className="notice">Seu pedido aguarda revisão da equipe.</p>
+      )}
       <div className="row between">
         <span className="prayer-category">
           <Icon name={p.category === 'Gratidão' ? 'spark' : 'heart'} />
@@ -37,7 +44,7 @@ export function PrayerCard({ prayer: p }: { prayer: Prayer }) {
       <div className="prayer-card-actions">
         <button
           className={`praying-button ${p.prayed ? 'active' : ''}`}
-          disabled={react.isPending}
+          disabled={react.isPending || p.moderation === 'Em análise'}
           aria-pressed={p.prayed}
           onClick={() => react.mutate(p.id)}
         >
@@ -45,12 +52,36 @@ export function PrayerCard({ prayer: p }: { prayer: Prayer }) {
           {p.prayed ? 'Estou orando por você' : 'Vou orar por você'}
           <span>{p.reactions}</span>
         </button>
+        {!p.owned && (
+          <Button variant="text" onClick={() => setReporting(true)}>
+            Sinalizar
+          </Button>
+        )}
         {p.owned && (
           <Button variant="text" loading={remove.isPending} onClick={() => remove.mutate(p.id)}>
             Remover meu pedido
           </Button>
         )}
       </div>
+      <Modal open={reporting} onOpenChange={setReporting} title="Sinalizar pedido">
+        <Form
+          onSubmit={async (d) => {
+            await report.mutateAsync(text(d, 'reason'));
+            setReporting(false);
+            notify('Sinalização enviada para a equipe.');
+          }}
+        >
+          {(pending) => (
+            <>
+              <label>
+                O que precisa ser revisado?
+                <textarea name="reason" required minLength={5} maxLength={500} />
+              </label>
+              <Button loading={pending}>Enviar para revisão</Button>
+            </>
+          )}
+        </Form>
+      </Modal>
       {(react.isError || remove.isError) && (
         <p className="form-error" role="alert">
           {errorMessage(react.error || remove.error)}

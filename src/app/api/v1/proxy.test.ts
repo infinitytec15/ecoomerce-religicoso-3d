@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { GET, POST } from './[...path]/route';
+import { GET, POST, PUT } from './[...path]/route';
 afterEach(() => vi.unstubAllEnvs());
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split('/') }) });
 describe('same-origin backend proxy', () => {
@@ -76,5 +76,55 @@ describe('same-origin backend proxy', () => {
       context('orders'),
     );
     expect(response.status).toBe(413);
+  });
+  it('streams only the explicit media upload route and keeps the session cookie', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const request = new NextRequest('http://localhost/api/v1/admin/media/uploads/asset-1/content', {
+      method: 'PUT',
+      headers: {
+        origin: 'http://localhost',
+        cookie: 'session=staff',
+        'content-length': '5',
+        'content-type': 'model/stl',
+      },
+      body: 'solid',
+    });
+    const response = await PUT(request, context('admin/media/uploads/asset-1/content'));
+    expect(response.status).toBe(204);
+    expect(fetcher.mock.calls[0][0]).toBe(
+      'https://api.example.com/api/v1/admin/media/uploads/asset-1/content',
+    );
+    expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('cookie')).toBe('session=staff');
+    expect(await new Response(fetcher.mock.calls[0][1]?.body).text()).toBe('solid');
+  });
+  it('rejects unknown PUT routes and oversized media before forwarding', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi.spyOn(global, 'fetch');
+    expect(
+      (
+        await PUT(
+          new NextRequest('http://localhost/api/v1/orders', {
+            method: 'PUT',
+            headers: { origin: 'http://localhost' },
+          }),
+          context('orders'),
+        )
+      ).status,
+    ).toBe(405);
+    expect(
+      (
+        await PUT(
+          new NextRequest('http://localhost/api/v1/admin/media/uploads/asset-1/content', {
+            method: 'PUT',
+            headers: { origin: 'http://localhost', 'content-length': String(33 * 1024 * 1024) },
+          }),
+          context('admin/media/uploads/asset-1/content'),
+        )
+      ).status,
+    ).toBe(413);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
