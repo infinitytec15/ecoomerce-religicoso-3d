@@ -7,4 +7,5 @@ coverage
 dist
 tests
 .impeccable
+packages/emails/.preview
 *.log

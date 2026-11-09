@@ -43,7 +43,7 @@ Acesso de teste da equipe: **gestao@maosemoracao.demo** / **Essencia3D!**. O log
 
 Para conectar uma API, copie `.env.example` para `.env.local`, configure o modo `http` e a URL exclusiva do servidor, e faça um novo build. Veja o **[contrato completo do backend](docs/BACKEND.md)** e a **[arquitetura](docs/ARCHITECTURE.md)**. A camada HTTP valida respostas e não usa gravações fictícias como fallback.
 
-A API real, banco, autenticação, gateway/webhooks, scheduler de recorrência, transportadora e e-mail **não estão implementados nesta entrega do frontend**.
+A API real, banco, autenticação, gateway/webhooks, scheduler de recorrência, transportadora e disparos reais de e-mail **não estão implementados nesta entrega do frontend**. O workspace `packages/emails` já contém 16 templates Essência e adaptador Resend testado sem envios. Consulte [docs/EMAILS.md](docs/EMAILS.md) e rode `npm run emails:preview` para gerar o catálogo local.
 
 ## Qualidade
 
@@ -58,7 +58,7 @@ npm run build-storybook
 npm run check
 ```
 
-A integração contínua executa os checks e publica o build do Storybook como artefato. `npm run format` formata o novo código. Os testes novos ficam em `src/**/*.test.*`; `tests/*.cjs` são a suíte histórica do protótipo estático.
+A integração contínua executa os checks e publica o build do Storybook e as prévias fictícias de e-mail como artefatos. `npm run format` formata o novo código. Os testes novos ficam em `src/**/*.test.*` e `packages/*/src/**/*.test.ts`; `tests/*.cjs` são a suíte histórica do protótipo estático.
 
 ## Vercel
 

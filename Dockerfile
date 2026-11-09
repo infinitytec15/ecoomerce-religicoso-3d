@@ -2,6 +2,7 @@ FROM node:24.14.1-alpine@sha256:8510330d3eb72c804231a834b1a8ebb55cb3796c3e443129
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/emails/package.json packages/emails/package.json
 RUN npm ci --ignore-scripts --no-fund
 
 FROM dependencies AS builder

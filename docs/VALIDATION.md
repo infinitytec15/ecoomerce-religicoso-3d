@@ -35,3 +35,13 @@ O relatório de preservação do sistema está em DESIGN-VALIDATION-ADMIN.md. DE
 Pagamentos, assinatura, etiquetas, envio de e-mail, autenticação e permissões continuam demonstrativos. O frontend contém os DTOs compartilhados, adaptador HTTP, tokenização por Card Payment Brick, sessão de upload e transporte TUS/streaming preparados; nenhum teste foi executado contra contas comerciais de Mercado Pago, Melhor Envio ou Bunny. O plano completo para implementar e homologar NestJS/Prisma/PostgreSQL/Redis no Railway está em BACKEND-PLAN.md, com módulos, entidades, rotas, filas, webhooks, conciliação, deploy e critérios de aceite.
 
 Docker e railway.toml descrevem o serviço web; não foi feito provisionamento nem deploy no Railway. A entrega não representa certificação de segurança, acessibilidade integral, desempenho em aparelhos físicos ou transações reais. Os avisos de empacotamento do Storybook sobre diretivas de cliente e tamanho de chunks das ferramentas não impedem seu build e não entram como ferramentas de documentação na loja publicada.
+
+# Resend e templates — 09/11/2026
+
+Incluído workspace de e-mails com 16 modelos HTML/texto, renderer validado e adaptador Resend 6.37.0. Suíte ampliada para 83 testes em 13 arquivos, incluindo 18 testes de e-mail: escaping, domínio de ações, totais em centavos, links de descadastro obrigatórios na oração, rejeição de nota interna, payload/chave estável em mock do SDK, classificação de falhas e verificação real local de assinatura pelo SDK. Nenhum envio real foi feito.
+
+Typecheck do web e do workspace, lint, formatação, Next e Storybook passaram. O primeiro build Next teve EPERM ao criar um diretório no sandbox Windows; a repetição com permissão apropriada passou sem alteração no código do web. Auditoria das dependências de produção: zero vulnerabilidades na consulta. A CI também gera o catálogo fictício e publica o artefato email-previews.
+
+Navegador: 16 modelos em viewport 390×844 sem overflow horizontal; pedido e oração diária capturados em desktop 1280 e celular 390. Botão principal medido com aproximadamente 56 px de altura. Revisão independente: duas correções solicitadas e avaliadas como resolvidas, disposition ship no escopo desses itens (ação antes do resumo e contraste do rodapé 6,2475:1). Relatórios em DESIGN-VALIDATION-EMAILS.md e EMAIL-DESIGN-SYSTEM.md; sistema visual existente preservado. O detector rodou uma vez e os avisos de fontes/rampa/raios foram avaliados como adaptações locais de compatibilidade de e-mail, não como mudança na identidade.
+
+Esta validação não comprova entrega em clientes de e-mail, rotas Nest, persistência, consentimento/descadastro end-to-end ou envio real. Esses itens, configuração do domínio e worker estão no plano aprovado e em EMAILS.md.

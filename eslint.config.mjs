@@ -10,6 +10,7 @@ export default defineConfig([
     'public/**',
     'storybook-static/**',
     '.impeccable/**',
+    'packages/emails/.preview/**',
     'tests/**',
     'next-env.d.ts',
   ]),

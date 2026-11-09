@@ -12,6 +12,7 @@ src/lib/demo/              Operação demonstrativa e migração local
 src/lib/store/             Zustand para carrinho e preferências visuais
 src/stories/               Componentes, estados, jornadas e documentação
 public/assets/             WebP, fontes WOFF2 locais e marca
+packages/emails/            Templates HTML/texto e adaptador servidor Resend
 dist/                      Protótipo estático anterior, somente referência
 ```
 

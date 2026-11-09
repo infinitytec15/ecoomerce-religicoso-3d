@@ -10,15 +10,16 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
-    "typecheck": "next typegen && tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit && npm run typecheck --workspace @maos-em-oracao/emails",
+    "emails:preview": "node scripts/render-email-previews.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "storybook": "storybook dev -p 6006 --host 127.0.0.1 --no-open",
     "build-storybook": "storybook build",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run build-storybook",
-    "format": "prettier --write src packages .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md",
-    "format:check": "prettier --check src packages .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md"
+    "check": "npm run typecheck && npm run lint && npm test && npm run emails:preview && npm run build && npm run build-storybook",
+    "format": "prettier --write src packages scripts .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md",
+    "format:check": "prettier --check src packages scripts .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md"
   },
   "dependencies": {
     "@mercadopago/sdk-react": "1.0.7",

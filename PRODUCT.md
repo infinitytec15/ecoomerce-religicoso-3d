@@ -46,3 +46,6 @@ O usuário solicitou converter o frontend completo para Next.js com Storybook, o
 ## Operação ampliada e provedores confirmados
 
 O usuário solicitou ampliar todos os módulos administrativos preservando Essência, com gráficos, filtros, drawers, cadastro com imagens/vídeos/STL/3MF, estoque, edições, convites, moderação, oração diária e relatórios. Confirmou Bunny Storage para imagens e originais, Bunny Stream + YouTube para vídeo; depois especificou Melhor Envio para cotação/etiquetas e Mercado Pago para Pix/cartão transparente e assinatura. Integrações financeiras/logísticas permanecem preparadas para API, sem cobranças ou envios reais. Tipos e validações já são compartilhados em workspace npm. A entrega seguinte de backend está planejada em docs/BACKEND-PLAN.md; não há API NestJS nem worker implantados. A publicação anterior na Vercel foi concluída.
+## E-mail aprovado — 09/11/2026
+
+O usuário aprovou o plano do backend com Resend para envio. Os templates modernos preservam Essência e distinguem avisos de conta, pedidos, clube e atendimento da oração diária com confirmação de inscrição e descadastro. O workspace de e-mails é implementado e testado localmente; API Nest/worker e envio real dependem da implementação e configuração documentadas em docs/EMAILS.md.
