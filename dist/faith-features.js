@@ -44,7 +44,7 @@ function animateBibleArrival(){
 }
 function refreshFaithFeatures(){
   setupFeatureSurfaces();
-  const route=location.hash||'#/';if(route.startsWith('#/admin')){clearTimeout(verseScheduled);clearTimeout(newsletterTimer);hideVerse();arrivalAnimations.forEach(a=>a.cancel());return}
+  const route=location.hash||'#/';if(route.startsWith('#/admin')||document.body.classList.contains('auth-mode')){clearTimeout(verseScheduled);clearTimeout(newsletterTimer);hideVerse();arrivalAnimations.forEach(a=>a.cancel());return}
   const welcome=$('.announcement .container>span:first-child');if(welcome&&!$('.announcement-prayer',welcome))welcome.innerHTML=`Fé para viver. <button class="announcement-prayer" data-action="newsletter">Receba uma oração diária grátis ${icon('mail')}</button>`;
   const nav=$('.nav-links');if(nav&&!$('.community-link',nav))nav.insertAdjacentHTML('beforeend',`<a class="community-link" href="#/cantinho-da-fe">${icon('heart')}Cantinho da Fé</a>`);
   const footerBrand=$('.footer-grid>div:first-child');if(footerBrand&&!$('.prayer-invite',footerBrand))footerBrand.insertAdjacentHTML('beforeend',`<button class="prayer-invite" data-action="newsletter">${icon('mail')}Receber uma oração diária ${icon('arrow')}</button>`);

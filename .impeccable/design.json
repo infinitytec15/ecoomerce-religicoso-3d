@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-08T23:20:45.799310+00:00",
+  "generatedAt": "2026-11-08T23:58:48.572801+00:00",
   "title": "Design System: Âmago 3D",
   "extensions": {
     "colorMeta": {
@@ -666,7 +666,7 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Active Essência hero; Ateliê overrides the scale. Cormorant Garamond is scoped to story roles."
+        "purpose": "User-selected definitive Essência home hero; not a task-page default."
       },
       "headline": {
         "displayName": "Headline",
@@ -727,6 +727,22 @@
       "operational-status": {
         "displayName": "Operational Status",
         "purpose": "Scoped operational hierarchy; preserve storefront typography."
+      },
+      "auth-headline": {
+        "displayName": "Auth Headline",
+        "purpose": "Scoped shared customer/staff entry; does not replace the operator heading ramp."
+      },
+      "auth-story": {
+        "displayName": "Auth Story",
+        "purpose": "Scoped shared customer/staff entry; does not replace the operator heading ramp."
+      },
+      "auth-body": {
+        "displayName": "Auth Body",
+        "purpose": "Scoped shared customer/staff entry; does not replace the operator heading ramp."
+      },
+      "auth-label": {
+        "displayName": "Auth Label",
+        "purpose": "Scoped shared customer/staff entry; does not replace the operator heading ramp."
       }
     },
     "shadows": [
@@ -831,6 +847,26 @@
         "name": "operational-link",
         "value": "150ms ease",
         "purpose": "Administrative link color feedback; shared reduced-motion override remains in force."
+      },
+      {
+        "name": "auth-form-arrival",
+        "value": "240ms cubic-bezier(.23,1,.32,1)",
+        "purpose": "Changed entry view: translateY(10px) and opacity .55 to 1; suppressed after recent keyboard activity."
+      },
+      {
+        "name": "auth-photo-arrival",
+        "value": "280ms cubic-bezier(.23,1,.32,1)",
+        "purpose": "Login photograph reveals 4% bottom inset and translateY(6px); skipped for reduced motion."
+      },
+      {
+        "name": "auth-reduced-arrival",
+        "value": "100ms",
+        "purpose": "Reduced-motion form opacity .8 to 1; no photograph motion."
+      },
+      {
+        "name": "auth-field-state",
+        "value": "160ms cubic-bezier(.23,1,.32,1)",
+        "purpose": "Field border feedback; transitions disabled by reduced-motion override."
       }
     ],
     "breakpoints": [
@@ -861,6 +897,14 @@
       {
         "name": "club-operational-mobile",
         "value": "600px"
+      },
+      {
+        "name": "auth-intermediate",
+        "value": "1050px"
+      },
+      {
+        "name": "auth-mobile",
+        "value": "700px"
       }
     ]
   },
@@ -971,11 +1015,27 @@
       "description": "One of four horizontally scoped stages; explicit stage action, not drag and drop.",
       "html": "<section class=\"ds-lane\"><header><h2>Fila</h2><span>1</span></header><article class=\"ds-job\"><small>OP-1042</small><h3>Cesta do clube</h3><a href=\"#/admin/pedidos\">PED-1042</a><p>Impressora 01 · Equipe demo<br>4h estimadas</p><button>Mover para Impressão</button></article></section>",
       "css": ".ds-lane{background:#e8eddf;padding:13px;border-radius:10px;min-width:210px;color:#263023;font-family:\"DM Sans\",sans-serif}.ds-lane header{display:flex;align-items:center;justify-content:space-between;padding:3px 2px 13px}.ds-lane h2{font-size:12px;font-weight:500;margin:0}.ds-lane header span{font-size:10px;background:#d9e1ce;padding:3px 7px;border-radius:4px}.ds-job{background:#fffef8;padding:17px;border-radius:8px;margin:10px 0}.ds-job small{font-size:9px;color:#647459}.ds-job h3{font-size:12px;font-weight:500;margin:14px 0 8px}.ds-job a{font-size:10px;color:#536f3e;text-decoration:none}.ds-job a:hover{color:#9b4b30}.ds-job p{font-size:10px;line-height:1.8;color:#65745b;margin:12px 0}.ds-job button{background:transparent;border:1px solid #bfc3b6;border-radius:7px;color:#282c25;font:400 11px \"DM Sans\",sans-serif;padding:8px 12px;min-height:34px;margin-top:18px;width:100%;cursor:pointer}.ds-job button:hover{background:#e9eddf}.ds-job button:active{transform:scale(.975)}.ds-job a:focus-visible,.ds-job button:focus-visible{outline:2px solid #875038;outline-offset:3px}"
+    },
+    {
+      "name": "Sign-in Field",
+      "kind": "input",
+      "refersTo": "auth-input",
+      "description": "Visible label, olive focus-within and field boundary; mobile input text grows to 16px.",
+      "html": "<label class=\"ds-auth-label\" for=\"ds-auth-email\">E-mail de demonstração</label><div class=\"ds-auth-input\"><input id=\"ds-auth-email\" type=\"email\" placeholder=\"seunome@exemplo.com\" autocomplete=\"off\"></div>",
+      "css": ".ds-auth-label{display:block;font:500 12px \"DM Sans\",sans-serif;color:var(--ink,#282c25);margin-bottom:9px}.ds-auth-input{display:flex;align-items:center;min-height:52px;border:1px solid var(--field-line,#bfc3b6);border-radius:9px;background:var(--white,#fff);padding:0 14px;transition:border-color 160ms cubic-bezier(.23,1,.32,1)}.ds-auth-input:focus-within{border-color:var(--olive,#3e4934);outline:2px solid var(--olive-light,#e9eddf);outline-offset:2px}.ds-auth-input input{border:0;outline:0;min-width:0;width:100%;min-height:50px;background:transparent;color:var(--ink,#282c25);font:400 13px \"DM Sans\",sans-serif;caret-color:var(--olive,#3e4934)}.ds-auth-input input::placeholder{color:var(--muted,#65695f);font-size:12px}.ds-auth-input:has([aria-invalid=true]){border-color:var(--red,#b1372d)}@media(max-width:700px){.ds-auth-input{min-height:54px}.ds-auth-input input{font-size:16px;min-height:52px}}@media(prefers-reduced-motion:reduce){.ds-auth-input{transition:none}}"
+    },
+    {
+      "name": "Sign-in Primary Action",
+      "kind": "button",
+      "refersTo": "auth-primary",
+      "description": "Full-width olive entry action with small directional feedback and reduced-motion support.",
+      "html": "<button class=\"ds-auth-submit\">Entrar na gestão<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-auth-submit{display:flex;align-items:center;justify-content:space-between;width:100%;background:var(--olive,#3e4934);color:var(--white,#fff);border:0;border-radius:7px;min-height:51px;padding:13px 23px;font:550 13px \"DM Sans\",sans-serif;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease}.ds-auth-submit svg{width:19px;height:19px;transition:transform 150ms cubic-bezier(.23,1,.32,1)}.ds-auth-submit:hover{background:var(--olive-hover,#293520)}.ds-auth-submit:active{transform:scale(.985)}.ds-auth-submit:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-auth-submit:disabled{opacity:.6;cursor:default}@media(hover:hover) and (pointer:fine){.ds-auth-submit:hover svg{transform:translateX(3px)}}@media(max-width:700px){.ds-auth-submit{min-height:53px}}@media(prefers-reduced-motion:reduce){.ds-auth-submit,.ds-auth-submit svg{transition:none;transform:none!important}}"
     }
   ],
   "narrative": {
     "northStar": "Faith makes a home",
-    "overview": "The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.\n\nThe interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. Three home compositions test the same visual world; none is recorded as the chosen composition or as a global layout requirement.\n\n\nThe monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world, not a replacement identity or a newly approved composition.",
+    "overview": "The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.\n\nThe interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. The user selected Essência as the definitive home composition. Its “A fé faz morada” story and devotional scene now form the single home; the variant picker, alternate routing and keyboard shortcuts have been removed. This selection does not impose the home composition on unrelated task screens.\n\n\nThe monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world. The later explicit Essência selection establishes the definitive home without changing the operational pattern.\n\nThe shared sign-in surface brings the same devotional photograph and serif/olive identity into a focused entry task for customers and staff. It introduces no new color identity: visible test access, labeled fields and calm arrival motion support the local demonstration.",
     "keyCharacteristics": [
       "Warm paper grounds, olive navigation and footer, terracotta welcome and gifting regions, cream and gold accents.",
       "Cormorant Garamond for storytelling, collection and product titles; Manrope and DM Sans for task hierarchy and controls.",
@@ -983,7 +1043,8 @@
       "Flat product listings, restrained rounded panels and authored stroke icons.",
       "Compact state feedback and a brief Bible arrival gesture with reduced-motion support.",
       "Prayer, community and interactive product exploration extend the same palette and serif/sans role split.",
-      "Tactile monthly curation for shoppers; quiet DM Sans tables, linked records and production stages for operators."
+      "Tactile monthly curation for shoppers; quiet DM Sans tables, linked records and production stages for operators.",
+      "A definitive Essência home and a focused, responsive sign-in surface using the same devotional image and palette."
     ],
     "rules": [
       {
@@ -1024,15 +1085,18 @@
       "Do keep devotional feedback dismissible, pause timed dismissal during interaction and leave automatic 3D rotation off.",
       "Do retain local-demo disclosures, labeled prayer samples and explicit signup/post consent.",
       "Do preserve compact operational headings, written semantic status and linked shared records.",
-      "Do contain wide tables and four-stage production inside their own horizontal scroll regions."
+      "Do contain wide tables and four-stage production inside their own horizontal scroll regions.",
+      "Do preserve the explicit Essência selection and the sign-in field labels, visible test access and local-demo explanation.",
+      "Do retain the mobile sign-in field size and suppress arrival motion after recent keyboard interaction."
     ],
     "donts": [
       "Don't use terracotta as the default primary purchase-action color.",
       "Don't replace the authored SVG stroke icons with font glyphs.",
-      "Don't inherit the prototype picker’s system font, glass treatment or pill shape as storefront brand primitives.",
-      "Don't promote one home composition into a universal layout rule before a direction is chosen.",
-      "Don't introduce automatic devotional or signup interruptions into administration or show the prototype picker in subscription checkout.",
-      "Don't generalize tiny audit timestamps or local metadata sizes into the default reading ramp."
+      "Don't reintroduce the removed variant picker or treat its former utility styling as brand primitives.",
+      "Don't apply the selected Essência home composition as a universal layout rule for operational or sign-in screens.",
+      "Don't introduce automatic devotional or signup interruptions into administration or sign-in.",
+      "Don't generalize tiny audit timestamps or local metadata sizes into the default reading ramp.",
+      "Don't describe the public staff fixture or tab-local session as real authentication."
     ]
   }
 }

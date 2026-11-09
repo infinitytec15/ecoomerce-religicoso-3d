@@ -24,7 +24,9 @@ No ZIP de apresentação, `index.html` fica na raiz: execute `python -m http.ser
 - Histórico de envios: `/#/conta/envios`
 - Cobranças: `/#/conta/cobrancas`
 - Atendimento do cliente: `/#/conta/atendimentos`
-- Painel administrador: `/#/admin` — acesso livre demonstrativo.
+- Login da equipe: `/#/admin/login`. Use “Preencher acesso de demonstração” e depois “Entrar na gestão”.
+- Painel administrador: `/#/admin` — sessão visual demonstrativa nesta aba.
+- Login do cliente e criação de conta: `/#/login`.
 - Cantinho da Fé: `/#/cantinho-da-fe`
 
 ## Clube mensal
@@ -43,7 +45,7 @@ Catálogo com busca, coleções, ocasiões, filtros e ordenação; produto com c
 
 Toast de versículos com referência, próximo e fechar; breve animação da Bíblia respeitando movimento reduzido; visualizador 3D com órbita por arraste, zoom, teclado, cor e rotação automática opcional. Modelos procedurais ilustrativos, sem correspondência com arquivos de fabricação. Popup de oração diária gratuita e mural com anonimato, filtros e reação de oração. Nada é enviado por e-mail nem publicado entre visitantes.
 
-O seletor inferior compara Essência, Ateliê e Coleção na loja. Atalhos 1/2/3 e setas; R redesenha. O administrador usa uma apresentação operacional única, sem o seletor nem interrupções devocionais.
+O usuário escolheu **Essência** como tema definitivo. O seletor de versões e seus atalhos foram removidos. O login acompanha a identidade com fotografia de devoção, formulário em creme/oliva e entrada breve de 240–280 ms, respeitando movimento reduzido e navegação por teclado. Cliente e equipe têm acesso, mostrar/ocultar senha, recuperação simulada, validação e estados de erro. A sessão da equipe dura nesta aba, usa somente credenciais públicas de teste e nunca armazena senhas. Não é autenticação real.
 
 ## Publicar na Vercel
 
@@ -57,4 +59,4 @@ Preços, fretes, datas, composições e políticas são ilustrativos. Imagens ge
 
 ## Verificação
 
-JavaScript verificado com `node --check`. Execute `node --test tests/operations.test.cjs` no repositório para os cinco testes isolados de sincronização do Pix, rastreio, renovação sem duplicidade, preservação de preço e histórico, suporte e arquivos de entrada. Fluxos exercitados no navegador em desktop 1280px e celular 390px: adesão com cartão e Pix; pausa, retomada, pulo e cancelamento; renovação do administrador; produção em quatro etapas e rastreio refletido no cliente; suporte cliente/equipe; cadastro, edição, busca e estoque; navegação nas 15 áreas do administrador. Nenhum transbordamento horizontal no documento nessas áreas; tabelas e quadro de produção têm rolagem própria. Sem erros ou avisos de console nos fluxos conferidos. Detector da extensão: zero achados primários; avisos de escala e tons do sistema documentados na revisão. A checagem automatizada não substitui a revisão visual.
+JavaScript verificado com `node --check`. Execute `node --test tests/*.test.cjs` no repositório para os oito testes isolados de sincronização do Pix, rastreio, renovação sem duplicidade, preservação de preço e histórico, suporte e arquivos de entrada. Fluxos exercitados no navegador em desktop 1280px e celular 390px: adesão com cartão e Pix; pausa, retomada, pulo e cancelamento; renovação do administrador; produção em quatro etapas e rastreio refletido no cliente; suporte cliente/equipe; cadastro, edição, busca e estoque; navegação nas 15 áreas do administrador. Nenhum transbordamento horizontal no documento nessas áreas; tabelas e quadro de produção têm rolagem própria. Sem erros ou avisos de console nos fluxos conferidos. Detector da extensão: zero achados primários; avisos de escala e tons do sistema documentados na revisão. A checagem automatizada não substitui a revisão visual.

@@ -138,6 +138,27 @@ typography:
     fontWeight: 500
     lineHeight: 1.35
     letterSpacing: "0"
+  auth-headline:
+    fontFamily: "Cormorant Garamond, serif"
+    fontSize: "46px"
+    fontWeight: 600
+    lineHeight: 1.02
+    letterSpacing: "-.025em"
+  auth-story:
+    fontFamily: "Cormorant Garamond, serif"
+    fontSize: "52px"
+    fontWeight: 500
+    lineHeight: .99
+    letterSpacing: "-.025em"
+  auth-body:
+    fontFamily: "DM Sans, sans-serif"
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: 1.8
+  auth-label:
+    fontFamily: "DM Sans, sans-serif"
+    fontSize: "12px"
+    fontWeight: 500
 rounded:
   badge: "4px"
   chip: "6px"
@@ -248,6 +269,17 @@ components:
   operational-status-info:
     backgroundColor: "{colors.status-info-bg}"
     textColor: "{colors.status-info-ink}"
+  auth-input:
+    backgroundColor: "{colors.white}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.field}"
+    padding: "0 14px"
+    height: "52px"
+  auth-primary:
+    backgroundColor: "{colors.olive}"
+    textColor: "{colors.white}"
+    rounded: "{rounded.control}"
+    height: "51px"
 ---
 
 # Design System: Âmago 3D
@@ -258,10 +290,12 @@ components:
 
 The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.
 
-The interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. Three home compositions test the same visual world; none is recorded as the chosen composition or as a global layout requirement.
+The interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. The user selected Essência as the definitive home composition. Its “A fé faz morada” story and devotional scene now form the single home; the variant picker, alternate routing and keyboard shortcuts have been removed. This selection does not impose the home composition on unrelated task screens.
 
 
-The monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world, not a replacement identity or a newly approved composition.
+The monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world. The later explicit Essência selection establishes the definitive home without changing the operational pattern.
+
+The shared sign-in surface brings the same devotional photograph and serif/olive identity into a focused entry task for customers and staff. It introduces no new color identity: visible test access, labeled fields and calm arrival motion support the local demonstration.
 
 **Key Characteristics:**
 - Warm paper grounds, olive navigation and footer, terracotta welcome and gifting regions, cream and gold accents.
@@ -271,6 +305,7 @@ The monthly club extends the same tactile Christian world with basket photograph
 - Compact state feedback and a brief Bible arrival gesture with reduced-motion support.
 - Prayer, community and interactive product exploration extend the same palette and serif/sans role split.
 - Tactile monthly curation for shoppers; quiet DM Sans tables, linked records and production stages for operators.
+- A definitive Essência home and a focused, responsive sign-in surface using the same devotional image and palette.
 
 This scan describes the shipped HTML/CSS/JavaScript prototype. Palette and name are user-confirmed; descriptive language and named rules are interpretations of the implemented artifact. No approved visual comp or quality-board reference exists.
 
@@ -323,7 +358,7 @@ Status colors are semantic pairs, not category branding. `status-good-*` covers 
 **Character:** Close-tracked, expressive serif headlines and true italic emphasis give the home, collection and product titles a warm devotional voice. Geometric task headings and compact commerce text remain clear and familiar. All three families are locally bundled.
 
 ### Hierarchy
-- **Display:** frontmatter records the active Essência hero declaration. It becomes 5.1rem below 1100px, 4.55rem on mobile and 6rem above 1600px. Ateliê uses 5rem, 4.5rem and 4rem respectively. These are home compositions, not task-page defaults.
+- **Display:** frontmatter records the active Essência hero declaration. It becomes 5.1rem below 1100px, 4.55rem on mobile and 6rem above 1600px. This is the confirmed home display, not a task-page default.
 - **Story headline:** home section headings use the story-headline token, reducing to 2.15rem on mobile. Italic emphasis uses the 500 face and terracotta on cream, or cream/gold on dark regions. Category-card titles use 2.35rem; quotation and personalization treatments have their own larger story scale.
 - **Collection / product title:** collection headings use 3.35rem, reducing to 2.8rem below 1100px and 2.6rem on mobile. Product-detail titles use 3.3rem, reducing to 2.8rem on mobile.
 - **Task headline:** the headline token remains Manrope for commerce and account sections. Shared task page headings use `clamp(2.3rem,5vw,4.6rem)`, weight 650 and line-height 1.15. Existing component-specific sizes remain in place.
@@ -343,17 +378,20 @@ Operations uses DM Sans throughout headings, records and controls, with the admi
 
 **The Quiet Operations Rule.** Keep Cormorant storytelling in shopper surfaces and DM Sans hierarchy inside administration; retain the shared olive, cream and terracotta family.
 
+### Sign-in hierarchy
+Sign-in uses the scoped auth-headline and auth-story serif roles, with DM Sans auth-body and auth-label. At 1500px the form title grows to 50px and the story title to 60px; at 1050px they reduce to 42px and 44px. At 700px the story is hidden and the 42px form title remains. Field text is 13px on desktop and 16px on mobile, preserving the 12px label. These are entry-task roles; the administrative workspace continues to use its compact DM Sans heading ramp.
+
 ## Layout
 
 The main container is centered, capped at 1360px, with total horizontal subtraction of 96px on desktop. Below 1100px that subtraction becomes 48px; below 760px it becomes 36px. The shared spacing vocabulary is recorded in frontmatter, with task-specific gaps chosen from the existing code rather than a mandatory mathematical scale.
 
-Desktop product browsing uses four columns with 24px gaps, or three columns inside a sidebar layout. The active home variants share a four-product featured grid. Below 760px all product grids use two columns. The catalog sidebar is 205px on desktop, 170px at the intermediate breakpoint, and becomes a toggled filter panel on mobile. Header search moves into mobile navigation; the category row remains horizontally scrollable.
+Desktop product browsing uses four columns with 24px gaps, or three columns inside a sidebar layout. The definitive Essência home uses a four-product featured grid. Below 760px all product grids use two columns. The catalog sidebar is 205px on desktop, 170px at the intermediate breakpoint, and becomes a toggled filter panel on mobile. Header search moves into mobile navigation; the category row remains horizontally scrollable.
 
 Product detail uses two columns in a 1.08/.92 proportion, with a 65px gap; mobile stacks them. Checkout uses a flexible content column plus a 365px summary, reduced to 320px below 1100px. Its maximum width is 1120px, and the summary is sticky at 24px on desktop. Below 760px checkout becomes a vertical flow and the summary follows the form. Account and support also stack on mobile.
 
 Cantinho da Fé uses a flexible wall plus a 355px sticky compose panel (310px below 1100px); below 760px the compose panel moves above the wall and becomes static. The newsletter dialog splits an olive story column and cream form column in an .85/1.15 ratio, then stacks on mobile. Shared feature dialogs are capped at 850px wide (960px for the viewer), with a scrollable maximum height of `calc(100dvh - 120px)` and 28px overlay padding (16px on mobile). The viewer stage uses a 260px minimum desktop height, 235px on mobile.
 
-The three home compositions remain surface explorations. Essência uses an .85/1.15 split between story and devotional image; Ateliê uses an olive 1/1 split; Coleção starts with the shared collection banner and catalog. Their denominational and personalized home routes use three columns, stacking vertically below 760px. Occasion links form two columns and then one. Story hero and gifting regions stack on mobile; collection banners hide their supporting image. These compositions are not mandatory on unrelated task screens.
+The selected Essência home uses an .85/1.15 split between story and devotional image. Its denominational and personalized home routes use three columns, stacking vertically below 760px. Occasion links form two columns and then one. Story hero and gifting regions stack on mobile; collection banners hide their supporting image. This home composition is not mandatory on unrelated task screens.
 
 
 Club discovery uses a 1/1.08 hero with a 48px gap and a 500px-minimum basket image. Plan explanation sits beside a 390px summary on desktop; these columns stack below 600px. Subscription self-service uses horizontally scrollable tabs, a cover/details layout and linked charge, shipment and conversation records. The club checkout reuses the existing checkout grid; its extra photographic summary is hidden below 600px while the form retains plan/profile information.
@@ -361,6 +399,8 @@ Club discovery uses a 1/1.08 hero with a 48px gap and a 500px-minimum basket ima
 Administration has a fixed 238px sidebar, a 76px sticky top bar and a workspace with matching left offset. Main content is capped at 1700px with 34px 32px 46px padding; at 1500px and above, horizontal padding grows to 46px. At 1150px the sidebar/offset reduce to 210px and dashboard side content stacks. At 850px navigation becomes an in-flow, horizontally scrollable row, the workspace offset clears and the top bar becomes 63px. At 600px main horizontal padding is 16px, detail/support layouts stack and search/filter controls wrap.
 
 Operational tables own their horizontal scroll, preserving semantic columns inside a bounded wrapper. The production board has four stages with a 210px minimum column width and 16px gaps; below 600px four 250px columns remain inside the board's horizontal scroll. Do not force the full page wider to accommodate records or the board. Four metric cells become two below 1150px; printer summaries become one column below 600px. These density rules are specific to operations, not replacements for the storefront's mobile product grid.
+
+Sign-in has a 100px brand/store-return header and two equal columns within a 1680px maximum, with 48px horizontal padding and a 70px gap. Its form is capped at 400px (425px at 1500px), within a 540px region; the large breakpoint increases the two-column gap to 120px. At 1050px header height becomes 86px, horizontal padding becomes 30px and the grid is .95/1. At 700px the photograph/story region is hidden, the header is 80px and the single-column form is capped at 520px with 23px horizontal padding. The mobile field has a 54px minimum wrapper and the primary action a 53px minimum. Do not reuse the operational sidebar inside this focused entry surface.
 
 ## Elevation & Depth
 
@@ -383,16 +423,18 @@ Operational panels, table rows, metric cells and production cards remain flat, s
 
 Corners are gently rounded rather than uniformly pill-shaped. The frontmatter records the observed control, field, product-image, panel, banner and hero radii. Circular treatments belong to icon actions, swatches and progress/success markers. Thin dividers separate repeated rows and accordions.
 
-The active Essência scene has an asymmetric corner (120px 16px 16px 16px on desktop, 85px 12px 12px 12px on mobile). Ateliê uses 100px 12px 12px 12px, reducing its leading corner to 75px on mobile. Story collection cards and home product images use 12px corners; standard catalog images retain their existing 10px treatment. The seal and small scene icon use arch-like silhouettes. These remain storytelling treatments rather than new universal radius requirements. The floating prototype switcher is an exploration utility and is excluded from the storefront shape and elevation system.
+The active Essência scene has an asymmetric corner (120px 16px 16px 16px on desktop, 85px 12px 12px 12px on mobile). Story collection cards and home product images use 12px corners; standard catalog images retain their existing 10px treatment. The seal and small scene icon use arch-like silhouettes. These remain storytelling treatments rather than new universal radius requirements. The former prototype switcher has been removed and supplies no reusable storefront shape or elevation pattern.
 
 Operational panels use the admin-panel radius, production jobs use 8px corners and lanes use 10px; compact fields and buttons use control corners. The club basket photo continues the asymmetric story silhouette (140px 16px 16px 16px, reducing to 85px 12px 12px 12px below 600px). This is image framing, not the shape of administrative panels.
+
+Sign-in frames the devotional photograph and olive story region with an asymmetric 100px 14px 14px 14px corner, reducing the leading corner to 80px at 1050px. Fields use the existing field radius; this frame does not redefine ordinary panel corners. The form stays unboxed, without an elevated login card.
 
 ## Components
 
 ### Buttons
-Tactile, compact and explicit. Primary actions use the olive surface and white text; secondary actions use a transparent surface with a 1px muted olive boundary. The light variant sits on the terracotta gifting region; the Ateliê hero overrides its primary action to devotional cream with olive text. Standard buttons now have 7px corners and a minimum height of 50px; the frontmatter height describes that minimum, not a forced fixed height. Fields retain their 48px minimum.
+Tactile, compact and explicit. Primary actions use the olive surface and white text; secondary actions use a transparent surface with a 1px muted olive boundary. The light variant sits on the terracotta gifting region. Standard buttons now have 7px corners and a minimum height of 50px; the frontmatter height describes that minimum, not a forced fixed height. Fields retain their 48px minimum.
 
-Hover darkens the primary surface or adds pale olive to the secondary surface. Pressing scales buttons to .975 over 150ms. Keyboard focus uses a 2px olive outline with a 5px button offset (4px elsewhere). Links on olive navigation, footer and quotation grounds, plus Ateliê hero and personalization actions, switch the outline to gold for contrast. Navigation uses a 5px inset outline so it stays visible within the mobile scroll strip. The cream scene-note link uses an olive 4px inset outline, including inside Ateliê. Disabled buttons have .5 opacity and a not-allowed cursor. Small variants use a 40px minimum height and 9px 15px padding. Mobile home hero actions use a 47px minimum; local exceptions do not redefine task controls.
+Hover darkens the primary surface or adds pale olive to the secondary surface. Pressing scales buttons to .975 over 150ms. Keyboard focus uses a 2px olive outline with a 5px button offset (4px elsewhere). Links on olive navigation, footer and quotation grounds, plus personalization actions, switch the outline to gold for contrast. Navigation uses a 5px inset outline so it stays visible within the mobile scroll strip. The cream scene-note link uses an olive 4px inset outline,. Disabled buttons have .5 opacity and a not-allowed cursor. Small variants use a 40px minimum height and 9px 15px padding. Mobile home hero actions use a 47px minimum; local exceptions do not redefine task controls.
 
 ### Chips
 Collection links are lightly rounded outlined controls. Default chips are transparent with a divider-color border; hover and active states use olive with white text. The mobile variant uses 9px 12px padding and a 39px minimum height.
@@ -432,7 +474,7 @@ A paper drawer is at most 480px wide and takes full viewport height. It enters f
 
 
 ### Monthly Club and Subscriber Records
-Basket imagery, conceptual-image disclosure, a single recurring price and profile choice carry the club's warm character. Checkout uses the reduced commerce header, three explicit steps and familiar radio/field controls. Hide the prototype picker and floating devotional trigger during subscription checkout. Subscriber tabs separate contract, shipments, charges and support; action labels describe pause, resume, skip and cancellation. Shipment cards retain written status, product previews and a four-step progress line; discussion messages distinguish staff replies with pale olive and opposite alignment.
+Basket imagery, conceptual-image disclosure, a single recurring price and profile choice carry the club's warm character. Checkout uses the reduced commerce header, three explicit steps and familiar radio/field controls. Keep the floating devotional trigger hidden during subscription checkout; the removed variant picker is absent throughout the application. Subscriber tabs separate contract, shipments, charges and support; action labels describe pause, resume, skip and cancellation. Shipment cards retain written status, product previews and a four-step progress line; discussion messages distinguish staff replies with pale olive and opposite alignment.
 
 ### Operational Navigation and Controls
 The olive sidebar pairs authored SVG icons with visible route names. Current navigation uses the pale active ground and dark active ink; hover uses the darker olive family. At compact widths preserve horizontal navigation scrolling and readable labels. Operational buttons have a 38px minimum height (34px for small variants), and fields have a 40px minimum; these local values do not reduce storefront task controls. Keyboard focus uses a 2px admin-focus outline with a 3px offset. Admin panels use a thin admin-line boundary and 24px padding (18px below 600px).
@@ -444,7 +486,16 @@ Use the shared semantic status pairs described in Colors, with compact chip corn
 Four tonal lanes represent Fila, Impressão, Acabamento and Conferência. Each lane has a title/count and flat light job cards containing identifier, product/order link, assignment, printer, estimate, due date and the next explicit stage action. Empty lanes retain their title and explanatory message. Stage advance is an ordinary button action; no drag interaction is implied. Printer summaries sit above the board. Preserve scoped horizontal scrolling so the daily sequence remains recognizable on mobile.
 
 ### Operational Feedback and Dialogs
-Administration suppresses the Bible arrival, devotional toast, floating devotional entry and prototype picker. Automatic prayer-signup invitation is cancelled on admin routes; the campaign screen retains an explicit preview action. Operational confirmations and forms use the shared cream dialog with a sticky header and scrolling body, compact DM Sans labels and the existing focus/Escape behavior. These scoped interruptions and task dialogs preserve the storefront's devotional features elsewhere.
+Administration suppresses the Bible arrival, devotional toast and floating devotional entry; the variant picker is removed throughout the application. Automatic prayer-signup invitation is cancelled on admin routes; the campaign screen retains an explicit preview action. Operational confirmations and forms use the shared cream dialog with a sticky header and scrolling body, compact DM Sans labels and the existing focus/Escape behavior. These scoped interruptions and task dialogs preserve the storefront's devotional features elsewhere.
+
+### Shared Customer and Staff Sign-in
+The full-page entry pairs the existing conceptual devotional photograph, an olive story region and a paper form region. The header contains the brand and return-to-store link. Visible customer/team links switch audience; customer access also offers sign-in/create-account modes. Current audience uses olive text and a 2px underline. Keep the photograph's conceptual-image disclosure, explicit test-access path and local-demo explanation visible in their respective regions.
+
+Labeled white fields use field-line borders, field corners and the compact sans type roles. Focus-within changes the boundary to olive and adds a 2px pale-olive outline with a 2px offset; invalid fields use validation red. The password visibility action uses an authored eye SVG, a visible focus state, accessible action name and pressed state. Preserve the olive primary action, bordered demonstration action and remember-email wording. Primary and demo buttons press to .985; fine-pointer hover shifts the primary arrow 3px and turns auxiliary actions terracotta. Error text uses an alert region and receives focus; recovery feedback uses a polite status region and pale olive.
+
+Arrival is a single purposeful WAAPI sequence for a changed audience/form view: form content rises 10px with opacity over 240ms; the photograph reveals a 4% bottom inset and rises 6px over 280ms on the login view. Both use the existing easing. Reduced motion substitutes a 100ms form opacity change and skips the photograph motion; recent keyboard activity suppresses entry animation. The form remains available throughout. Sign-in hides the devotional trigger, verse toast and Bible arrival rather than adding attention competition.
+
+Customer sign-in, registration and recovery are demonstrations. Staff test fixtures are publicly supplied; sessionStorage records a tab-local demonstration session and returns the user to the intended permitted admin route. It provides no real authentication or permission boundary. Password values are not persisted, optional remembered email stays local and recovery sends no email. These disclosures belong alongside the entry task, not hidden behind the animation.
 
 ## Do's and Don'ts
 
@@ -463,15 +514,20 @@ Administration suppresses the Bible arrival, devotional toast, floating devotion
 - **Do** preserve compact operational headings, written semantic status and linked shared records.
 - **Do** contain wide tables and four-stage production inside their own horizontal scroll regions.
 
+- **Do** preserve the explicit Essência selection and the sign-in field labels, visible test access and local-demo explanation.
+- **Do** retain the mobile sign-in field size and suppress arrival motion after recent keyboard interaction.
+
 ### Don't:
 - **Don't** use terracotta as the default primary purchase-action color.
 - **Don't** replace the authored SVG stroke icons with font glyphs.
-- **Don't** inherit the prototype picker’s system font, glass treatment or pill shape as storefront brand primitives.
-- **Don't** promote one home composition into a universal layout rule before a direction is chosen.
+- **Don't** reintroduce the removed variant picker or treat its former utility styling as brand primitives.
+- **Don't** apply the selected Essência home composition as a universal layout rule for operational or sign-in screens.
 
-- **Don't** introduce automatic devotional or signup interruptions into administration or show the prototype picker in subscription checkout.
+- **Don't** introduce automatic devotional or signup interruptions into administration or sign-in.
 - **Don't** generalize tiny audit timestamps or local metadata sizes into the default reading ramp.
 
-Source evidence for the extension: `dist/club-admin.css`, `dist/club.js`, `dist/admin.js`, with status mappings in `dist/ops-data.js` and route/feature suppression in `dist/app.js` and `dist/faith-features.js`. This merge preserves the confirmed incumbent decisions; it does not assert a newly answered visual-direction choice.
+Source evidence for the extension: `dist/club-admin.css`, `dist/club.js`, `dist/admin.js`, with status mappings in `dist/ops-data.js` and route/feature suppression in `dist/app.js` and `dist/faith-features.js`. Sign-in evidence: `dist/auth.css`, `dist/auth.js`, and loading/routing in `dist/index.html` and `dist/app.js`. This merge preserves the incumbent world and records the user’s later explicit Essência selection and requested sign-in extension.
 
-Not canonized or repaired: the prototype picker's system typeface and glass pill are utility chrome, not a brand pattern; unused source sand and the removed faith-clay/faith-green trial values are excluded from the token set; intermediate sans font-weight requests are documented as matching behavior rather than guaranteed distinct faces. Legacy home selectors in styles.css do not define the active faith home system. No application defects are repaired by this documentation pass. Close one-off warm-neutral/olive literals, older unused production selectors, tiny audit metadata and the informational priority fallback remain local implementation details rather than new global tokens. No eyebrow, glyph-icon or other craft defect is established as a reusable pattern.
+- **Don't** describe the public staff fixture or tab-local session as real authentication.
+
+Not canonized or repaired: the removed prototype picker's former system typeface and glass pill remain excluded from the brand; unused source sand and the removed faith-clay/faith-green trial values are excluded from the token set; intermediate sans font-weight requests are documented as matching behavior rather than guaranteed distinct faces. Legacy home selectors in styles.css do not define the active faith home system. No application defects are repaired by this documentation pass. Close one-off warm-neutral/olive literals, older unused production selectors, tiny audit metadata and the informational priority fallback remain local implementation details rather than new global tokens. No eyebrow, glyph-icon or other craft defect is established as a reusable pattern.
