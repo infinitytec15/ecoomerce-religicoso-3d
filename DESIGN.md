@@ -1,5 +1,5 @@
 ---
-name: "Âmago 3D"
+name: "Mãos em Oração"
 description: "A warm Christian home and gifting world, expressed through a navigable visual commerce prototype."
 colors:
   olive: "#3e4934"
@@ -159,6 +159,18 @@ typography:
     fontFamily: "DM Sans, sans-serif"
     fontSize: "12px"
     fontWeight: 500
+  brand-wordmark-top:
+    fontFamily: "Cormorant Garamond, Georgia, serif"
+    fontSize: "25px"
+    fontWeight: 500
+    lineHeight: 0.84
+    letterSpacing: "-.025em"
+  brand-wordmark-bottom:
+    fontFamily: "Cormorant Garamond, Georgia, serif"
+    fontSize: "31px"
+    fontWeight: 600
+    lineHeight: 0.86
+    letterSpacing: "-.025em"
 rounded:
   badge: "4px"
   chip: "6px"
@@ -280,13 +292,17 @@ components:
     textColor: "{colors.white}"
     rounded: "{rounded.control}"
     height: "51px"
+  brand-wordmark:
+    typography: "{typography.brand-wordmark-top}"
 ---
 
-# Design System: Âmago 3D
+# Design System: Mãos em Oração
 
 ## Overview
 
 **Creative North Star: "Faith makes a home"**
+
+The user confirmed **Mãos em Oração** as the real public business name. The original praying-hands-and-arch emblem and two-line Cormorant wordmark replace the former name while preserving the selected Essência composition and existing olive, cream and terracotta world. “3D” describes the products and process; it is no longer a suffix in the brand name.
 
 The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.
 
@@ -306,6 +322,7 @@ The shared sign-in surface brings the same devotional photograph and serif/olive
 - Prayer, community and interactive product exploration extend the same palette and serif/sans role split.
 - Tactile monthly curation for shoppers; quiet DM Sans tables, linked records and production stages for operators.
 - A definitive Essência home and a focused, responsive sign-in surface using the same devotional image and palette.
+- An original praying-hands emblem and accessible, two-line Cormorant business wordmark.
 
 This scan describes the shipped HTML/CSS/JavaScript prototype. Palette and name are user-confirmed; descriptive language and named rules are interpretations of the implemented artifact. No approved visual comp or quality-board reference exists.
 
@@ -381,6 +398,9 @@ Operations uses DM Sans throughout headings, records and controls, with the admi
 ### Sign-in hierarchy
 Sign-in uses the scoped auth-headline and auth-story serif roles, with DM Sans auth-body and auth-label. At 1500px the form title grows to 50px and the story title to 60px; at 1050px they reduce to 42px and 44px. At 700px the story is hidden and the 42px form title remains. Field text is 13px on desktop and 16px on mobile, preserving the 12px label. These are entry-task roles; the administrative workspace continues to use its compact DM Sans heading ramp.
 
+### Business wordmark
+The live business name is real text in two lines: “Mãos em” uses brand-wordmark-top and “Oração” uses brand-wordmark-bottom, with a 2px line gap. Use Cormorant's existing 500/600 faces rather than introducing another font. The default symbol is 43px wide by 51px high, separated from the wordmark by 10px. The compact mobile and standard administrative wordmark uses 21px/26px; the intermediate administrative fit uses 19px/24px between 851px and 1100px. Sign-in uses 27px/33px on desktop and 22px/27px below 760px; the footer uses 27px/34px desktop and 25px/31px mobile. Checkout uses 22px/27px until the shared mobile 21px/26px rule applies. These are context-specific brand fits, not new page-heading defaults.
+
 ## Layout
 
 The main container is centered, capped at 1360px, with total horizontal subtraction of 96px on desktop. Below 1100px that subtraction becomes 48px; below 760px it becomes 36px. The shared spacing vocabulary is recorded in frontmatter, with task-specific gaps chosen from the existing code rather than a mandatory mathematical scale.
@@ -430,6 +450,13 @@ Operational panels use the admin-panel radius, production jobs use 8px corners a
 Sign-in frames the devotional photograph and olive story region with an asymmetric 100px 14px 14px 14px corner, reducing the leading corner to 80px at 1050px. Fields use the existing field radius; this frame does not redefine ordinary panel corners. The form stays unboxed, without an elevated login card.
 
 ## Components
+
+### Business Identity and Logo Assets
+The signature combines the original generated praying-hands-and-arch emblem with the two-line business name. Live navigation uses the transparent PNG as an alpha mask filled with currentColor beside real Cormorant text. Keep the emblem decorative and hidden from assistive technology; the home link names “Mãos em Oração, início”. The wordmark remains readable text, not a new display image. Olive on paper and cream on olive reuse the existing palette. Context-specific sizing comes from the brand stylesheet; do not distort the emblem or replace it with a generic prayer glyph.
+
+The original transparent emblem is `assets/maos-em-oracao-mark.png`, an RGBA raster asset with its generation prompt sidecar. The two exported applications, `assets/maos-em-oracao-logo.svg` and `assets/maos-em-oracao-logo-clara.svg`, each contain the embedded PNG emblem and Cormorant letterforms converted to outlines. They are hybrid raster/vector SVG exports, not fully vector logos. Use the corresponding dark or light application on a contrasting ground. The identity preview page shows these two applications for export and review; it is not a storefront step or navigation destination.
+
+The public staff demonstration email is `gestao@maosemoracao.demo`. Existing internal storage namespaces retain their historical name to preserve customers and orders; they are implementation identifiers, not public identity. Existing demo fixtures migrate without clearing local records. This name change does not establish new colors, font families, layout structure or motion.
 
 ### Buttons
 Tactile, compact and explicit. Primary actions use the olive surface and white text; secondary actions use a transparent surface with a 1px muted olive boundary. The light variant sits on the terracotta gifting region. Standard buttons now have 7px corners and a minimum height of 50px; the frontmatter height describes that minimum, not a forced fixed height. Fields retain their 48px minimum.
@@ -517,6 +544,8 @@ Customer sign-in, registration and recovery are demonstrations. Staff test fixtu
 - **Do** preserve the explicit Essência selection and the sign-in field labels, visible test access and local-demo explanation.
 - **Do** retain the mobile sign-in field size and suppress arrival motion after recent keyboard interaction.
 
+- **Do** preserve the two-line business name, original emblem and its contextual light/dark applications.
+
 ### Don't:
 - **Don't** use terracotta as the default primary purchase-action color.
 - **Don't** replace the authored SVG stroke icons with font glyphs.
@@ -526,8 +555,10 @@ Customer sign-in, registration and recovery are demonstrations. Staff test fixtu
 - **Don't** introduce automatic devotional or signup interruptions into administration or sign-in.
 - **Don't** generalize tiny audit timestamps or local metadata sizes into the default reading ramp.
 
-Source evidence for the extension: `dist/club-admin.css`, `dist/club.js`, `dist/admin.js`, with status mappings in `dist/ops-data.js` and route/feature suppression in `dist/app.js` and `dist/faith-features.js`. Sign-in evidence: `dist/auth.css`, `dist/auth.js`, and loading/routing in `dist/index.html` and `dist/app.js`. This merge preserves the incumbent world and records the user’s later explicit Essência selection and requested sign-in extension.
+Source evidence for the extension: `dist/club-admin.css`, `dist/club.js`, `dist/admin.js`, with status mappings in `dist/ops-data.js` and route/feature suppression in `dist/app.js` and `dist/faith-features.js`. Sign-in evidence: `dist/auth.css`, `dist/auth.js`, and loading/routing in `dist/index.html` and `dist/app.js`. Identity evidence: `dist/brand.css`, the live logo function in `dist/app.js`, the transparent emblem and both SVG exports in `dist/assets/`. This merge preserves the incumbent world and records the user’s later explicit Essência selection and requested sign-in extension.
 
 - **Don't** describe the public staff fixture or tab-local session as real authentication.
 
-Not canonized or repaired: the removed prototype picker's former system typeface and glass pill remain excluded from the brand; unused source sand and the removed faith-clay/faith-green trial values are excluded from the token set; intermediate sans font-weight requests are documented as matching behavior rather than guaranteed distinct faces. Legacy home selectors in styles.css do not define the active faith home system. No application defects are repaired by this documentation pass. Close one-off warm-neutral/olive literals, older unused production selectors, tiny audit metadata and the informational priority fallback remain local implementation details rather than new global tokens. No eyebrow, glyph-icon or other craft defect is established as a reusable pattern.
+- **Don't** append “3D” to the business name, substitute a generic prayer glyph or describe the hybrid SVG exports as fully vector.
+
+Not canonized or repaired: the removed prototype picker's former system typeface and glass pill remain excluded from the brand; unused source sand and the removed faith-clay/faith-green trial values are excluded from the token set; intermediate sans font-weight requests are documented as matching behavior rather than guaranteed distinct faces. Legacy home selectors in styles.css do not define the active faith home system. No application defects are repaired by this documentation pass. Close one-off warm-neutral/olive literals, older unused production selectors, tiny audit metadata and the informational priority fallback remain local implementation details rather than new global tokens. No eyebrow, glyph-icon or other craft defect is established as a reusable pattern. Identity-preview font-parser advisories do not establish a new typeface; the shipped wordmark uses Cormorant Garamond. The raster emblem is recorded accurately rather than promoted as fully vector artwork.

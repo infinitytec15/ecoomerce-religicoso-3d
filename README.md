@@ -1,4 +1,8 @@
-# Âmago 3D — loja, clube mensal e administração
+# Mãos em Oração — loja, clube mensal e administração
+
+## Logo da empresa
+
+Nome confirmado: **Mãos em Oração**. A logo reúne mãos unidas em oração e um arco de acolhimento, com assinatura em Cormorant Garamond, nas cores do Essência. Veja `dist/brand-preview.html`. Arquivos: `dist/assets/maos-em-oracao-logo.svg` (oliva), `maos-em-oracao-logo-clara.svg` (creme) e `maos-em-oracao-mark.png` (símbolo com transparência). Os SVGs incorporam o símbolo PNG e letras convertidas em contornos. Origem da arte e licença da fonte acompanham os arquivos. Os dados salvos anteriormente continuam disponíveis; os identificadores internos de armazenamento foram preservados.
 
 Protótipo visual navegável de uma loja de impressões 3D para o público católico, evangélico e cristão. Marca conceitual, creme, oliva e terracota, títulos Cormorant Garamond e fotografia gerada de devoção no lar. HTML, CSS e JavaScript estáticos; fontes, imagens e Three.js incluídos localmente.
 

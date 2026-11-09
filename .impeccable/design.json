@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-08T23:58:48.572801+00:00",
-  "title": "Design System: Âmago 3D",
+  "generatedAt": "2026-11-09T12:36:49.876271+00:00",
+  "title": "Design System: Mãos em Oração",
   "extensions": {
     "colorMeta": {
       "olive": {
@@ -743,6 +743,14 @@
       "auth-label": {
         "displayName": "Auth Label",
         "purpose": "Scoped shared customer/staff entry; does not replace the operator heading ramp."
+      },
+      "brand-wordmark-top": {
+        "displayName": "Brand Wordmark Top",
+        "purpose": "Live two-line business identity; context-specific sizes in brand.css do not replace heading roles."
+      },
+      "brand-wordmark-bottom": {
+        "displayName": "Brand Wordmark Bottom",
+        "purpose": "Live two-line business identity; context-specific sizes in brand.css do not replace heading roles."
       }
     },
     "shadows": [
@@ -1031,11 +1039,19 @@
       "description": "Full-width olive entry action with small directional feedback and reduced-motion support.",
       "html": "<button class=\"ds-auth-submit\">Entrar na gestão<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button>",
       "css": ".ds-auth-submit{display:flex;align-items:center;justify-content:space-between;width:100%;background:var(--olive,#3e4934);color:var(--white,#fff);border:0;border-radius:7px;min-height:51px;padding:13px 23px;font:550 13px \"DM Sans\",sans-serif;cursor:pointer;transition:transform 150ms cubic-bezier(.23,1,.32,1),background-color 150ms ease}.ds-auth-submit svg{width:19px;height:19px;transition:transform 150ms cubic-bezier(.23,1,.32,1)}.ds-auth-submit:hover{background:var(--olive-hover,#293520)}.ds-auth-submit:active{transform:scale(.985)}.ds-auth-submit:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}.ds-auth-submit:disabled{opacity:.6;cursor:default}@media(hover:hover) and (pointer:fine){.ds-auth-submit:hover svg{transform:translateX(3px)}}@media(max-width:700px){.ds-auth-submit{min-height:53px}}@media(prefers-reduced-motion:reduce){.ds-auth-submit,.ds-auth-submit svg{transition:none;transform:none!important}}"
+    },
+    {
+      "name": "Business Wordmark",
+      "kind": "custom",
+      "refersTo": "brand-wordmark",
+      "description": "Accessible text portion of the full identity; the application pairs it with the original PNG alpha-mask emblem.",
+      "html": "<a class=\"ds-business-wordmark\" href=\"#/\" aria-label=\"Mãos em Oração, início\"><span>Mãos em</span><strong>Oração</strong></a>",
+      "css": ".ds-business-wordmark{display:flex;flex-direction:column;gap:2px;width:max-content;color:var(--olive,#3e4934);font:500 25px/.84 \"Cormorant Garamond\",Georgia,serif;letter-spacing:-.025em;text-decoration:none;white-space:nowrap}.ds-business-wordmark>span{display:block}.ds-business-wordmark>strong{font:600 31px/.86 \"Cormorant Garamond\",Georgia,serif;letter-spacing:-.025em}.ds-business-wordmark:focus-visible{outline:2px solid var(--olive,#3e4934);outline-offset:4px}@media(max-width:760px){.ds-business-wordmark{font-size:21px}.ds-business-wordmark>strong{font-size:26px}}"
     }
   ],
   "narrative": {
     "northStar": "Faith makes a home",
-    "overview": "The confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.\n\nThe interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. The user selected Essência as the definitive home composition. Its “A fé faz morada” story and devotional scene now form the single home; the variant picker, alternate routing and keyboard shortcuts have been removed. This selection does not impose the home composition on unrelated task screens.\n\n\nThe monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world. The later explicit Essência selection establishes the definitive home without changing the operational pattern.\n\nThe shared sign-in surface brings the same devotional photograph and serif/olive identity into a focused entry task for customers and staff. It introduces no new color identity: visible test access, labeled fields and calm arrival motion support the local demonstration.",
+    "overview": "The user confirmed **Mãos em Oração** as the real public business name. The original praying-hands-and-arch emblem and two-line Cormorant wordmark replace the former name while preserving the selected Essência composition and existing olive, cream and terracotta world. “3D” describes the products and process; it is no longer a suffix in the brand name.\n\nThe confirmed world pairs cream, olive and terracotta with contemporary Christian objects. The approved iteration brings daily devotion, home and giving into the foreground: expressive serif words, generous color regions and a human devotional scene make faith tangible. The phrase above and this atmosphere language describe the implemented interpretation, not a separately approved brand metaphor.\n\nThe interface keeps open product layouts and restrained panels for purchasing, account and support tasks. Devotional feedback, a prayer signup invitation, the Cantinho da Fé wall and interactive 3D previews extend this world without changing commerce layouts. A generated lifestyle scene shows hands resting on an open Bible beside printed Christian objects; the existing generated product contact sheet supplies tactile filament texture throughout browsing. Catholic and Evangelical routes are distinct and equally visible. The user selected Essência as the definitive home composition. Its “A fé faz morada” story and devotional scene now form the single home; the variant picker, alternate routing and keyboard shortcuts have been removed. This selection does not impose the home composition on unrelated task screens.\n\n\nThe monthly club extends the same tactile Christian world with basket photography, Cormorant storytelling and familiar subscription forms. Its operations workspace deliberately reduces expression: cream workgrounds, an olive sidebar, DM Sans headings and compact shared records keep daily work understandable. This is an ordinary code-led extension of the confirmed world. The later explicit Essência selection establishes the definitive home without changing the operational pattern.\n\nThe shared sign-in surface brings the same devotional photograph and serif/olive identity into a focused entry task for customers and staff. It introduces no new color identity: visible test access, labeled fields and calm arrival motion support the local demonstration.",
     "keyCharacteristics": [
       "Warm paper grounds, olive navigation and footer, terracotta welcome and gifting regions, cream and gold accents.",
       "Cormorant Garamond for storytelling, collection and product titles; Manrope and DM Sans for task hierarchy and controls.",
@@ -1044,7 +1060,8 @@
       "Compact state feedback and a brief Bible arrival gesture with reduced-motion support.",
       "Prayer, community and interactive product exploration extend the same palette and serif/sans role split.",
       "Tactile monthly curation for shoppers; quiet DM Sans tables, linked records and production stages for operators.",
-      "A definitive Essência home and a focused, responsive sign-in surface using the same devotional image and palette."
+      "A definitive Essência home and a focused, responsive sign-in surface using the same devotional image and palette.",
+      "An original praying-hands emblem and accessible, two-line Cormorant business wordmark."
     ],
     "rules": [
       {
@@ -1087,7 +1104,8 @@
       "Do preserve compact operational headings, written semantic status and linked shared records.",
       "Do contain wide tables and four-stage production inside their own horizontal scroll regions.",
       "Do preserve the explicit Essência selection and the sign-in field labels, visible test access and local-demo explanation.",
-      "Do retain the mobile sign-in field size and suppress arrival motion after recent keyboard interaction."
+      "Do retain the mobile sign-in field size and suppress arrival motion after recent keyboard interaction.",
+      "Do preserve the two-line business name, original emblem and its contextual light/dark applications."
     ],
     "donts": [
       "Don't use terracotta as the default primary purchase-action color.",
@@ -1096,7 +1114,8 @@
       "Don't apply the selected Essência home composition as a universal layout rule for operational or sign-in screens.",
       "Don't introduce automatic devotional or signup interruptions into administration or sign-in.",
       "Don't generalize tiny audit timestamps or local metadata sizes into the default reading ramp.",
-      "Don't describe the public staff fixture or tab-local session as real authentication."
+      "Don't describe the public staff fixture or tab-local session as real authentication.",
+      "Don't append “3D” to the business name, substitute a generic prayer glyph or describe the hybrid SVG exports as fully vector."
     ]
   }
 }

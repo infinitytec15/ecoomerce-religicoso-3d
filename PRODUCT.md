@@ -1,5 +1,8 @@
-# Âmago 3D
+# Mãos em Oração
 <!-- impeccable:product-schema 1 -->
+
+## Confirmed business identity
+The user supplied the actual business name “Mãos em Oração”, replacing the earlier concept name. Use the generated prayer-hands emblem with its open arch and the Cormorant Garamond wordmark. Keep the selected Essência palette and composition. Public titles, store settings, footer, staff labels, demonstration email and downloads use the new name. Legacy browser-storage namespaces are intentionally retained to preserve carts, orders, clients and subscriptions. The public staff demo email is now gestao@maosemoracao.demo; the existing demo password remains unchanged. Portable olive and cream SVG lockups contain the original raster emblem and outlined vector lettering, not an entirely vector emblem.
 
 ## Platform
 web
@@ -17,7 +20,7 @@ Explore religious 3D prints, personalize products, estimate shipping and experie
 Requested: products, product detail, client account, cart, checkout with Pix, card and combined payments, shipping, orders, support. All checkout and account activity is a browser-local simulation. No real charge, authentication, address lookup or carrier quote. Never request real payment credentials. Demonstration products, prices and delivery estimates are explicitly labeled.
 
 ## Brand Commitments
-Modern interface; apply Prototype, Emil Kowalski and Impeccable. User confirmed the name Âmago 3D and the cream, olive and terracotta visual direction.
+Modern interface; apply Prototype, Emil Kowalski and Impeccable. User confirmed the name Mãos em Oração and the cream, olive and terracotta visual direction.
 The user subsequently requested a livelier design that speaks directly to Christian audiences. Use welcoming faith-centered language and daily devotion, home and giving contexts; preserve distinct Catholic and Evangelical pathways. Continue this iteration on the local server as requested.
 Additional requested features: dismissible Bible-verse toasts, a brief Bible-opening page arrival animation, interactive 3D product rotation/zoom, a free daily-prayer email signup popup, and Cantinho da Fé prayer-wall UI. The 3D objects are procedural illustrative meshes, not manufacturing files. Prayer-wall posts/reactions and signup are browser-local demonstrations; no real email delivery or internet publication. Samples must remain labeled. Preserve existing commerce data.
 
