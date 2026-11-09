@@ -1,0 +1,170 @@
+/* Mãos em Oração: generated prayer emblem with a live, accessible serif wordmark. */
+.brand {
+  gap: 10px;
+  letter-spacing: 0;
+  font-weight: 500;
+  white-space: nowrap;
+  width: max-content;
+  max-width: 100%;
+  text-decoration: none;
+}
+.brand-symbol {
+  display: block;
+  width: 43px;
+  height: 51px;
+  flex: 0 0 43px;
+  background: currentColor;
+  -webkit-mask: url('/assets/brand-mark.webp') center/contain no-repeat;
+  mask: url('/assets/brand-mark.webp') center/contain no-repeat;
+}
+.brand .brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font:
+    500 25px/0.84 var(--font-cormorant),
+    Georgia,
+    serif;
+  letter-spacing: -0.025em;
+  transform: translateY(-1px);
+}
+.brand-wordmark > span {
+  display: block;
+}
+.brand .brand-wordmark > strong {
+  font:
+    600 31px/0.86 var(--font-cormorant),
+    Georgia,
+    serif;
+  letter-spacing: -0.025em;
+}
+.admin-brand {
+  gap: 8px;
+  padding-inline: 6px;
+}
+.admin-brand .brand {
+  gap: 7px;
+}
+.admin-brand .brand-symbol {
+  width: 34px;
+  height: 44px;
+  flex-basis: 34px;
+}
+.admin-brand .brand-wordmark {
+  font-size: 21px;
+}
+.admin-brand .brand-wordmark > strong {
+  font-size: 26px;
+}
+.admin-brand > span {
+  font-size: 9px;
+}
+.auth-header .brand-symbol {
+  width: 45px;
+  height: 55px;
+  flex-basis: 45px;
+}
+.auth-header .brand-wordmark {
+  font-size: 27px;
+}
+.auth-header .brand-wordmark > strong {
+  font-size: 33px;
+}
+.footer .brand-symbol {
+  width: 46px;
+  height: 56px;
+  flex-basis: 46px;
+}
+.footer .brand-wordmark {
+  font-size: 27px;
+}
+.footer .brand-wordmark > strong {
+  font-size: 34px;
+}
+.checkout-head .brand-symbol {
+  width: 35px;
+  height: 45px;
+  flex-basis: 35px;
+}
+.checkout-head .brand-wordmark {
+  font-size: 22px;
+}
+.checkout-head .brand-wordmark > strong {
+  font-size: 27px;
+}
+@media (max-width: 1100px) and (min-width: 851px) {
+  .admin-brand .brand-symbol {
+    width: 29px;
+    height: 39px;
+    flex-basis: 29px;
+  }
+  .admin-brand .brand-wordmark {
+    font-size: 19px;
+  }
+  .admin-brand .brand-wordmark > strong {
+    font-size: 24px;
+  }
+  .admin-brand {
+    gap: 5px;
+    padding-inline: 3px;
+  }
+  .admin-brand > span {
+    font-size: 8px;
+    padding: 2px 4px;
+  }
+}
+@media (max-width: 760px) {
+  .brand {
+    gap: 7px;
+  }
+  .brand-symbol {
+    width: 33px;
+    height: 42px;
+    flex-basis: 33px;
+  }
+  .brand .brand-wordmark {
+    font-size: 21px;
+  }
+  .brand .brand-wordmark > strong {
+    font-size: 26px;
+  }
+  .auth-header .brand-symbol {
+    width: 34px;
+    height: 44px;
+    flex-basis: 34px;
+  }
+  .auth-header .brand-wordmark {
+    font-size: 22px;
+  }
+  .auth-header .brand-wordmark > strong {
+    font-size: 27px;
+  }
+  .auth-header {
+    padding-inline: 20px;
+  }
+  .auth-back {
+    font-size: 10px;
+    gap: 5px;
+  }
+  .auth-back > svg {
+    width: 14px;
+    height: 14px;
+  }
+  .admin-brand .brand-wordmark {
+    font-size: 21px;
+  }
+  .admin-brand .brand-wordmark > strong {
+    font-size: 26px;
+  }
+  .footer .brand-symbol {
+    width: 40px;
+    height: 50px;
+    flex-basis: 40px;
+  }
+  .footer .brand-wordmark {
+    font-size: 25px;
+  }
+  .footer .brand-wordmark > strong {
+    font-size: 31px;
+  }
+}

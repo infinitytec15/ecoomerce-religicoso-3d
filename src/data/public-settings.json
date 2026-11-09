@@ -1,0 +1,25 @@
+{
+  "clubName": "Clube Cesta com Jesus",
+  "dispatchDay": 15,
+  "edition": "Esperança que renova",
+  "editionMonth": "2026-11",
+  "storeName": "Mãos em Oração",
+  "email": "atendimento@exemplo.com",
+  "phone": "(11) 99999-0000",
+  "lowStock": 5,
+  "profiles": {
+    "Católica": [
+      "nossa-senhora",
+      "cruz-essencial"
+    ],
+    "Evangélica": [
+      "biblia-viva",
+      "palavra-fe"
+    ],
+    "Cristã": [
+      "cruz-essencial",
+      "espirito-santo"
+    ]
+  },
+  "priceCents": 12990
+}

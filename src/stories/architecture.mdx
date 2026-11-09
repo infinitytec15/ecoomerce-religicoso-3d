@@ -1,0 +1,25 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Comece aqui/Aplicação e integração" />
+
+# Mãos em Oração · Essência
+
+Este catálogo usa os **mesmos componentes React da aplicação Next.js**. Escolha uma história na barra lateral, alterne os tamanhos de tela e use a aba de acessibilidade para inspecionar os estados.
+
+## O que está incluído
+
+Loja, catálogo, produto e visualizador 3D sob demanda; carrinho e checkout com Pix, cartão e combinação dos dois; clube mensal; conta do cliente e envios; mural de orações; convite gratuito de oração diária; login e administrador.
+
+Os botões das histórias usam uma operação **em memória**, isolada por história. Nenhum pagamento, e-mail ou envio real é realizado.
+
+## Fronteira com o backend
+
+As telas usam hooks de consulta e o contrato `CommerceGateway`. O adaptador `DemoGateway` mantém o protótipo navegável; `HttpGateway` usa JSON validado por Zod, sessão por cookie e chaves de idempotência no checkout e na assinatura.
+
+Para integrar, implemente os endpoints documentados em `docs/BACKEND.md`, configure `API_BASE_URL` no servidor e `NEXT_PUBLIC_DATA_MODE=http`, e faça um novo build. A API deve validar preço, estoque, permissão, pagamento e renovação. O navegador nunca é a autoridade financeira.
+
+## Padrões visuais
+
+Cormorant Garamond na voz da marca, DM Sans no conteúdo e Manrope na operação. Creme e oliva formam a base; terracota sinaliza afeto e destaca detalhes. Estados sempre têm rótulos de texto. Diálogos mantêm o foco, fecham com Escape e respeitam movimento reduzido.
+
+As cenas e modelos são conceituais. O visualizador usa modelos procedurais e não representa arquivos de fabricação.

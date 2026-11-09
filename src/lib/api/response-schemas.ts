@@ -1,0 +1,217 @@
+import { z } from 'zod';
+import { addressSchema, inventoryProductSchema, publicSettingsSchema } from '@/lib/domain/schemas';
+const id = z.string().min(1),
+  cents = z.number().int().nonnegative(),
+  text = z.string();
+export const sessionSchema = z.object({
+  id,
+  name: text,
+  email: z.email(),
+  role: z.enum(['customer', 'admin', 'support', 'production', 'finance']),
+  permissions: z.array(
+    z.enum([
+      'orders',
+      'subscriptions',
+      'production',
+      'shipping',
+      'catalog',
+      'customers',
+      'finance',
+      'support',
+      'community',
+      'marketing',
+      'reports',
+      'team',
+      'settings',
+    ]),
+  ),
+  demo: z.boolean(),
+});
+export const customerSchema = addressSchema.extend({
+  id,
+  status: z.enum(['Ativo', 'Inativo']),
+  created: text,
+  notes: text,
+});
+export const cartItemSchema = z.object({
+  key: text,
+  productId: id,
+  name: text,
+  image: text,
+  imageIndex: z.number().int(),
+  color: text,
+  size: text,
+  sizeIndex: z.number().int(),
+  unitCents: cents,
+  quantity: z.number().int().positive(),
+  dedication: text,
+});
+export const orderSchema = z.object({
+  id,
+  number: text,
+  customerId: id,
+  subscriptionId: text.optional(),
+  type: z.enum(['Loja', 'Clube']),
+  edition: text.optional(),
+  items: z.array(cartItemSchema),
+  totalCents: cents,
+  subtotalCents: cents,
+  discountCents: cents,
+  shippingCents: cents,
+  status: z.enum([
+    'Aguardando pagamento',
+    'Confirmado',
+    'Em produção',
+    'Em acabamento',
+    'Pronto para envio',
+    'Enviado',
+    'Entregue',
+    'Cancelado',
+  ]),
+  created: text,
+  due: text,
+  address: addressSchema,
+  chargeId: id,
+  tracking: text,
+  carrier: text,
+  priority: z.enum(['Normal', 'Alta']),
+  notes: text,
+  sourceOrderId: text.optional(),
+});
+export const subscriptionResponseSchema = z.object({
+  id,
+  customerId: id,
+  profile: z.enum(['Católica', 'Evangélica', 'Cristã']),
+  finish: text,
+  priceCents: cents,
+  status: z.enum(['Ativa', 'Pausada', 'Pagamento pendente', 'Cancelada']),
+  payment: z.enum(['card', 'pix']),
+  created: text,
+  nextRenewal: text,
+  nextShipment: text,
+  address: addressSchema,
+  history: z.array(z.object({ date: text, label: text })),
+});
+export const chargeSchema = z.object({
+  id,
+  customerId: id,
+  subscriptionId: text.optional(),
+  orderId: id,
+  amountCents: cents,
+  method: z.enum(['card', 'pix', 'split']),
+  status: z.enum(['Pago', 'Pendente', 'Recusado', 'Cancelada', 'Estornado']),
+  due: text,
+  paidAt: text.optional(),
+  description: text,
+  cycle: text,
+  pixCents: cents,
+  cardCents: cents,
+  installments: z.number().int(),
+  refundReason: text.optional(),
+});
+export const ticketSchema = z.object({
+  id,
+  customerId: id,
+  subject: text,
+  category: text,
+  status: z.enum(['Aberto', 'Em atendimento', 'Resolvido']),
+  priority: z.enum(['Normal', 'Alta']),
+  assignee: text,
+  created: text,
+  messages: z.array(z.object({ by: z.enum(['cliente', 'equipe']), text, date: text })),
+});
+export const prayerResponseSchema = z.object({
+  id,
+  name: text,
+  title: text,
+  message: text,
+  category: text,
+  anonymous: z.boolean(),
+  example: z.boolean(),
+  hidden: z.boolean(),
+  created: text,
+  reactions: z.number().int().nonnegative(),
+  owned: z.boolean(),
+  prayed: z.boolean(),
+});
+export const accountSchema = z.object({
+  customer: customerSchema,
+  orders: z.array(orderSchema),
+  subscriptions: z.array(subscriptionResponseSchema),
+  charges: z.array(chargeSchema),
+  tickets: z.array(ticketSchema),
+});
+export const operationsSchema = z.object({
+  version: z.literal(2),
+  products: z.array(inventoryProductSchema),
+  clients: z.array(customerSchema),
+  orders: z.array(orderSchema),
+  subscriptions: z.array(subscriptionResponseSchema),
+  charges: z.array(chargeSchema),
+  tickets: z.array(ticketSchema),
+  jobs: z.array(
+    z.object({
+      id,
+      orderId: id,
+      stage: z.enum(['Fila', 'Impressão', 'Acabamento', 'Conferência', 'Pronto']),
+      printer: text,
+      hours: z.number(),
+      assignee: text,
+      priority: z.enum(['Normal', 'Alta']),
+      due: text,
+    }),
+  ),
+  printers: z.array(
+    z.object({
+      id,
+      name: text,
+      status: z.enum(['Disponível', 'Imprimindo', 'Manutenção']),
+      capacity: z.number(),
+    }),
+  ),
+  expenses: z.array(
+    z.object({
+      id,
+      name: text,
+      amountCents: cents,
+      category: text,
+      date: text,
+      status: z.enum(['Previsto', 'Pago']),
+    }),
+  ),
+  team: z.array(
+    z.object({ id, name: text, email: text, role: text, status: z.enum(['Ativo', 'Inativo']) }),
+  ),
+  settings: publicSettingsSchema,
+  campaigns: z.array(
+    z.object({
+      id,
+      subject: text,
+      message: text,
+      date: text,
+      recipients: z.number(),
+      status: text,
+    }),
+  ),
+  audit: z.array(z.object({ id, date: text, actor: text, action: text, entity: text })),
+  prayers: z.array(prayerResponseSchema),
+  newsletter: z.object({ name: text, email: text, subscribed: z.boolean() }).nullable(),
+  processed: z.record(text, z.object({ orderId: id, subscriptionId: text.optional() })),
+});
+export const checkoutResultSchema = z.object({
+  orderId: id,
+  subscriptionId: text.optional(),
+  paymentAction: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('none') }),
+    z.object({
+      type: z.literal('redirect'),
+      url: z
+        .url()
+        .refine((url) => new URL(url).protocol === 'https:', 'O provedor deve usar HTTPS.'),
+    }),
+    z.object({ type: z.literal('pix'), qrCode: text, copyPaste: text, expiresAt: text }),
+  ]),
+});
+export const shippingResponseSchema = z.array(
+  z.object({ id: z.enum(['standard', 'express']), label: text, cents, estimate: text }),
+);

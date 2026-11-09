@@ -1,66 +1,73 @@
-# Mãos em Oração — loja, clube mensal e administração
+# Mãos em Oração · Next.js + Storybook
 
-## Logo da empresa
+Loja de peças cristãs em impressão 3D, com clube mensal, área do cliente e administrador. Aplicação **Next.js 16 / React 19 / TypeScript**, mantendo o visual Essência aprovado.
 
-Nome confirmado: **Mãos em Oração**. A logo reúne mãos unidas em oração e um arco de acolhimento, com assinatura em Cormorant Garamond, nas cores do Essência. Veja `dist/brand-preview.html`. Arquivos: `dist/assets/maos-em-oracao-logo.svg` (oliva), `maos-em-oracao-logo-clara.svg` (creme) e `maos-em-oracao-mark.png` (símbolo com transparência). Os SVGs incorporam o símbolo PNG e letras convertidas em contornos. Origem da arte e licença da fonte acompanham os arquivos. Os dados salvos anteriormente continuam disponíveis; os identificadores internos de armazenamento foram preservados.
+## Rodar
 
-Protótipo visual navegável de uma loja de impressões 3D para o público católico, evangélico e cristão. Marca conceitual, creme, oliva e terracota, títulos Cormorant Garamond e fotografia gerada de devoção no lar. HTML, CSS e JavaScript estáticos; fontes, imagens e Three.js incluídos localmente.
-
-## Rodar localmente
-
-Na raiz deste repositório:
+Requer Node.js 22.12+ (Node 24 recomendado) e npm.
 
 ```sh
-python -m http.server 8766 --bind 127.0.0.1 --directory dist
+npm ci
+npm run dev
 ```
 
-Abra http://127.0.0.1:8766/. Não há dependências de instalação nem etapa de build. O visualizador 3D requer HTTP e WebGL.
+Abra [a loja](http://127.0.0.1:3000), [o administrador](http://127.0.0.1:3000/admin) ou [o login](http://127.0.0.1:3000/login).
 
-No ZIP de apresentação, `index.html` fica na raiz: execute `python -m http.server 8766 --bind 127.0.0.1` na pasta extraída, sem `--directory dist`. As instruções de Vercel abaixo se referem ao repositório GitHub.
+```sh
+npm run storybook
+```
 
-## Acessos
+Abra [o Storybook](http://127.0.0.1:6006). Há componentes, estados, controles, acessibilidade, jornadas e documentação de integração.
 
-- Loja: `/#/`
-- Catálogo: `/#/produtos`
-- Clube Cesta com Jesus: `/#/clube`
-- Adesão em três etapas: `/#/clube/assinar`
-- Minha assinatura: `/#/conta/assinatura`
-- Histórico de envios: `/#/conta/envios`
-- Cobranças: `/#/conta/cobrancas`
-- Atendimento do cliente: `/#/conta/atendimentos`
-- Login da equipe: `/#/admin/login`. Use “Preencher acesso de demonstração” e depois “Entrar na gestão”.
-- Painel administrador: `/#/admin` — sessão visual demonstrativa nesta aba.
-- Login do cliente e criação de conta: `/#/login`.
-- Cantinho da Fé: `/#/cantinho-da-fe`
+Para rodar o build de produção local:
 
-## Clube mensal
+```sh
+npm run build
+npm start -- --port 8766
+```
 
-Plano único ilustrativo de **R$129,90/mês**, com frete incluído. Escolha de curadoria católica, evangélica ou cristã e preferência de acabamento. Checkout com dados fictícios, cartão de teste ou Pix mensal; Pix exige confirmação de cada ciclo. Área do cliente com pausa, retomada, pular edição, cancelamento, preferências, endereço, cobranças, comprovantes ilustrativos e rastreio. O preço para novas adesões, as peças por perfil e o dia de expedição podem ser editados no administrador. Contratos existentes preservam o preço de adesão.
+## Fluxos incluídos
 
-## Operação administrativa
+- Home, catálogo com filtros/busca/ocasiões, favoritos, produto com cor/tamanho/dedicatória e visualização 3D com rotação, zoom e cor.
+- Carrinho e checkout com frete, cupom, Pix, cartão e Pix + cartão, confirmação e pedidos.
+- Clube Cesta com Jesus: adesão, perfis de fé, plano mensal, preferências, pausa, retomada, pulo, cancelamento, cobranças e histórico de envios.
+- Conta, cadastro/login/recuperação, endereços e conversas de suporte.
+- Cantinho da Fé, mural com pedidos/reação/moderação, versículos e convite gratuito de oração diária.
+- Gestão de clientes, pedidos, assinaturas, produção/máquinas, expedição, produtos/estoque, edições, financeiro, suporte, comunidade, mensagens, relatórios CSV, equipe, configurações e auditoria.
 
-Visão geral derivada dos registros, busca geral, filtros e CSV. Clientes com histórico de compras e assinaturas; pedidos da loja e do clube e criação manual; contratos e renovação mensal simulada; ordens de produção em fila, impressão, acabamento e conferência; situação das máquinas; expedição, rastreio e entrega; recebimentos, pendências, estornos e despesas; produtos, preço, visibilidade e estoque; curadoria mensal; conversas de suporte; moderação do mural; oração diária com envio apenas simulado; relatórios, equipe com perfis ilustrativos, configurações e atividade da operação.
+## Demonstração e backend
 
-Os registros são compartilhados no mesmo navegador: assinar cria contrato, cobrança e pedido; pagamento confirmado libera a produção; despacho aparece nos envios do cliente; respostas do suporte aparecem na conta. Há dados sintéticos para explorar todos os estados.
+O padrão é `NEXT_PUBLIC_DATA_MODE=demo`. Registros ficam neste navegador, pagamentos e envios são simulados e nenhum e-mail é enviado. Use apenas dados fictícios. Não há autenticação real nesse modo.
 
-## Loja e experiências de fé
+Acesso de teste da equipe: **gestao@maosemoracao.demo** / **Essencia3D!**. O login também oferece preenchimento do acesso de demonstração. Senhas e dados de cartão não são armazenados.
 
-Catálogo com busca, coleções, ocasiões, filtros e ordenação; produto com cor, tamanho, dedicatória e frete por CEP; favoritos e carrinho; checkout Pix, cartão de teste e pagamento combinado Pix + cartão; conta e pedidos. Use “Preencher com dados fictícios” e o cupom `PRIMEIRAFE`.
+Para conectar uma API, copie `.env.example` para `.env.local`, configure o modo `http` e a URL exclusiva do servidor, e faça um novo build. Veja o **[contrato completo do backend](docs/BACKEND.md)** e a **[arquitetura](docs/ARCHITECTURE.md)**. A camada HTTP valida respostas e não usa gravações fictícias como fallback.
 
-Toast de versículos com referência, próximo e fechar; breve animação da Bíblia respeitando movimento reduzido; visualizador 3D com órbita por arraste, zoom, teclado, cor e rotação automática opcional. Modelos procedurais ilustrativos, sem correspondência com arquivos de fabricação. Popup de oração diária gratuita e mural com anonimato, filtros e reação de oração. Nada é enviado por e-mail nem publicado entre visitantes.
+A API real, banco, autenticação, gateway/webhooks, scheduler de recorrência, transportadora e e-mail **não estão implementados nesta entrega do frontend**.
 
-O usuário escolheu **Essência** como tema definitivo. O seletor de versões e seus atalhos foram removidos. O login acompanha a identidade com fotografia de devoção, formulário em creme/oliva e entrada breve de 240–280 ms, respeitando movimento reduzido e navegação por teclado. Cliente e equipe têm acesso, mostrar/ocultar senha, recuperação simulada, validação e estados de erro. A sessão da equipe dura nesta aba, usa somente credenciais públicas de teste e nunca armazena senhas. Não é autenticação real.
+## Qualidade
 
-## Publicar na Vercel
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run format:check
+npm run build
+npm run build-storybook
+# ou todos os checks de código/build:
+npm run check
+```
 
-Importe o repositório `infinitytec15/ecoomerce-religicoso-3d` na Vercel. Use a raiz do repositório, framework **Other**, sem comando de build e diretório de saída **dist**. O arquivo `vercel.json` já define a saída. Rotas usam hash e não precisam de rewrite de servidor. Nenhuma variável de ambiente é necessária para esta demonstração.
+A integração contínua executa os checks e publica o build do Storybook como artefato. `npm run format` formata o novo código. Os testes novos ficam em `src/**/*.test.*`; `tests/*.cjs` são a suíte histórica do protótipo estático.
 
-## Limites do protótipo
+## Vercel
 
-Nenhuma venda, recorrência, transferência Pix, cartão, postagem, e-mail ou mensagem externa é executada. Não há servidor, banco de dados, autenticação, controle real de permissões, integração fiscal, gateway ou transportadora. Use somente dados fictícios. Cada navegador mantém sua própria demonstração em localStorage; administração e mural não sincronizam entre pessoas. A central de ajuda pode apagar os dados locais, restaurando os exemplos administrativos.
+Importe o repositório com o framework **Next.js**, build `npm run build` e saída padrão. O `vercel.json` já está configurado. Remova qualquer override antigo de Output Directory `dist` no painel da Vercel. Configure `NEXT_PUBLIC_SITE_URL` com o domínio publicado. O Storybook pode ser hospedado separadamente com `npm run build-storybook`, saída `storybook-static`.
 
-Preços, fretes, datas, composições e políticas são ilustrativos. Imagens geradas por IA têm proveniência nos arquivos `dist/assets/*.png.json` e metadados. Fontes e Three.js incluem licenças. Os versículos NVI são ligados à fonte BibleGateway na interface.
+## Identidade, dados anteriores e assets
 
-## Verificação
+Marca: **Mãos em Oração**, creme, oliva e terracota; Cormorant Garamond, DM Sans e Manrope locais. A logo tem símbolo de mãos em oração e assinatura tipográfica. SVGs portáteis em `public/assets/maos-em-oracao-logo.svg` e `maos-em-oracao-logo-clara.svg` incorporam o símbolo PNG e letras em contorno; o símbolo não é integralmente vetorial. Licenças e proveniência acompanham os assets.
 
-JavaScript verificado com `node --check`. Execute `node --test tests/*.test.cjs` no repositório para os oito testes isolados de sincronização do Pix, rastreio, renovação sem duplicidade, preservação de preço e histórico, suporte e arquivos de entrada. Fluxos exercitados no navegador em desktop 1280px e celular 390px: adesão com cartão e Pix; pausa, retomada, pulo e cancelamento; renovação do administrador; produção em quatro etapas e rastreio refletido no cliente; suporte cliente/equipe; cadastro, edição, busca e estoque; navegação nas 15 áreas do administrador. Nenhum transbordamento horizontal no documento nessas áreas; tabelas e quadro de produção têm rolagem própria. Sem erros ou avisos de console nos fluxos conferidos. Detector da extensão: zero achados primários; avisos de escala e tons do sistema documentados na revisão. A checagem automatizada não substitui a revisão visual.
+As fotos são cenas conceituais geradas por IA e os modelos 3D são procedurais ilustrativos, sem correspondência com arquivos de fabricação. Produtos, valores e políticas precisam de aprovação comercial antes de vendas reais.
+
+Links antigos `/#/...` redirecionam para rotas nativas. A migração lê os dados `amago-*`, grava o novo formato e preserva os originais. Armazenamento pertence ao mesmo host/porta. `dist/` conserva o protótipo estático anterior para referência; não é a aplicação publicada nem a saída do Next.js.

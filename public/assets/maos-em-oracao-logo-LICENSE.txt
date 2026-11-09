@@ -1,0 +1,4 @@
+Mãos em Oração
+Emblem: original generated artwork using image_gen.imagegen; prompt in maos-em-oracao-mark.png.json.
+Outlined lettering: Cormorant Garamond Medium and SemiBold, licensed under SIL Open Font License; see Cormorant-Garamond-OFL.txt.
+SVG lockups embed the raster emblem and vector lettering.

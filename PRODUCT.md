@@ -8,7 +8,7 @@ The user supplied the actual business name “Mãos em Oração”, replacing th
 web
 
 ## Stack
-Static HTML, CSS and JavaScript: standalone navigable visual prototype, chosen to preserve the Prototype skill's standalone surface. No framework preference supplied.
+Next.js 16 App Router, React 19, TypeScript estrito e Storybook 10, por solicitação explícita do usuário. O protótipo estático anterior permanece em dist/ como referência histórica; a aplicação ativa usa src/app/. O visual Essência aprovado é preservado.
 
 ## Users
 Brazilian Portuguese shoppers looking for Catholic, Evangelical and broadly Christian 3D-printed decor and gifts.
@@ -36,3 +36,8 @@ Requested: one fixed-price monthly Christian basket plan, complete subscription 
 
 ## Chosen theme and sign-in
 The user selected Essência as the final theme and requested a modern animated login after viewing administration. Promote Essência, remove variant picker/shortcuts, and extend its cream/olive/terracotta identity to customer sign-in/register/recovery and staff sign-in/recovery. Staff demo credentials are public test fixtures; a sessionStorage record gates the visual admin journey in this tab. It is not authentication or a security boundary. Passwords are not stored; optional remembered email is local. Eight tests cover existing operation and demo session/return-route behavior. User explicitly requested commit and push after this update.
+
+
+## Migração Next.js solicitada
+
+O usuário solicitou converter o frontend completo para Next.js com Storybook, otimização e preparação para backend. As jornadas foram reimplementadas em componentes React reutilizáveis e 44 páginas do App Router. React Query, Zustand, validação Zod, adaptadores DemoGateway/HttpGateway e BFF de mesma origem separam apresentação, dados e serviços. Imagens WebP e fontes WOFF2 locais usam otimização do Next; Three.js e overlays são carregados sob demanda. Storybook documenta componentes reais, estados e jornadas com dados isolados. TypeScript, ESLint, Vitest e os dois builds compõem a verificação automatizada. O modo demonstrativo continua local e explicitamente sintético. Autenticação, pagamento, recorrência agendada, frete e e-mail reais dependem de uma API implementada segundo docs/BACKEND.md. Não houve substituição da identidade, dos tokens ou da direção visual Essência.
