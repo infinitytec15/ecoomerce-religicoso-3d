@@ -236,6 +236,66 @@ try {
     '--config',
     'packages/database/prisma.config.ts',
   ]);
+  await check(
+    'bootstrap de produção importa somente catálogo aprovado, sem operação fictícia',
+    async () => {
+      const productionEnv = {
+        ...env,
+        NODE_ENV: 'production',
+        PUBLIC_WEB_URL: 'https://shop.example.test',
+        PUBLIC_API_URL: 'https://api.example.test',
+        INTEGRATIONS_MODE: 'live',
+        SEED_DEMO_CATALOG: 'false',
+        BOOTSTRAP_EXISTING_CATALOG: 'true',
+      };
+      const result = spawnSync(process.execPath, ['apps/api/dist/seed.mjs', '--if-configured'], {
+        cwd: root,
+        env: productionEnv,
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const verify = createContext(
+        (await import('@maos-em-oracao/backend-core/config')).loadConfig(env),
+      );
+      try {
+        const products = await verify.db.product.findMany();
+        assert.equal(products.length, 6);
+        assert(
+          products.every(
+            (p) =>
+              p.stock === 0 &&
+              !p.data.model &&
+              p.data.media[0].url.startsWith(productionEnv.PUBLIC_WEB_URL),
+          ),
+        );
+        for (const model of [
+          'customer',
+          'order',
+          'subscription',
+          'payment',
+          'productionJob',
+          'clubEdition',
+          'printer',
+          'coupon',
+          'supportTicket',
+          'prayer',
+          'ledgerEntry',
+        ]) {
+          assert.equal(await verify.db[model].count(), 0, model);
+        }
+        const workspace = await verify.db.appSetting.findUniqueOrThrow({
+          where: { key: 'workspace' },
+        });
+        assert.equal(workspace.data.originStreet, '');
+        // This database was created above exclusively for this run; restore its empty bootstrap state.
+        await verify.db.product.deleteMany();
+        await verify.db.appSetting.deleteMany();
+        await verify.db.user.deleteMany();
+      } finally {
+        await closeContext(verify);
+      }
+    },
+  );
   cli(['--import', 'tsx', 'scripts/backend-seed.mjs']);
   ctx = createContext((await import('@maos-em-oracao/backend-core/config')).loadConfig(env));
   await ctx.redis.connect();

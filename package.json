@@ -29,7 +29,9 @@
     "worker:dev": "npm run dev --workspace @maos-em-oracao/worker",
     "backend:test": "node --import tsx scripts/backend-test.mjs",
     "backend:local": "node scripts/backend-local.mjs",
-    "infra:typecheck": "tsc --noEmit --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext .railway/railway.ts"
+    "infra:typecheck": "tsc --noEmit --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext .railway/railway.ts",
+    "backend:release": "npm run backend:migrate && node apps/api/dist/seed.mjs --if-configured",
+    "test:routes": "node scripts/route-smoke.mjs"
   },
   "dependencies": {
     "@maos-em-oracao/contracts": "*",

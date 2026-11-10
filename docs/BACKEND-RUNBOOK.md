@@ -117,7 +117,7 @@ Projeto: **Mãos em Oração**, workspace **Intra Pay**, ID `01c60d12-7298-4a87-
 
 Após mudar a infraestrutura, execute `railway config plan`, revise que não há exclusões e aplique `railway config apply`. Código de aplicação recebe deploy por push em main; alterações IaC precisam deste apply. Em Windows, se o SDK não localizar o shim PowerShell, aponte a variável `_` para o executável railway.exe instalado pelo CLI. Nunca versionar tokens ou planos com valores privados.
 
-Somente API executa migrations no pre-deploy. Ambos os serviços backend usam os mesmos `DATABASE_URL`, `REDIS_URL`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET`, `BFF_SHARED_SECRET`, `QUEUE_PREFIX`, URLs públicas e credenciais. Railway injeta `PORT`; não fixe `WORKER_PORT` nesse serviço. Saúde: API `/api/v1/health/ready`, worker `/health/ready`, web `/api/health`.
+Somente API executa `npm run backend:release` no pre-deploy. Esse script encadeia migration e bootstrap dentro do npm, garantindo que os dois passos sejam executados no container. Ambos os serviços backend usam os mesmos `DATABASE_URL`, `REDIS_URL`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET`, `BFF_SHARED_SECRET`, `QUEUE_PREFIX`, URLs públicas e credenciais. Railway injeta `PORT`; não fixe `WORKER_PORT` nesse serviço. Saúde: API `/api/v1/health/ready`, worker `/health/ready`, web `/api/health`.
 
 Use `config/backend.env.example` como inventário, configure secrets nas variáveis privadas e referências entre serviços. Redis deve manter política `noeviction` e persistência apropriada para BullMQ; PostgreSQL precisa de backups e teste de restauração. O backend usa Bunny para persistência live, não disco efêmero, salvo arquivos temporários do conversor.
 
@@ -138,7 +138,7 @@ Fontes: [Node LTS](https://nodejs.org/en/about/previous-releases), [Railway mono
 Cadastre os valores privados na aba Variables da **API**. A IaC replica as referências no worker; depois das alterações, redeploy de API e worker. A chave pública Mercado Pago chega ao web por referência e exige rebuild. Valores vazios significam integração não configurada.
 
 - Mercado Pago: MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY; habilite PAYMENTS_ENABLED=true. SPLIT_PAYMENT_ENABLED=true após homologar compensação.
-- Melhor Envio: ME_CLIENT_ID, ME_CLIENT_SECRET, ME_REDIRECT_URI=https://api-production-fe79744c.up.railway.app/api/v1/oauth/melhor-envio/callback; conecte a conta em Configurações. ME_ACCESS_TOKEN é alternativa privada. ME_SANDBOX=false na produção.
+- Melhor Envio: ME_CLIENT_ID, ME_CLIENT_SECRET, ME_REDIRECT_URI=https://api-production-fe79744c.up.railway.app/api/v1/integrations/melhor-envio/callback; conecte a conta em Configurações. ME_ACCESS_TOKEN é alternativa privada. ME_SANDBOX=false na produção.
 - Bunny: zonas/passwords pública e privada, CDN, biblioteca/API key Stream, read key/CDN host. Acrescente o hostname CDN em IMAGE_HOSTS do web e faça rebuild.
 - Resend: RESEND_API_KEY, RESEND_WEBHOOK_SECRET, EMAIL_FROM de domínio verificado, EMAIL_REPLY_TO; habilite EMAIL_ENABLED=true. Configure domínio e webhook antes de testar cadastro/recuperação/convites/oração diária.
 - Admin: documento/endereço real do remetente, embalagem, estoque/preços e edição ativa com produtos por perfil do clube.

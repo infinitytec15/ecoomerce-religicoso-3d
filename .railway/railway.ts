@@ -60,7 +60,7 @@ export default defineRailway(() => {
     source: github('infinitytec15/ecoomerce-religicoso-3d', { branch: 'main' }),
     build: { builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile.backend' },
     start: 'node apps/api/dist/main.mjs',
-    preDeploy: 'npm run backend:migrate && node apps/api/dist/seed.mjs --if-configured',
+    preDeploy: 'npm run backend:release',
     healthcheck: '/api/v1/health/ready',
     healthcheckTimeout: 180,
     deploy: {
@@ -83,8 +83,8 @@ export default defineRailway(() => {
       BOOTSTRAP_ADMIN_EMAIL: preserve(),
       BOOTSTRAP_ADMIN_PASSWORD: preserve(),
       BOOTSTRAP_EXISTING_CATALOG: 'true',
-      EMAIL_FROM: 'contato@infinitytec.info',
-      EMAIL_REPLY_TO: 'contato@infinitytec.info',
+      EMAIL_FROM: preserve(),
+      EMAIL_REPLY_TO: preserve(),
       ME_SANDBOX: 'false',
     },
   });
