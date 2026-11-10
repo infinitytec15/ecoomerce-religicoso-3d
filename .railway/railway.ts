@@ -86,6 +86,8 @@ export default defineRailway(() => {
       EMAIL_FROM: preserve(),
       EMAIL_REPLY_TO: preserve(),
       ME_SANDBOX: 'false',
+      // Storage zones live in São Paulo; Bunny requires the regional endpoint.
+      BUNNY_STORAGE_HOST: 'br.storage.bunnycdn.com',
     },
   });
   const worker = service('worker', {
@@ -114,6 +116,7 @@ export default defineRailway(() => {
       EMAIL_FROM: api.env.EMAIL_FROM,
       EMAIL_REPLY_TO: api.env.EMAIL_REPLY_TO,
       ME_SANDBOX: 'false',
+      BUNNY_STORAGE_HOST: api.env.BUNNY_STORAGE_HOST,
     },
   });
   const web = service('web', {
@@ -135,7 +138,8 @@ export default defineRailway(() => {
       NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY: ref(api, 'NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY'),
       API_BASE_URL: 'http://api.railway.internal:4000/api/v1',
       BFF_SHARED_SECRET: api.env.BFF_SHARED_SECRET,
-      IMAGE_HOSTS: 'web-production-b7ece0dc.up.railway.app',
+      IMAGE_HOSTS:
+        'web-production-b7ece0dc.up.railway.app,maosemoracao.b-cdn.net,vz-0786fda1-07a.b-cdn.net',
     },
   });
 
