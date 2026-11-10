@@ -1,6 +1,6 @@
 import { TokenAction } from '@/features/auth/token-action';
 export const metadata = {
-  title: 'Acessar meu pedido · Mãos em Oração',
+  title: 'Acessar meu pedido',
   robots: { index: false, follow: false },
 };
 export default async function Page({

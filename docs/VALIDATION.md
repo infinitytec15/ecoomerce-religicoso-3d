@@ -4,8 +4,8 @@
 
 - TypeScript estrito em todos os workspaces e ESLint sem erros ou avisos.
 - Vitest: 104 testes aprovados; segurança, adaptadores e geometria GLB real incluídos.
-- 30 cenários integrados passaram com PostgreSQL, Redis, API e worker reais antes da ampliação final da suíte; provedores em mock, sem transações externas.
-- A suíte ampliada e o build Docker são executados em serviços isolados na [CI do commit](https://github.com/infinitytec15/ecoomerce-religicoso-3d/actions/workflows/ci.yml). Consulte o resultado da execução associada ao SHA publicado.
+- 33 cenários integrados passaram com PostgreSQL, Redis, API e worker reais; provedores em mock, sem transações externas.
+- A suíte integrada e o build Docker foram aprovados em serviços isolados na [execução da CI](https://github.com/infinitytec15/ecoomerce-religicoso-3d/actions/runs/42864944180). A suíte também valida os DTOs reais pelos schemas usados no frontend.
 - Next e Storybook tiveram builds aprovados; prévias dos 17 templates HTML/texto geradas localmente.
 - `npm audit`: zero vulnerabilidades após corrigir as dependências transitivas de glob/minimatch e validar Storybook.
 - O Docker Desktop local apresentou indisponibilidade de engine/WSL durante a rodada final. A CI possui PostgreSQL e Redis próprios e valida também a imagem de API/worker.

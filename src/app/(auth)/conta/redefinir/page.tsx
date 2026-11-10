@@ -1,6 +1,6 @@
 import { TokenAction } from '@/features/auth/token-action';
 export const metadata = {
-  title: 'Criar nova senha · Mãos em Oração',
+  title: 'Criar nova senha',
   robots: { index: false, follow: false },
 };
 export default async function Page({

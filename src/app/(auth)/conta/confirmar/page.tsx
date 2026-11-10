@@ -1,6 +1,6 @@
 import { TokenAction } from '@/features/auth/token-action';
 export const metadata = {
-  title: 'Confirmar e-mail · Mãos em Oração',
+  title: 'Confirmar e-mail',
   robots: { index: false, follow: false },
 };
 export default async function Page({

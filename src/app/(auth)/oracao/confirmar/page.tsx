@@ -1,6 +1,6 @@
 import { TokenAction } from '@/features/auth/token-action';
 export const metadata = {
-  title: 'Confirmar oração diária · Mãos em Oração',
+  title: 'Confirmar oração diária',
   robots: { index: false, follow: false },
 };
 export default async function Page({

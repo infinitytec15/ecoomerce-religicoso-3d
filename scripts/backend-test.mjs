@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFile, mkdir, open } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { operationsSchema, accountSchema } from '../src/lib/api/response-schemas.ts';
 import sharp from 'sharp';
 import { Queue } from 'bullmq';
 import { createContext, closeContext } from '@maos-em-oracao/backend-core/context';
@@ -295,6 +296,7 @@ try {
   await check('catálogo e operações persistidos sem hashes de senha', async () => {
     product = (await customer.data('catalog/products'))[0];
     ops = await owner.data('admin/operations');
+    operationsSchema.parse(ops);
     assert.equal(ops.products.length, 6);
     assert(!JSON.stringify(ops).includes('passwordHash'));
     assert.equal(ops.orders.length, 0);
@@ -302,7 +304,7 @@ try {
   await check('cadastro e isolamento da conta', async () => {
     first = await register(customer, 'primeiro');
     second = await register(other, 'segundo');
-    const a = await customer.data('account');
+    const a = accountSchema.parse(await customer.data('account'));
     assert.equal(a.customer.email, first.email);
     assert.equal(a.orders.length, 0);
     assert.equal((await customer.call('admin/operations')).status, 403);
@@ -336,7 +338,7 @@ try {
     const q = await quote(guest, product),
       r = await buy(guest, checkout(product, q, 'visitante-' + runId + '@example.test'));
     assert.equal(r.status, 200);
-    const account = await guest.data('account');
+    const account = accountSchema.parse(await guest.data('account'));
     assert.equal(account.orders.length, 1);
     assert.equal((await guest.call('orders/' + orderId + '/payment')).status, 404);
   });
@@ -1137,6 +1139,8 @@ try {
       'entrega conciliada',
     );
   });
+  operationsSchema.parse(await owner.data('admin/operations'));
+  accountSchema.parse(await customer.data('account'));
   console.log(
     `Backend: ${passed} fluxos passaram com PostgreSQL, Redis, API e worker reais; provedores em mock, sem transações externas.`,
   );
