@@ -462,6 +462,45 @@ try {
       404,
     );
   });
+  await check('desafio 3DS mantém Pix e produção bloqueados até confirmar o cartão', async () => {
+    const q = await quote(customer, product),
+      input = checkout(product, q, first.email, 'split');
+    input.paymentToken.token = 'mock-challenge';
+    const r = await buy(customer, input);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.data.paymentAction.type, 'challenge');
+    const id = r.body.data.orderId,
+      intent = await ctx.db.paymentIntent.findUnique({
+        where: { orderId: id },
+        include: { parts: true },
+      }),
+      card = intent.parts.find((p) => p.method === 'card');
+    assert.equal(intent.parts.find((p) => p.method === 'pix').providerId, null);
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: id } }), 0);
+    const service = new (await import('@maos-em-oracao/backend-core/payments')).PaymentsService(
+      ctx,
+    );
+    await service.apply({
+      id: card.providerId,
+      reference: card.id,
+      status: 'approved',
+      amountCents: card.amountCents,
+      currency: 'BRL',
+      refundedCents: 0,
+      updatedAt: new Date().toISOString(),
+      action: { type: 'none' },
+    });
+    await engine.dispatch();
+    await until(
+      async () =>
+        (await ctx.db.paymentPart.findFirst({ where: { intentId: intent.id, method: 'pix' } }))
+          ?.status === 'pending',
+      'Pix após confirmação 3DS',
+    );
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: id } }), 0);
+    await owner.command({ type: 'charge.pay', id: intent.id });
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: id } }), 1);
+  });
   await check('estoque disputa última unidade sem saldo negativo', async () => {
     ops = await owner.data('admin/operations');
     await owner.command({

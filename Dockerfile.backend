@@ -1,4 +1,4 @@
-FROM node:24.14.1-alpine@sha256:8510330d3eb72c804231a834b1a8ebb55cb3796c3e4431297a24d246b8add4d5 AS build
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS build
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
@@ -15,7 +15,7 @@ RUN npm run backend:build
 RUN npm prune --omit=dev --ignore-scripts --no-fund
 RUN MEO_BOOTSTRAP=false node apps/api/dist/main.mjs
 
-FROM node:24.14.1-alpine@sha256:8510330d3eb72c804231a834b1a8ebb55cb3796c3e4431297a24d246b8add4d5
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216
 WORKDIR /app
 RUN apk add --no-cache openssl && mkdir -p /app/var/backend && chown node:node /app/var/backend
 ENV NODE_ENV=production

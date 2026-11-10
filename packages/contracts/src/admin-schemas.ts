@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { httpsUrlSchema } from './urls';
 const publishedAssetUrl = z.union([
-  z.url().refine((value) => new URL(value).protocol === 'https:', 'Use HTTPS.'),
+  httpsUrlSchema,
   z.string().regex(/^\/api\/media\/public\/[a-zA-Z0-9_-]+\/(image\.webp|preview\.glb|video)$/),
 ]);
 export const permissionSchema = z.enum([

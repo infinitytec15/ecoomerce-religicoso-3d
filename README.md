@@ -4,7 +4,7 @@ Loja de peças cristãs em impressão 3D, com clube mensal, área do cliente e a
 
 ## Rodar
 
-Requer Node.js 22.12+ (Node 24 recomendado) e npm.
+Requer Node.js 24+ e npm. Node 26.13 LTS é usado nas imagens de deploy e na CI; o ambiente local também foi verificado com Node 24.14.
 
 ```sh
 npm ci

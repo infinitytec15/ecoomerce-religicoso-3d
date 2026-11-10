@@ -101,9 +101,17 @@ export class PaymentsService {
     const o = requireValue(
       await this.ctx.db.order.findUnique({ where: { id: orderId }, include: orderInclude }),
     );
-    const part = o.payment?.parts.find(
-      (p) => p.method === 'pix' && ['pending', 'created', 'creating'].includes(p.status),
+    const challenge = o.payment?.parts.find(
+      (p) =>
+        p.status === 'pending' &&
+        p.action &&
+        data<{ type?: string }>(p.action).type === 'challenge',
     );
+    const part =
+      challenge ||
+      o.payment?.parts.find(
+        (p) => p.method === 'pix' && ['pending', 'created', 'creating'].includes(p.status),
+      );
     return {
       orderId: o.id,
       ...(o.subscriptionId ? { subscriptionId: o.subscriptionId } : {}),
@@ -246,7 +254,12 @@ export class PaymentsService {
         data: {
           providerId: result.id,
           status,
-          action: json(result.action),
+          action:
+            result.action.type === 'none' &&
+            status === 'pending' &&
+            data<{ type?: string }>(part.action)?.type === 'challenge'
+              ? json(part.action)
+              : json(result.action),
           refundedCents: refunded,
           providerUpdatedAt: updatedAt,
           ...(result.feeCents !== undefined ? { feeCents: result.feeCents } : {}),

@@ -19,6 +19,45 @@ const payment = {
   date_last_updated: '2026-11-10T12:00:00Z',
 };
 describe('Mercado Pago por contrato HTTP', () => {
+  it('encaminha o desafio 3DS do emissor e habilita autenticação na cobrança', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          ...payment,
+          status: 'pending',
+          status_detail: 'pending_challenge',
+          three_ds_info: {
+            external_resource_url: 'https://acs.example.test/challenge',
+            creq: 'issuer-request',
+          },
+        }),
+      ),
+      service = createPayments(config, fetcher);
+    const result = await service.create({
+      id: 'part-one',
+      key: 'challenge-key',
+      amountCents: 2990,
+      method: 'card',
+      email: 'cliente@example.test',
+      description: 'Pedido',
+      card: {
+        token: 'transient-token',
+        paymentMethodId: 'visa',
+        installments: 1,
+        payer: { email: 'cliente@example.test' },
+      },
+    });
+    expect(result.action).toEqual({
+      type: 'challenge',
+      paymentId: '42',
+      externalResourceUrl: 'https://acs.example.test/challenge',
+      creq: 'issuer-request',
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toHaveProperty(
+      'three_d_secure_mode',
+      'optional',
+    );
+  });
+
   it('envia token transitório, referência e chave idempotente sem PAN', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(payment)),
       p = createPayments(config, fetcher),

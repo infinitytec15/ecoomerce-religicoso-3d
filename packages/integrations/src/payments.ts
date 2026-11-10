@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { PaymentToken, PaymentAction } from '@maos-em-oracao/contracts';
+import { httpsUrlSchema, type PaymentToken, type PaymentAction } from '@maos-em-oracao/contracts';
 import { ProviderError, configured, providerJson, toCents, type Fetcher } from './http';
 export interface PaymentConfig {
   INTEGRATIONS_MODE: 'mock' | 'live';
@@ -24,6 +24,14 @@ export interface PaymentResult {
 const paymentResponse = z.object({
   id: z.union([z.string(), z.number()]),
   status: z.string(),
+  status_detail: z.string().optional(),
+  three_ds_info: z
+    .object({
+      external_resource_url: httpsUrlSchema,
+      creq: z.string().min(1).max(16000),
+    })
+    .nullable()
+    .optional(),
   transaction_amount: z.number(),
   currency_id: z.string(),
   external_reference: z.string().nullable().optional(),
@@ -81,14 +89,22 @@ export function createPayments(config: PaymentConfig, fetcher: Fetcher = fetch) 
       ...(p.fee_details
         ? { feeCents: p.fee_details.reduce((n, fee) => n + toCents(fee.amount), 0) }
         : {}),
-      action: pix?.qr_code
-        ? {
-            type: 'pix',
-            qrCode: pix.qr_code_base64 ? `data:image/png;base64,${pix.qr_code_base64}` : '',
-            copyPaste: pix.qr_code,
-            expiresAt: p.date_of_expiration || new Date(Date.now() + 1800000).toISOString(),
-          }
-        : { type: 'none' },
+      action:
+        p.status_detail === 'pending_challenge' && p.three_ds_info
+          ? {
+              type: 'challenge',
+              paymentId: String(p.id),
+              externalResourceUrl: p.three_ds_info.external_resource_url,
+              creq: p.three_ds_info.creq,
+            }
+          : pix?.qr_code
+            ? {
+                type: 'pix',
+                qrCode: pix.qr_code_base64 ? `data:image/png;base64,${pix.qr_code_base64}` : '',
+                copyPaste: pix.qr_code,
+                expiresAt: p.date_of_expiration || new Date(Date.now() + 1800000).toISOString(),
+              }
+            : { type: 'none' },
     };
   }
   return {
@@ -110,9 +126,11 @@ export function createPayments(config: PaymentConfig, fetcher: Fetcher = fetch) 
           id: 'mock-' + input.id,
           status:
             input.method === 'card'
-              ? input.card?.token === 'mock-declined'
-                ? 'rejected'
-                : 'approved'
+              ? input.card?.token === 'mock-challenge'
+                ? 'pending'
+                : input.card?.token === 'mock-declined'
+                  ? 'rejected'
+                  : 'approved'
               : 'pending',
           amountCents: input.amountCents,
           reference: input.id,
@@ -120,14 +138,21 @@ export function createPayments(config: PaymentConfig, fetcher: Fetcher = fetch) 
           updatedAt: new Date().toISOString(),
           refundedCents: 0,
           action:
-            input.method === 'pix'
+            input.card?.token === 'mock-challenge'
               ? {
-                  type: 'pix',
-                  qrCode: '',
-                  copyPaste: 'HOMOLOGACAO-SEM-VALOR-' + input.id,
-                  expiresAt: new Date(Date.now() + 1800000).toISOString(),
+                  type: 'challenge',
+                  paymentId: 'mock-' + input.id,
+                  externalResourceUrl: 'https://acs.example.test/challenge',
+                  creq: 'fictitious-challenge-for-integration-tests',
                 }
-              : { type: 'none' },
+              : input.method === 'pix'
+                ? {
+                    type: 'pix',
+                    qrCode: '',
+                    copyPaste: 'HOMOLOGACAO-SEM-VALOR-' + input.id,
+                    expiresAt: new Date(Date.now() + 1800000).toISOString(),
+                  }
+                : { type: 'none' },
         };
       const card = input.card;
       return parse(
@@ -147,6 +172,7 @@ export function createPayments(config: PaymentConfig, fetcher: Fetcher = fetch) 
               ? { date_of_expiration: new Date(Date.now() + 1800000).toISOString() }
               : {
                   token: card!.token,
+                  three_d_secure_mode: 'optional',
                   installments: card!.installments,
                   ...(card!.issuerId ? { issuer_id: card!.issuerId } : {}),
                 }),

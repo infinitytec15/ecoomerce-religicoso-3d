@@ -19,7 +19,7 @@ O web permanece na raiz para preservar o projeto Vercel. API e worker são execu
 
 ## Rodar localmente com backend
 
-Use Node 24 e Docker Desktop com engine Linux ativo. Os comandos não substituem um arquivo de ambiente existente.
+Use Node 24+ (Node 26.13 LTS recomendado) e Docker Desktop com engine Linux ativo. Os comandos não substituem um arquivo de ambiente existente.
 
 ```powershell
 npm ci
@@ -60,7 +60,7 @@ Tokens OAuth, envelopes de e-mail e webhooks são cifrados com AES-256-GCM. Guar
 
 Preço, variação, frete, desconto e estoque são calculados pelo servidor. Cotação guarda fingerprint da cesta e validade. Chaves idempotentes impedem duplicar checkout, adesão, ajustes e comandos administrativos. Estoque e reservas têm constraints e locks transacionais; produção exige pagamento integral.
 
-Pix e cartão usam Checkout Transparente. O navegador envia somente token do SDK Mercado Pago. Cartão combinado é processado antes do Pix; as duas partes precisam ser aprovadas. Expiração cancela a parte pendente e agenda compensação da parte capturada. Um Pix simples vencido pode ser renovado no mesmo pedido, com nova referência e nova verificação de estoque. Cartão recusado exige nova tokenização/compra; tentativas de resultado desconhecido precisam de conciliação antes de outra cobrança.
+Pix e cartão usam Checkout Transparente. O navegador envia somente token do SDK Mercado Pago. Quando o emissor exige 3DS, a ação retorna ao Status Screen Brick para o cliente confirmar com seu banco; o servidor aguarda a confirmação do provedor. Cartão combinado é processado antes do Pix; as duas partes precisam ser aprovadas. Expiração cancela a parte pendente e agenda compensação da parte capturada. Um Pix simples vencido pode ser renovado no mesmo pedido, com nova referência e nova verificação de estoque. Cartão recusado exige nova tokenização/compra; tentativas de resultado desconhecido precisam de conciliação antes de outra cobrança.
 
 No clube, cartão usa preapproval nativo do Mercado Pago; autorização não significa mensalidade paga. Faturas são verificadas pela cadeia assinatura → fatura → pagamento. Há unicidade por contrato/competência e referência de pagamento. Cobrança duplicada, ciclo suspenso/cancelado ou falta de curadoria/estoque geram exceção financeira e estorno durável. Replay de uma mensalidade antiga não cria outra cesta nem a estorna após cancelamento. Pix mensal é cobrança a confirmar pelo cliente, sem débito automático. O scheduler cria ciclos e acompanha vencimentos. Prepare e ative a curadoria de cada competência antes da renovação.
 
@@ -123,6 +123,8 @@ No web: build com `NEXT_PUBLIC_DATA_MODE=http`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PU
 
 Configure callbacks públicos `/api/v1/webhooks/mercado-pago`, `/resend`, `/bunny-stream` e `/melhor-envio` nos provedores. Resend exige domínio verificado, SPF/DKIM e secret do webhook; Bunny exige zonas e biblioteca; Melhor Envio exige aplicação/OAuth. Habilite `PAYMENTS_ENABLED`, `EMAIL_ENABLED` e, após homologar compensação, `SPLIT_PAYMENT_ENABLED`.
 
+As imagens e a CI usam Node 26.13.0 LTS, com digest oficial fixado. O código mantém compatibilidade com Node 24 no ambiente local.
+
 Código e testes locais não equivalem a homologação comercial. Antes de abrir vendas, execute os cenários sandbox dos provedores com as credenciais da loja e confirme entrega de e-mail, cartão/Pix, uma recorrência, cancelamento/estorno, cotação/etiqueta e CORS do preview. Não foram usadas credenciais reais nem realizadas cobranças, postagens ou disparos externos durante QA.
 
-Fontes: [Railway monorepo](https://docs.railway.com/deployments/monorepo), [Config as Code](https://docs.railway.com/config-as-code), [Mercado Pago](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/overview), [Melhor Envio](https://docs.melhorenvio.com.br/docs/compra-de-fretes), [Bunny TUS](https://bunny.net/docs/stream/tus-resumable-uploads), [Resend](https://resend.com/docs).
+Fontes: [Node LTS](https://nodejs.org/en/about/previous-releases), [Railway monorepo](https://docs.railway.com/deployments/monorepo), [Config as Code](https://docs.railway.com/config-as-code), [Mercado Pago](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/overview), [Melhor Envio](https://docs.melhorenvio.com.br/docs/compra-de-fretes), [Bunny TUS](https://bunny.net/docs/stream/tus-resumable-uploads), [Resend](https://resend.com/docs).

@@ -354,6 +354,7 @@ export interface SubscribeInput {
   paymentToken?: PaymentToken;
 }
 export type PaymentAction =
+  | { type: 'challenge'; paymentId: string; externalResourceUrl: string; creq: string }
   | { type: 'none' }
   | { type: 'redirect'; url: string }
   | { type: 'pix'; qrCode: string; copyPaste: string; expiresAt: string };

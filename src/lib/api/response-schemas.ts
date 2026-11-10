@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpsUrlSchema } from '@maos-em-oracao/contracts';
 import {
   workspaceSchema,
   invitationSchema,
@@ -257,12 +258,16 @@ export const checkoutResultSchema = z.object({
   orderId: id,
   subscriptionId: text.optional(),
   paymentAction: z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('challenge'),
+      paymentId: z.string().min(1),
+      externalResourceUrl: httpsUrlSchema,
+      creq: z.string().min(1).max(16000),
+    }),
     z.object({ type: z.literal('none') }),
     z.object({
       type: z.literal('redirect'),
-      url: z
-        .url()
-        .refine((url) => new URL(url).protocol === 'https:', 'O provedor deve usar HTTPS.'),
+      url: httpsUrlSchema,
     }),
     z.object({ type: z.literal('pix'), qrCode: text, copyPaste: text, expiresAt: text }),
   ]),

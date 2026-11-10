@@ -1,5 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { useRef } from 'react';
 import { HttpClient } from '@/lib/api/http';
 import { checkoutResultSchema } from '@/lib/api/response-schemas';
@@ -11,6 +12,10 @@ import { Icon } from '@/components/ui/icon';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { errorMessage } from '@/lib/api/contracts';
+const MercadoPagoChallenge = dynamic(() => import('./mercado-pago-challenge'), {
+  ssr: false,
+  loading: () => <p role="status">Preparando a confirmação do banco…</p>,
+});
 export function SuccessView({ orderId }: { orderId?: string }) {
   const retryKey = useRef<string | null>(null),
     cache = useQueryClient();
@@ -147,6 +152,9 @@ export function SuccessView({ orderId }: { orderId?: string }) {
             <a className="btn full payment-provider-link" href={action.url}>
               Continuar no provedor de pagamento <Icon name="arrow" />
             </a>
+          )}
+          {pending && !IS_DEMO && action?.type === 'challenge' && (
+            <MercadoPagoChallenge action={action} key={action.paymentId} />
           )}
           {pending && !IS_DEMO && action?.type === 'pix' && (
             <div className="stack payment-panel">
