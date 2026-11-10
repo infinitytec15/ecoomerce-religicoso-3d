@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { HttpClient } from '@/lib/api/http';
 import { checkoutResultSchema } from '@/lib/api/response-schemas';
 import { useAccount, useCommand, useGateway, useSession } from '@/lib/api/query';
@@ -11,6 +11,7 @@ import { Button, ButtonLink } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { PrayingWait } from '@/components/ui/praying-wait';
 import { errorMessage } from '@/lib/api/contracts';
 const MercadoPagoChallenge = dynamic(() => import('./mercado-pago-challenge'), {
   ssr: false,
@@ -44,7 +45,14 @@ export function SuccessView({ orderId }: { orderId?: string }) {
       enabled: !!order && !IS_DEMO,
       refetchInterval: 5000,
     }),
-    confirm = useCommand((g, id: string) => g.confirmDemoPayment(id));
+    confirm = useCommand((g, id: string) => g.confirmDemoPayment(id)),
+    awaiting = !IS_DEMO && charge?.status === 'Pendente',
+    refetchAccount = account.refetch;
+  // The payment poll checks the provider; the order/charge status shown here lives in the
+  // account snapshot, so refresh it on every poll until the charge leaves "Pendente".
+  useEffect(() => {
+    if (awaiting && payment.dataUpdatedAt) void refetchAccount();
+  }, [awaiting, payment.dataUpdatedAt, refetchAccount]);
   if (!session.isPending && session.data?.role !== 'customer')
     return (
       <main id="main" className="container">
@@ -82,9 +90,22 @@ export function SuccessView({ orderId }: { orderId?: string }) {
   return (
     <main id="main" className="container">
       <section className="success">
-        <div className="success-icon">
-          <Icon name={pending ? 'pix' : 'check'} />
-        </div>
+        {awaiting ? (
+          <PrayingWait
+            title={
+              action?.type === 'pix'
+                ? 'Aguardando a confirmação do seu Pix…'
+                : action?.type === 'challenge'
+                  ? 'Aguardando a confirmação do seu banco…'
+                  : 'Confirmando seu pagamento…'
+            }
+            description="Esta página atualiza sozinha assim que o pagamento for confirmado."
+          />
+        ) : (
+          <div className="success-icon">
+            <Icon name={pending ? 'pix' : 'check'} />
+          </div>
+        )}
         <h1>
           {pending
             ? 'Acompanhe seu pagamento.'
@@ -158,6 +179,10 @@ export function SuccessView({ orderId }: { orderId?: string }) {
           )}
           {pending && !IS_DEMO && action?.type === 'pix' && (
             <div className="stack payment-panel">
+              {action.qrCode && (
+                // eslint-disable-next-line @next/next/no-img-element -- provider data URL
+                <img className="pix-qr" src={action.qrCode} alt="QR Code do Pix para pagamento" />
+              )}
               <label>
                 Pix copia e cola
                 <textarea readOnly value={action.copyPaste} />

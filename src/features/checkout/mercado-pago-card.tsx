@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
 import type { PaymentToken } from '@/lib/domain/types';
 import { money } from '@/lib/domain/format';
+import { PrayingWait } from '@/components/ui/praying-wait';
 const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
 if (typeof window !== 'undefined' && publicKey) initMercadoPago(publicKey, { locale: 'pt-BR' });
 export default function MercadoPagoCard({
@@ -17,7 +18,8 @@ export default function MercadoPagoCard({
   subscription?: boolean;
 }) {
   const key = publicKey,
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    [processing, setProcessing] = useState(false);
 
   if (!key)
     return (
@@ -33,6 +35,13 @@ export default function MercadoPagoCard({
         {money(amountCents)}
         {subscription ? ' por mês, com renovação automática.' : ''}
       </p>
+      {processing && (
+        <PrayingWait
+          compact
+          title={subscription ? 'Autorizando sua assinatura…' : 'Confirmando seu pagamento…'}
+          description="Não feche esta página. Seu banco pode pedir uma confirmação."
+        />
+      )}
       {
         <CardPayment
           id="meo-card-payment"
@@ -40,6 +49,7 @@ export default function MercadoPagoCard({
           customization={{ paymentMethods: { maxInstallments: subscription ? 1 : 3 } }}
           onSubmit={async (data) => {
             setError('');
+            setProcessing(true);
             try {
               await onSubmit({
                 token: data.token,
@@ -54,6 +64,8 @@ export default function MercadoPagoCard({
             } catch (e) {
               setError(e instanceof Error ? e.message : 'Não foi possível concluir o pagamento.');
               throw e;
+            } finally {
+              setProcessing(false);
             }
           }}
           onError={() =>

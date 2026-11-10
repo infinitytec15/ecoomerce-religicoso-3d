@@ -16,6 +16,8 @@ const schema = z.object({
     .string()
     .refine((v) => Buffer.from(v, 'base64').length === 32, 'Use 32 bytes em base64.'),
   INTEGRATIONS_MODE: z.enum(['mock', 'live']).default('live'),
+  // Development only: homologate live payments before Melhor Envio is connected.
+  SHIPPING_SIMULATED: z.enum(['true', 'false']).default('false'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(4001),
   COOKIE_NAME: z
@@ -73,6 +75,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
   const web = new URL(c.PUBLIC_WEB_URL);
   if (c.NODE_ENV === 'production' && (c.INTEGRATIONS_MODE === 'mock' || web.protocol !== 'https:'))
     throw new Error('Produção exige HTTPS e integrações live.');
+  if (c.NODE_ENV === 'production' && c.SHIPPING_SIMULATED === 'true')
+    throw new Error('Frete simulado não é permitido em produção.');
   if (
     web.protocol !== 'https:' &&
     !(c.NODE_ENV !== 'production' && ['127.0.0.1', 'localhost'].includes(web.hostname))

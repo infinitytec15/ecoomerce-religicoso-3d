@@ -19,7 +19,8 @@ import { ProductImage } from '@/components/ui/product-image';
 import { Steps } from '@/components/ui/steps';
 import { AddressFields, emptyAddress } from '@/components/ui/address-fields';
 import { Form } from '@/components/ui/form';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState } from '@/components/ui/states';
+import { PrayingWait } from '@/components/ui/praying-wait';
 export function ClubLanding({ initialSettings }: { initialSettings: StoreSettings }) {
   const { data: s = initialSettings } = useSettings(initialSettings);
   return (
@@ -248,7 +249,10 @@ export function SubscriptionCheckout({ initialSettings }: { initialSettings: Sto
   if (submitted)
     return (
       <main id="main" className="container">
-        <LoadingState label="Preparando seu primeiro capítulo no clube…" />
+        <PrayingWait
+          title="Preparando seu primeiro capítulo no clube…"
+          description="Em instantes você verá a confirmação da sua assinatura."
+        />
       </main>
     );
   if (existing && session.data?.role === 'customer')

@@ -162,7 +162,11 @@ export function createPayments(config: PaymentConfig, fetcher: Fetcher = fetch) 
             transaction_amount: input.amountCents / 100,
             description: input.description.slice(0, 240),
             external_reference: input.id,
-            notification_url: config.PUBLIC_API_URL + '/api/v1/webhooks/mercado-pago',
+            // Mercado Pago rejects non-HTTPS callbacks (e.g. local homologation);
+            // the webhook registered in the panel still delivers those events.
+            ...(config.PUBLIC_API_URL.startsWith('https://')
+              ? { notification_url: config.PUBLIC_API_URL + '/api/v1/webhooks/mercado-pago' }
+              : {}),
             payment_method_id: input.method === 'pix' ? 'pix' : card!.paymentMethodId,
             payer: {
               email: input.email,

@@ -86,7 +86,22 @@ describe('Mercado Pago por contrato HTTP', () => {
       installments: 2,
     });
     expect(body).not.toHaveProperty('card_number');
+    expect(body.notification_url).toBe('https://api.example.test/api/v1/webhooks/mercado-pago');
     expect(result.amountCents).toBe(2990);
+  });
+  it('omite notification_url fora de HTTPS, que o Mercado Pago recusa', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(payment));
+    await createPayments({ ...config, PUBLIC_API_URL: 'http://127.0.0.1:4000' }, fetcher).create({
+      id: 'part-one',
+      key: 'local-key',
+      amountCents: 2990,
+      method: 'pix',
+      email: 'cliente@example.test',
+      description: 'Pedido local',
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).not.toHaveProperty(
+      'notification_url',
+    );
   });
   it('Pix devolve código, imagem e vencimento reais do provedor', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(

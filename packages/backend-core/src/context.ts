@@ -24,7 +24,9 @@ export function createContext(config = loadConfig()): Context {
     db: createDatabase(config.DATABASE_URL),
     redis,
     payments: createPayments(config),
-    shipping: createShipping(config),
+    shipping: createShipping(
+      config.SHIPPING_SIMULATED === 'true' ? { ...config, INTEGRATIONS_MODE: 'mock' } : config,
+    ),
     media: createMedia(config),
   };
 }

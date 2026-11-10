@@ -16,7 +16,8 @@ import { Button, ButtonLink } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Form } from '@/components/ui/form';
 import { AddressFields, emptyAddress } from '@/components/ui/address-fields';
-import { EmptyState, LoadingState, Notice } from '@/components/ui/states';
+import { PrayingWait } from '@/components/ui/praying-wait';
+import { EmptyState, Notice } from '@/components/ui/states';
 import { Steps } from '@/components/ui/steps';
 import { PriceSummary } from './price-summary';
 export function CheckoutView() {
@@ -105,7 +106,10 @@ export function CheckoutView() {
   if (submitted)
     return (
       <main id="main" className="container">
-        <LoadingState label="Preparando a confirmação do seu pedido…" />
+        <PrayingWait
+          title="Preparando a confirmação do seu pedido…"
+          description="Em instantes você verá o pagamento e o acompanhamento do pedido."
+        />
       </main>
     );
   if (!items.length)
@@ -310,6 +314,13 @@ export function CheckoutView() {
                       ? 'Entendi que esta compra é uma simulação e não cria cobrança real.'
                       : 'Revisei meus dados, os itens e o valor deste pedido.'}
                   </label>
+                  {create.isPending && !IS_DEMO && (
+                    <PrayingWait
+                      compact
+                      title="Registrando seu pedido…"
+                      description="Estamos gerando o pagamento com o Mercado Pago."
+                    />
+                  )}
                   <div className="form-actions">
                     <Button type="button" variant="text" onClick={() => setStep(1)}>
                       Voltar

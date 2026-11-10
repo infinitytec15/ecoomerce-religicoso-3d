@@ -84,6 +84,15 @@ describe('segurança e regras da API', () => {
         PUBLIC_WEB_URL: 'http://external.example',
       }),
     ).toThrow();
+    const live = {
+      ...Object.fromEntries(Object.entries(config).map(([k, v]) => [k, String(v)])),
+      NODE_ENV: 'production',
+      INTEGRATIONS_MODE: 'live',
+      PUBLIC_WEB_URL: 'https://shop.example',
+      PUBLIC_API_URL: 'https://api.example',
+    };
+    expect(loadConfig(live).SHIPPING_SIMULATED).toBe('false');
+    expect(() => loadConfig({ ...live, SHIPPING_SIMULATED: 'true' })).toThrow(/Frete simulado/);
   });
   it('neutraliza fórmulas CSV e conserva fim de mês', () => {
     expect(safeCsv('=HYPERLINK("https://example.test")').startsWith('"\'')).toBe(true);
