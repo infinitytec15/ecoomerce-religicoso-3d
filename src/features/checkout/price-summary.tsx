@@ -6,14 +6,18 @@ export function PriceSummary({
   items,
   shippingCents,
   coupon = '',
+  quotedTotals,
+  shippingPending = false,
   children,
 }: {
   items: CartItem[];
   shippingCents: number;
   coupon?: string;
+  quotedTotals?: ReturnType<typeof calculateTotals>;
+  shippingPending?: boolean;
   children?: React.ReactNode;
 }) {
-  const totals = calculateTotals(items, shippingCents, coupon);
+  const totals = quotedTotals || calculateTotals(items, shippingCents, coupon);
   return (
     <aside className="summary">
       <h2>Suas escolhas</h2>
@@ -43,7 +47,13 @@ export function PriceSummary({
       )}
       <div className="money-line">
         <span>Frete</span>
-        <span>{shippingCents === 0 ? 'Incluído' : money(shippingCents)}</span>
+        <span>
+          {shippingPending
+            ? 'A calcular'
+            : totals.shippingCents === 0
+              ? 'Incluído'
+              : money(totals.shippingCents)}
+        </span>
       </div>
       <div className="money-line total">
         <span>Total</span>

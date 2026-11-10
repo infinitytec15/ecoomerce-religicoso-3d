@@ -178,7 +178,14 @@ export const accountSchema = z.object({
 });
 export const operationsSchema = z.object({
   version: z.literal(2),
-  workspace: workspaceSchema,
+  workspace: workspaceSchema.extend({
+    originCep: text,
+    originStreet: text,
+    originNumber: text,
+    originDistrict: text,
+    originCity: text,
+    originState: text,
+  }),
   invitations: z.array(invitationSchema),
   editions: z.array(editionSchema),
   coupons: z.array(couponSchema),

@@ -113,6 +113,15 @@ export class OrdersService {
         })
         .parse(value),
       s = await settings(this.ctx.db);
+    if (
+      this.ctx.config.INTEGRATIONS_MODE === 'live' &&
+      (!s.workspace.originCep || s.workspace.originStreet === 'Rua Exemplo')
+    )
+      throw new DomainError(
+        'ORIGIN_REQUIRED',
+        'Configure o endereço real do remetente nas configurações da loja.',
+        409,
+      );
     const products: QuoteProduct[] = [];
     let subtotal = 0,
       lead = s.workspace.productionDays;
@@ -188,6 +197,74 @@ export class OrdersService {
       }),
     );
   }
+  private async coupon(
+    tx: Transaction | Context['db'],
+    code: string,
+    subtotal: number,
+    consume = false,
+  ) {
+    if (!code.trim()) return { discount: 0, couponId: undefined };
+    const c = await tx.coupon.findUnique({ where: { code: code.trim().toUpperCase() } });
+    if (!c) throw new DomainError('COUPON_INVALID', 'Cupom não encontrado.');
+    if (consume) await lock(tx as Transaction, 'coupon/' + c.id);
+    // Re-read under the checkout lock so concurrent orders cannot exceed the limit.
+    const current = consume ? await tx.coupon.findUniqueOrThrow({ where: { id: c.id } }) : c;
+    const v = data<Coupon>(current.data),
+      now = Date.now();
+    if (
+      !current.active ||
+      current.used >= current.limit ||
+      subtotal < v.minimumCents ||
+      now < new Date(v.startsAt).getTime() ||
+      now > new Date(v.endsAt.length === 10 ? v.endsAt + 'T23:59:59Z' : v.endsAt).getTime()
+    )
+      throw new DomainError('COUPON_INVALID', 'Este cupom não se aplica ao pedido.');
+    const discount = Math.min(
+      subtotal,
+      v.kind === 'percent' ? Math.round((subtotal * v.amount) / 100) : v.amount,
+    );
+    if (consume) await tx.coupon.update({ where: { id: c.id }, data: { used: { increment: 1 } } });
+    return { discount, couponId: c.id };
+  }
+  async estimate(value: unknown) {
+    const input = checkoutSchema
+      .pick({ items: true, coupon: true, shippingQuoteId: true })
+      .extend({
+        cep: z
+          .string()
+          .regex(/^\d{5}-?\d{3}$/)
+          .optional(),
+      })
+      .parse(value);
+    const items = await this.cart(this.ctx.db, input.items);
+    const subtotalCents = items.reduce((n, i) => n + i.unitCents * i.quantity, 0);
+    const { discount: discountCents } = await this.coupon(this.ctx.db, input.coupon, subtotalCents);
+    let shippingCents = 0;
+    if (input.shippingQuoteId) {
+      const quote = requireValue(
+        await this.ctx.db.shippingQuote.findUnique({ where: { id: input.shippingQuoteId } }),
+        'Calcule o frete novamente.',
+      );
+      if (
+        !input.cep ||
+        quote.expiresAt < new Date() ||
+        quote.cartHash !== (await this.fingerprint(input.items, input.cep))
+      )
+        throw new DomainError(
+          'QUOTE_EXPIRED',
+          'Os itens ou a cotação mudaram. Calcule o frete novamente.',
+          409,
+        );
+      shippingCents = quote.amountCents;
+    }
+    return {
+      items,
+      subtotalCents,
+      discountCents,
+      shippingCents,
+      totalCents: subtotalCents - discountCents + shippingCents,
+    };
+  }
   async checkout(actor: Actor | null, visitorKey: string, value: unknown, headerKey?: string) {
     const input = checkoutSchema.parse(value);
     if (this.ctx.config.INTEGRATIONS_MODE === 'live' && !input.address.document)
@@ -247,31 +324,7 @@ export class OrdersService {
           409,
         );
       const subtotal = items.reduce((n, i) => n + i.unitCents * i.quantity, 0);
-      let discount = 0,
-        couponId: string | undefined;
-      if (input.coupon.trim()) {
-        const c = await tx.coupon.findUnique({
-          where: { code: input.coupon.trim().toUpperCase() },
-        });
-        if (!c) throw new DomainError('COUPON_INVALID', 'Cupom não encontrado.');
-        await lock(tx, 'coupon/' + c.id);
-        const v = data<Coupon>(c.data),
-          now = Date.now();
-        if (
-          !c.active ||
-          c.used >= c.limit ||
-          subtotal < v.minimumCents ||
-          now < new Date(v.startsAt).getTime() ||
-          now > new Date(v.endsAt.length === 10 ? v.endsAt + 'T23:59:59Z' : v.endsAt).getTime()
-        )
-          throw new DomainError('COUPON_INVALID', 'Este cupom não se aplica ao pedido.');
-        discount = Math.min(
-          subtotal,
-          v.kind === 'percent' ? Math.round((subtotal * v.amount) / 100) : v.amount,
-        );
-        couponId = c.id;
-        await tx.coupon.update({ where: { id: c.id }, data: { used: { increment: 1 } } });
-      }
+      const { discount, couponId } = await this.coupon(tx, input.coupon, subtotal, true);
       const total = subtotal - discount + quote.amountCents;
       if (!Number.isSafeInteger(total) || total < 1 || total > 100000000)
         throw new DomainError('TOTAL_INVALID', 'O total do pedido não pode ser processado.');

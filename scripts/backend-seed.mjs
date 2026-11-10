@@ -5,7 +5,15 @@ import { createContext, closeContext } from '@maos-em-oracao/backend-core/contex
 import { hashPassword } from '@maos-em-oracao/backend-core/security';
 import { permissions } from '@maos-em-oracao/backend-core/shared';
 import { defaultWorkspaceSettings } from '@maos-em-oracao/contracts';
+if (
+  process.argv.includes('--if-configured') &&
+  (!process.env.BOOTSTRAP_ADMIN_EMAIL || !process.env.BOOTSTRAP_ADMIN_PASSWORD)
+) {
+  console.log('Bootstrap já concluído ou não solicitado.');
+  process.exit(0);
+}
 const ctx = createContext();
+const production = ctx.config.NODE_ENV === 'production';
 try {
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase(),
     password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
@@ -52,21 +60,34 @@ try {
       key: 'workspace',
       data: {
         ...defaultWorkspaceSettings,
+        ...(production
+          ? {
+              originCep: '',
+              originStreet: '',
+              originNumber: '',
+              originDistrict: '',
+              originCity: '',
+              originState: '',
+            }
+          : {}),
         privacyEmail: ctx.config.EMAIL_REPLY_TO,
         prayerReplyTo: ctx.config.EMAIL_REPLY_TO,
       },
     },
     update: {},
   });
-  if (process.env.SEED_DEMO_CATALOG === 'true') {
-    if (ctx.config.NODE_ENV === 'production')
+  if (
+    process.env.SEED_DEMO_CATALOG === 'true' ||
+    process.env.BOOTSTRAP_EXISTING_CATALOG === 'true'
+  ) {
+    if (production && process.env.SEED_DEMO_CATALOG === 'true')
       throw new Error('Catálogo fictício não pode ser importado em produção.');
     const seed = initialCatalog;
     for (const p of seed.products) {
       const image = `/assets/products/${seed.products.find((x) => x.img === p.img)?.id || seed.products[0].id}.webp`,
         assetId = 'fixture-' + p.id;
       const path = new URL('../public' + image, import.meta.url),
-        bytes = await readFile(path).catch(() => null);
+        bytes = production ? null : await readFile(path).catch(() => null);
       if (bytes)
         await ctx.db.mediaAsset.upsert({
           where: { id: assetId },
@@ -100,22 +121,33 @@ try {
         colors: p.colors,
         active: true,
         sku: 'MEO-' + p.id.toUpperCase(),
-        stock: 20,
+        stock: production ? 0 : 20,
         archived: false,
         model: null,
-        media: bytes
+        media: production
           ? [
               {
-                id: assetId,
+                id: 'catalog-' + p.id,
                 kind: 'image',
-                source: 'upload',
-                assetId,
-                url: image,
+                source: 'external',
+                url: new URL(image, ctx.config.PUBLIC_WEB_URL).href,
                 alt: p.name,
                 status: 'ready',
               },
             ]
-          : [],
+          : bytes
+            ? [
+                {
+                  id: assetId,
+                  kind: 'image',
+                  source: 'upload',
+                  assetId,
+                  url: image,
+                  alt: p.name,
+                  status: 'ready',
+                },
+              ]
+            : [],
       };
       await ctx.db.product.upsert({
         where: { id: p.id },
@@ -126,38 +158,40 @@ try {
           category: p.category,
           priceCents: product.priceCents,
           costCents: 0,
-          stock: 20,
+          stock: production ? 0 : 20,
           active: true,
           data: product,
         },
         update: {},
       });
     }
-    await ctx.db.printer.upsert({
-      where: { name: 'Impressora de homologação' },
-      create: { name: 'Impressora de homologação', capacity: 24 },
-      update: {},
-    });
-    await ctx.db.clubEdition.upsert({
-      where: { month: store.editionMonth },
-      create: {
-        month: store.editionMonth,
-        name: store.edition,
-        status: 'Programada',
-        active: true,
-        data: {
-          id: 'initial-edition',
+    if (!production) {
+      await ctx.db.printer.upsert({
+        where: { name: 'Impressora de homologação' },
+        create: { name: 'Impressora de homologação', capacity: 24 },
+        update: {},
+      });
+      await ctx.db.clubEdition.upsert({
+        where: { month: store.editionMonth },
+        create: {
           month: store.editionMonth,
           name: store.edition,
-          dispatchDay: store.dispatchDay,
           status: 'Programada',
-          profiles: store.profiles,
-          message: 'Curadoria demonstrativa para homologação local.',
-          notes: 'Valores e imagens fictícios.',
+          active: true,
+          data: {
+            id: 'initial-edition',
+            month: store.editionMonth,
+            name: store.edition,
+            dispatchDay: store.dispatchDay,
+            status: 'Programada',
+            profiles: store.profiles,
+            message: 'Curadoria demonstrativa para homologação local.',
+            notes: 'Valores e imagens fictícios.',
+          },
         },
-      },
-      update: {},
-    });
+        update: {},
+      });
+    }
   }
   console.log(
     'Configuração inicial concluída. Senha e secrets não exibidos; dados existentes preservados.',

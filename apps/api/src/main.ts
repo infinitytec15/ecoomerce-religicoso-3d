@@ -224,7 +224,7 @@ export async function bootstrap() {
     };
     SwaggerModule.setup('docs', app, spec);
   }
-  await app.listen(ctx.config.PORT, '0.0.0.0');
+  await app.listen(ctx.config.PORT, '::');
   Logger.log(
     `API pronta na porta ${ctx.config.PORT}; integrações ${ctx.config.INTEGRATIONS_MODE}.`,
     'Bootstrap',

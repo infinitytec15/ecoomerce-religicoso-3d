@@ -10,6 +10,7 @@ import { calculateTotals, validateSplit } from '@/lib/domain/commerce';
 import { centsFromInput, money } from '@/lib/domain/format';
 import { useCartStore } from '@/lib/store/cart';
 import { useCommand, useGateway } from '@/lib/api/query';
+import { errorMessage, type CommerceGateway } from '@/lib/api/contracts';
 import { IS_DEMO } from '@/lib/api/config';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -30,14 +31,34 @@ export function CheckoutView() {
     [installments, setInstallments] = useState(1),
     [coupon, setCoupon] = useState(''),
     [couponError, setCouponError] = useState(''),
+    [estimate, setEstimate] = useState<Awaited<ReturnType<CommerceGateway['estimate']>>>(),
     [submitted, setSubmitted] = useState(false),
     [cardRequested, setCardRequested] = useState(false),
     key = useRef<string>(''),
     gateway = useGateway(),
     router = useRouter(),
     create = useCommand((g, input: CheckoutInput) => g.checkout(input)),
-    shippingCents = rates.find((r) => r.id === shipping)?.cents ?? 1890,
-    totals = calculateTotals(items, shippingCents, coupon);
+    shippingCents = rates.find((r) => r.id === shipping)?.cents ?? (IS_DEMO ? 1890 : 0),
+    totals =
+      !IS_DEMO && estimate
+        ? estimate
+        : calculateTotals(items, shippingCents, IS_DEMO ? coupon : '');
+  async function refreshEstimate(code = coupon) {
+    const result = await gateway.estimate({
+      items: items.map(({ productId, quantity, color, sizeIndex, dedication }) => ({
+        productId,
+        quantity,
+        color,
+        sizeIndex,
+        dedication,
+      })),
+      coupon: code,
+      ...(address.cep ? { cep: address.cep } : {}),
+      shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
+    });
+    setEstimate(result);
+    return result;
+  }
   async function complete(paymentToken?: PaymentToken) {
     if (payment === 'split') validateSplit(totals.totalCents, centsFromInput(pixValue));
     if (!key.current) key.current = crypto.randomUUID();
@@ -144,7 +165,8 @@ export function CheckoutView() {
           ) : step === 1 ? (
             <Form
               className="stack"
-              onSubmit={() => {
+              onSubmit={async () => {
+                if (!IS_DEMO) await refreshEstimate();
                 setStep(2);
                 window.scrollTo(0, 0);
               }}
@@ -187,6 +209,7 @@ export function CheckoutView() {
               className="stack"
               onSubmit={async (d) => {
                 if (!d.has('consent')) throw new Error('Confirme os dados para continuar.');
+                if (!IS_DEMO) await refreshEstimate();
                 if (!IS_DEMO && payment !== 'pix') {
                   setCardRequested(true);
                   return;
@@ -300,16 +323,32 @@ export function CheckoutView() {
             </Form>
           )}
         </section>
-        <PriceSummary items={items} shippingCents={shippingCents} coupon={coupon}>
+        <PriceSummary
+          items={!IS_DEMO && estimate ? estimate.items : items}
+          shippingCents={shippingCents}
+          coupon={IS_DEMO ? coupon : ''}
+          quotedTotals={totals}
+          shippingPending={!rates.length}
+        >
           <form
             className="row"
             style={{ marginTop: 22 }}
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               const code = String(new FormData(e.currentTarget).get('coupon') || '')
                 .trim()
                 .toUpperCase();
-              if (code === 'PRIMEIRAFE') {
+              if (!IS_DEMO) {
+                try {
+                  await refreshEstimate(code);
+                  setCoupon(code);
+                  setCouponError('');
+                } catch (error) {
+                  setCoupon('');
+                  setCouponError(errorMessage(error));
+                  setEstimate(undefined);
+                }
+              } else if (code === 'PRIMEIRAFE') {
                 setCoupon(code);
                 setCouponError('');
               } else {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { invitationSchema } from '@/lib/domain/admin-schemas';
 import { ApiError, type CommerceGateway } from './contracts';
 import {
+  cartItemSchema,
   accountSchema,
   checkoutResultSchema,
   operationsSchema,
@@ -132,6 +133,20 @@ export class HttpGateway implements CommerceGateway {
   }
   updateProfile(input: { name: string; email: string; address?: Address }) {
     return this.client.request('account/profile', voidSchema, { method: 'PATCH', body: input });
+  }
+  estimate(input: Parameters<CommerceGateway['estimate']>[0]) {
+    const cents = z.number().int().nonnegative();
+    return this.client.request(
+      'checkout/estimate',
+      z.object({
+        items: z.array(cartItemSchema),
+        subtotalCents: cents,
+        discountCents: cents,
+        shippingCents: cents,
+        totalCents: cents,
+      }),
+      { method: 'POST', body: input },
+    );
   }
   checkout(input: CheckoutInput) {
     return this.client.request('orders', checkoutResultSchema, {

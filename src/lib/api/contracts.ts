@@ -1,5 +1,6 @@
 import type { LoginInput, NewsletterInput, PrayerInput } from '@/lib/domain/schemas';
 import type {
+  CartItem,
   AccountSnapshot,
   AdminCommand,
   CatalogQuery,
@@ -26,6 +27,18 @@ export interface CommerceGateway {
   recover(email: string, kind: 'customer' | 'staff'): Promise<{ message: string }>;
   account(): Promise<AccountSnapshot>;
   updateProfile(input: { name: string; email: string; address?: Address }): Promise<void>;
+  estimate(input: {
+    items: CheckoutInput['items'];
+    coupon: string;
+    cep?: string;
+    shippingQuoteId?: string;
+  }): Promise<{
+    items: CartItem[];
+    subtotalCents: number;
+    discountCents: number;
+    shippingCents: number;
+    totalCents: number;
+  }>;
   checkout(input: CheckoutInput): Promise<CheckoutResult>;
   subscribe(input: SubscribeInput): Promise<CheckoutResult>;
   confirmDemoPayment(id: string): Promise<void>;

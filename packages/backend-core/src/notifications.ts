@@ -76,7 +76,8 @@ export class Notifications {
   }
   async lowStock() {
     const config = await settings(this.ctx.db);
-    if (!config.workspace.notificationLowStock) return;
+    if (!config.workspace.notificationLowStock || config.workspace.inventoryPolicy !== 'stock')
+      return;
     const products = await this.ctx.db.$queryRaw<
       { id: string; name: string; stock: number; reserved: number }[]
     >`SELECT id,name,stock,reserved FROM "Product" WHERE active=true AND archived=false AND stock-reserved<=${config.store.lowStock} ORDER BY id LIMIT 1000`;

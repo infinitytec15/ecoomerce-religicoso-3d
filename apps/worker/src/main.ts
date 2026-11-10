@@ -25,7 +25,7 @@ const server = createServer(async (req, res) => {
   }
 });
 const port = Number(process.env.WORKER_PORT || process.env.PORT || ctx.config.WORKER_PORT);
-server.listen(port, '0.0.0.0');
+server.listen(port, '::');
 console.log(`Worker pronto na porta ${port}; integrações ${ctx.config.INTEGRATIONS_MODE}.`);
 async function shutdown() {
   if (closing) return;

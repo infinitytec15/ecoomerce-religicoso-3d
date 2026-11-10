@@ -154,6 +154,26 @@ export class DemoGateway implements CommerceGateway {
     });
     this.storage.saveSession({ ...session, name: input.name, email: input.email });
   }
+  async estimate(input: Parameters<CommerceGateway['estimate']>[0]) {
+    const { cartLine, calculateTotals } = await import('@/lib/domain/commerce');
+    const items = input.items.map((i) =>
+      cartLine(
+        requireValue(this.read().products.find((p) => p.id === i.productId)),
+        i.quantity,
+        i.color,
+        i.sizeIndex,
+        i.dedication,
+      ),
+    );
+    return {
+      items,
+      ...calculateTotals(
+        items,
+        input.shippingQuoteId === 'express' ? 2890 : input.shippingQuoteId ? 1890 : 0,
+        input.coupon,
+      ),
+    };
+  }
   async checkout(input: CheckoutInput): Promise<CheckoutResult> {
     checkoutSchema.parse(input);
     const result = this.mutate((state) => createShopOrder(state, input, this.storage.session()));

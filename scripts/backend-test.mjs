@@ -1084,10 +1084,91 @@ try {
     assert(totals.ordersInProgress > 0);
     assert.equal((await customer.call('admin/overview')).status, 403);
   });
+  await check('estimativa usa preços atuais e cupons do banco sem consumir limite', async () => {
+    const p = await ctx.db.product.findFirstOrThrow({ where: { active: true, archived: false } });
+    const item = {
+      productId: p.id,
+      quantity: 2,
+      color: p.data.colors[0],
+      sizeIndex: 0,
+      dedication: '',
+    };
+    const code = 'REAL' + runId.toUpperCase();
+    await ctx.db.coupon.create({
+      data: {
+        code,
+        active: true,
+        limit: 10,
+        used: 0,
+        data: {
+          kind: 'fixed',
+          amount: 1700,
+          minimumCents: 0,
+          startsAt: '2020-01-01',
+          endsAt: '2099-12-31',
+        },
+      },
+    });
+    const r = await owner.call('checkout/estimate', 'POST', { items: [item], coupon: code });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.discountCents, 1700);
+    assert.equal(r.body.data.totalCents, p.priceCents * 2 - 1700);
+    assert.equal((await ctx.db.coupon.findUniqueOrThrow({ where: { code } })).used, 0);
+    assert.equal(
+      (await owner.call('checkout/estimate', 'POST', { items: [item], coupon: 'INVALID-' + runId }))
+        .status,
+      400,
+    );
+    assert.equal(
+      (
+        await owner.call('checkout/estimate', 'POST', {
+          items: [item],
+          coupon: code,
+          shippingQuoteId: 'missing',
+          cep: '01001-000',
+        })
+      ).status,
+      404,
+    );
+  });
+  await check(
+    'todos os recursos e relatórios aplicam autenticação e entregam páginas válidas',
+    async () => {
+      for (const resource of [
+        'orders',
+        'subscriptions',
+        'customers',
+        'products',
+        'production',
+        'shipping',
+        'finance',
+        'expenses',
+        'support',
+        'prayers',
+        'campaigns',
+        'team',
+        'editions',
+        'coupons',
+        'inventory',
+        'audit',
+      ]) {
+        for (const prefix of ['admin/resources/', 'admin/reports/']) {
+          assert.equal((await new Client().call(prefix + resource)).status, 401, resource);
+          assert.equal((await owner.call(prefix + resource + '?limit=2')).status, 200, resource);
+          assert.equal((await customer.call(prefix + resource)).status, 403, resource);
+        }
+      }
+    },
+  );
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,
     );
+    const original = await ctx.db.appSetting.findUniqueOrThrow({ where: { key: 'workspace' } });
+    await ctx.db.appSetting.update({
+      where: { key: 'workspace' },
+      data: { data: { ...original.data, inventoryPolicy: 'stock' } },
+    });
     await mailer.lowStock();
     const count = await ctx.db.outboxEvent.count({
       where: { kind: 'email', key: { contains: 'operation/low-stock/' } },
@@ -1100,6 +1181,7 @@ try {
       }),
       count,
     );
+    await ctx.db.appSetting.update({ where: { key: 'workspace' }, data: { data: original.data } });
   });
   await check('webhook Mercado Pago rejeita assinatura inválida e deduplica', async () => {
     const value = { id: 'event-test-' + runId, type: 'payment', data: { id: '123456789' } },

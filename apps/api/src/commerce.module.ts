@@ -115,6 +115,9 @@ class OrdersController {
   constructor(@Inject(CONTEXT) private ctx: Context) {
     this.service = new OrdersService(ctx);
   }
+  @Post('checkout/estimate') @HttpCode(200) async estimate(@Body() body: unknown) {
+    return result(await this.service.estimate(body));
+  }
   @Post('orders')
   @HttpCode(200)
   @ApiBody({ schema: { $ref: '#/components/schemas/CheckoutInput' } })

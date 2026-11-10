@@ -65,7 +65,11 @@ const schema = z.object({
 });
 export type BackendConfig = z.infer<typeof schema>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig {
-  const c = schema.parse(env);
+  const c = schema.parse(
+    Object.fromEntries(
+      Object.entries(env).map(([key, value]) => [key, value?.trim() === '' ? undefined : value]),
+    ),
+  );
   const web = new URL(c.PUBLIC_WEB_URL);
   if (c.NODE_ENV === 'production' && (c.INTEGRATIONS_MODE === 'mock' || web.protocol !== 'https:'))
     throw new Error('Produção exige HTTPS e integrações live.');

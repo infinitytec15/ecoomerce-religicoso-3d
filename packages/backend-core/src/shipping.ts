@@ -366,7 +366,14 @@ export class ShippingService {
   private origin(s: WorkspaceSettings) {
     if (
       this.ctx.config.INTEGRATIONS_MODE === 'live' &&
-      (!s.document || s.originStreet === 'Rua Exemplo')
+      (!s.document ||
+        !s.originCep ||
+        !s.originStreet ||
+        !s.originNumber ||
+        !s.originDistrict ||
+        !s.originCity ||
+        !s.originState ||
+        s.originStreet === 'Rua Exemplo')
     )
       throw new DomainError(
         'ORIGIN_REQUIRED',
