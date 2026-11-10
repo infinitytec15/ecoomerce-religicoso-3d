@@ -6,6 +6,20 @@ import { demoAddress } from '@/lib/domain/schemas';
 const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 describe('HTTP boundary', () => {
+  it('calls the browser fetch API with its global receiver', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = function (this: typeof globalThis) {
+      expect(this).toBe(globalThis);
+      return Promise.resolve(response({ data: { message: 'OK' } }));
+    };
+    try {
+      expect(
+        await new HttpClient('/api').request('health', z.object({ message: z.string() })),
+      ).toEqual({ message: 'OK' });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
   it('turns connection failures into a recoverable service error', async () => {
     const client = new HttpClient(
       '/api',

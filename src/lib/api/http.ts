@@ -33,7 +33,7 @@ import type {
 export class HttpClient {
   constructor(
     private baseUrl = '/api/v1',
-    private fetcher: typeof fetch = fetch,
+    private fetcher: typeof fetch = (...args) => globalThis.fetch(...args),
   ) {}
   async request<T>(
     path: string,

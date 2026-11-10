@@ -7,16 +7,24 @@ const input = [];
 for await (const chunk of process.stdin) input.push(chunk);
 const credentials = JSON.parse(Buffer.concat(input).toString('utf8'));
 const origin = 'https://web-production-b7ece0dc.up.railway.app';
-let cookie = '';
+const cookies = new Map();
 const checks = [];
 async function call(path, method = 'GET', body) {
   const response = await fetch(origin + '/api/v1/' + path, {
     method,
-    headers: { origin, cookie, 'content-type': 'application/json' },
+    headers: {
+      origin,
+      cookie: [...cookies].map(([k, v]) => k + '=' + v).join('; '),
+      'content-type': 'application/json',
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(20000),
   });
-  for (const value of response.headers.getSetCookie()) cookie = value.split(';')[0];
+  for (const value of response.headers.getSetCookie()) {
+    const pair = value.split(';')[0],
+      index = pair.indexOf('=');
+    cookies.set(pair.slice(0, index), pair.slice(index + 1));
+  }
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   checks.push({ path, method, status: response.status });

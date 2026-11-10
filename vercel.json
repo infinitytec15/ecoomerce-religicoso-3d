@@ -1,4 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://web-production-b7ece0dc.up.railway.app/:path*",
+      "permanent": false
+    }
+  ]
 }
