@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { CLIENT_IP_HEADER, trustedForwardedIp } from '@maos-em-oracao/contracts';
 const routes =
   /^(checkout\/estimate|catalog\/products(?:\/[a-zA-Z0-9_-]+)?|store\/settings|auth\/(session|login|logout|recover|verify|reset|email-change|guest-order)|account(?:\/profile)?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/(unsubscribe|confirm))?|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|overview|integrations|jobs|webhooks|reports\/[a-zA-Z0-9_-]+|exports(?:\/[a-zA-Z0-9_-]+(?:\/download)?)?|resources\/[a-zA-Z0-9_-]+|orders\/[a-zA-Z0-9_-]+\/(fiscal|shipment)|integrations\/melhor-envio\/authorize|media\/[a-zA-Z0-9_-]+\/(status|original)|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content|renew))?))$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -96,8 +97,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (process.env.BFF_SHARED_SECRET) headers.set('x-bff-secret', process.env.BFF_SHARED_SECRET);
     const origin = request.headers.get('origin');
     if (origin) headers.set('origin', origin);
-    const forwarded = request.headers.get('x-forwarded-for');
-    if (forwarded) headers.set('x-forwarded-for', forwarded);
+    // Never relay the browser's own X-Forwarded-For: only the entry appended by our
+    // edge proxy is trustworthy, and the API keys its per-client limits on it.
+    const clientIp = trustedForwardedIp(request.headers.get('x-forwarded-for'));
+    if (clientIp) headers.set(CLIENT_IP_HEADER, clientIp);
     for (const name of ['cookie', 'content-type', 'idempotency-key', 'x-csrf-token']) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);

@@ -19,7 +19,13 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Prisma } from '@maos-em-oracao/database';
-import { checkoutSchema, subscriptionSchema, loginSchema } from '@maos-em-oracao/contracts';
+import {
+  checkoutSchema,
+  subscriptionSchema,
+  loginSchema,
+  CLIENT_IP_HEADER,
+  trustedForwardedIp,
+} from '@maos-em-oracao/contracts';
 import { ProviderError } from '@maos-em-oracao/integrations';
 import type { Context } from '@maos-em-oracao/backend-core/context';
 import { rateLimit } from '@maos-em-oracao/backend-core/context';
@@ -172,9 +178,16 @@ export async function bootstrap() {
           });
         }
         req.visitorKey = sessionHash(visitor, ctx.config);
+        // Gateway requests (secret already verified) carry the client IP the BFF read
+        // from the edge proxy; public endpoints use the edge's own X-Forwarded-For.
+        // The visitor cookie is only a fallback: clients can drop it at will.
+        const ip = exempt
+          ? trustedForwardedIp(req.get('x-forwarded-for')) || req.socket.remoteAddress
+          : trustedForwardedIp(req.get(CLIENT_IP_HEADER));
+        req.clientKey = ip ? sessionHash('ip/' + ip, ctx.config) : req.visitorKey;
         req.actor = await auth.actor(req.cookies?.[ctx.config.COOKIE_NAME]);
         if (!['GET', 'HEAD'].includes(req.method))
-          await rateLimit(ctx, 'requests/' + (req.actor?.userId || req.visitorKey), 300, 60000);
+          await rateLimit(ctx, 'requests/' + (req.actor?.userId || req.clientKey), 300, 60000);
         if (
           req.method === 'PUT' &&
           /^\/api\/v1\/admin\/media\/uploads\/[^/]+\/content$/.test(path)

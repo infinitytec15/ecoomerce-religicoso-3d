@@ -89,6 +89,24 @@ describe('same-origin backend proxy', () => {
     );
     expect(rejected.status).toBe(403);
   });
+  it('forwards only the edge-appended client IP, never the spoofable chain', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}'));
+    await POST(
+      new NextRequest('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          origin: 'http://localhost',
+          'x-forwarded-for': '6.6.6.6, 203.0.113.9',
+        },
+        body: '{}',
+      }),
+      context('auth/login'),
+    );
+    const headers = new Headers(fetcher.mock.calls[0][1]?.headers);
+    expect(headers.get('x-meo-client-ip')).toBe('203.0.113.9');
+    expect(headers.get('x-forwarded-for')).toBeNull();
+  });
   it('enforces the mutation payload limit', async () => {
     vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
     const response = await POST(

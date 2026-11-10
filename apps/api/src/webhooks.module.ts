@@ -16,7 +16,7 @@ class WebhooksController {
     this.mail = new Notifications(ctx);
   }
   @Post('mercado-pago') @HttpCode(200) async payments(@Req() req: ApiRequest) {
-    await rateLimit(this.ctx, 'webhook/mp/' + digest(req.socket.remoteAddress || ''), 600, 60000);
+    await rateLimit(this.ctx, 'webhook/mp/' + req.clientKey, 600, 60000);
     const queryId = typeof req.query['data.id'] === 'string' ? req.query['data.id'] : undefined,
       input = z
         .object({
@@ -49,12 +49,7 @@ class WebhooksController {
     return { received: true };
   }
   @Post('resend') @HttpCode(200) async resend(@Req() req: ApiRequest) {
-    await rateLimit(
-      this.ctx,
-      'webhook/resend/' + digest(req.socket.remoteAddress || ''),
-      600,
-      60000,
-    );
+    await rateLimit(this.ctx, 'webhook/resend/' + req.clientKey, 600, 60000);
     const headers = {
       id: req.get('svix-id') || '',
       timestamp: req.get('svix-timestamp') || '',
@@ -94,7 +89,7 @@ class WebhooksController {
     return { received: true };
   }
   @Post('melhor-envio') @HttpCode(200) async shipping(@Req() req: ApiRequest) {
-    await rateLimit(this.ctx, 'webhook/me/' + digest(req.socket.remoteAddress || ''), 60, 60000);
+    await rateLimit(this.ctx, 'webhook/me/' + req.clientKey, 60, 60000);
     const input = z
         .object({
           id: z.string().max(100).optional(),

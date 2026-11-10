@@ -64,6 +64,9 @@ if (command === 'setup') {
     Object.assign(env, {
       NEXT_PUBLIC_DATA_MODE: 'http',
       API_BASE_URL: env.PUBLIC_API_URL + '/api/v1',
+      // The BFF origin check falls back to request.nextUrl.origin, which `next dev`
+      // reports as localhost; pin it to the same origin the API trusts.
+      NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL || env.PUBLIC_WEB_URL,
       NEXT_DIST_DIR: '.next-http',
       NEXT_PUBLIC_ENVIRONMENT: 'staging',
       IMAGE_HOSTS: env.IMAGE_HOSTS || '',

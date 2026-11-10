@@ -1243,6 +1243,39 @@ try {
     );
     await ctx.db.appSetting.update({ where: { key: 'workspace' }, data: { data: original.data } });
   });
+  await check('limite por cliente usa o IP do gateway, não o cookie descartável', async () => {
+    const ticket = (i) => ({
+      subject: 'Limite por IP ' + i,
+      category: 'Outros',
+      message: 'Mensagem de teste do limite por IP.',
+      name: 'Visitante limite',
+      email: `limite-${runId}-${i}@example.test`,
+    });
+    const from = (ip, extra = {}) => ({ headers: { 'x-meo-client-ip': ip, ...extra } });
+    // Each call is a brand-new client without cookies, as a script dropping them would be.
+    for (let i = 0; i < 10; i++)
+      assert.equal(
+        (await new Client().call('support/tickets', 'POST', ticket(i), from('198.51.100.77')))
+          .status,
+        204,
+      );
+    const blocked = await new Client().call(
+      'support/tickets',
+      'POST',
+      ticket(10),
+      from('198.51.100.77', { 'x-forwarded-for': '203.0.113.' + runId.length }),
+    );
+    assert.equal(
+      blocked.status,
+      429,
+      'cookie novo ou X-Forwarded-For forjado não podem zerar o limite',
+    );
+    assert.equal(
+      (await new Client().call('support/tickets', 'POST', ticket(11), from('198.51.100.78')))
+        .status,
+      204,
+    );
+  });
   await check('webhook Mercado Pago rejeita assinatura inválida e deduplica', async () => {
     const value = { id: 'event-test-' + runId, type: 'payment', data: { id: '123456789' } },
       body = JSON.stringify(value),

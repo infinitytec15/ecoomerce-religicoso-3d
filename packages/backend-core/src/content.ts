@@ -24,7 +24,8 @@ export class ContentService {
   async prayers(actorKey: string) {
     return (
       await this.ctx.db.prayer.findMany({
-        where: { OR: [{ moderation: 'Publicado' }, { actorKey }] },
+        // Authors also see their own prayers awaiting review, but not ones they removed.
+        where: { OR: [{ moderation: 'Publicado' }, { actorKey, moderation: 'Em análise' }] },
         include: { reactions: true, reports: true },
         orderBy: { createdAt: 'desc' },
         take: 200,

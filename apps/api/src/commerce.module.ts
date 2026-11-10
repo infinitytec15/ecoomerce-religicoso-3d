@@ -21,6 +21,7 @@ import { CatalogService } from '@maos-em-oracao/backend-core/catalog';
 import { OrdersService } from '@maos-em-oracao/backend-core/orders';
 import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions';
 import { ContentService } from '@maos-em-oracao/backend-core/content';
+import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { CONTEXT } from './context.module';
 import type { ApiRequest } from './request';
 const result = <T>(data: T) => ({ data });
@@ -51,7 +52,7 @@ class IdentityController {
     @Req() req: ApiRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const r = await this.service.login(body, req.visitorKey);
+    const r = await this.service.login(body, req.clientKey);
     sessionCookie(res, this.ctx, r.raw);
     return result(r.session);
   }
@@ -68,7 +69,7 @@ class IdentityController {
     });
   }
   @Post('recover') @HttpCode(200) async recover(@Body() body: unknown, @Req() req: ApiRequest) {
-    return result(await this.service.recover(body, req.visitorKey));
+    return result(await this.service.recover(body, req.clientKey));
   }
   @Post('verify') @HttpCode(204) async verify(@Body() body: unknown) {
     await this.service.consume(body, 'verify-email');
@@ -228,7 +229,7 @@ class ContentController {
     @Req() req: ApiRequest,
     @Body() body: unknown,
   ) {
-    return result(await this.service.newsletter(body, req.visitorKey));
+    return result(await this.service.newsletter(body, req.clientKey));
   }
   @Post('newsletter/confirm') @HttpCode(204) async confirm(@Body() body: unknown) {
     await this.service.confirmNewsletter(body);
@@ -240,14 +241,15 @@ class ContentController {
     @Query('token') token: string,
     @Body() body: Record<string, unknown>,
   ) {
-    if (body?.['List-Unsubscribe'] !== 'One-Click') throw new Error('One-click body invalid.');
+    if (body?.['List-Unsubscribe'] !== 'One-Click')
+      throw new DomainError('INVALID_REQUEST', 'Solicitação de descadastro inválida.', 422);
     await this.service.unsubscribe({ token });
   }
   @Post('support/tickets') @HttpCode(204) async ticket(
     @Req() req: ApiRequest,
     @Body() body: unknown,
   ) {
-    await this.service.createTicket(req.actor, body, req.visitorKey);
+    await this.service.createTicket(req.actor, body, req.clientKey);
   }
   @Post('support/tickets/:id/messages') @HttpCode(204) async reply(
     @Req() req: ApiRequest,

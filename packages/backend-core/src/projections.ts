@@ -191,6 +191,8 @@ export function prayerDto(
     reactions: p.reactions.length,
     owned: p.actorKey === actorKey,
     prayed: p.reactions.some((r) => r.actorKey === actorKey),
+    // The author needs the review state to see the pending notice and a disabled reaction.
+    ...(p.actorKey === actorKey ? { moderation: p.moderation as Prayer['moderation'] } : {}),
     ...(privateData
       ? {
           moderation: p.moderation as Prayer['moderation'],

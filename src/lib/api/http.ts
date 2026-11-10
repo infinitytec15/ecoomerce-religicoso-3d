@@ -261,7 +261,7 @@ export class HttpGateway implements CommerceGateway {
     return this.client.request(
       'team/invitations/' + encodeURIComponent(input.token) + '/accept',
       z.void(),
-      { method: 'POST', body: { name: input.name } },
+      { method: 'POST', body: { name: input.name, password: input.password } },
     );
   }
 }

@@ -39,6 +39,18 @@ describe('HTTP boundary', () => {
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/health');
     expect(fetcher.mock.calls[0][1]?.credentials).toBe('include');
   });
+  it('sends the chosen password when accepting a team invitation', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    await new HttpGateway(new HttpClient('/api/v1', fetcher)).acceptInvitation({
+      token: 'convite-token-de-teste-123456',
+      name: 'Pessoa da Equipe',
+      password: 'SenhaForte!2026',
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      name: 'Pessoa da Equipe',
+      password: 'SenhaForte!2026',
+    });
+  });
   it('rejects successful responses that violate the contract', async () => {
     const client = new HttpClient(
       '/api',
