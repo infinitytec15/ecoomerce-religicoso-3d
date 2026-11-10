@@ -55,7 +55,7 @@ export function createShipping(config: ShippingConfig, fetcher: Fetcher = fetch)
           redirect_uri: config.ME_REDIRECT_URI!,
           response_type: 'code',
           scope:
-            'shipping-calculate shipping-cancel shipping-checkout shipping-companies shipping-generate shipping-preview shipping-print shipping-services shipping-tracking cart-read cart-write',
+            'shipping-calculate shipping-cancel shipping-checkout shipping-companies shipping-generate shipping-preview shipping-print shipping-tracking cart-read cart-write',
           state,
         })
       );

@@ -2,7 +2,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { HttpClient } from '@/lib/api/http';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useAdminData } from './admin-frame';
 import { AdminHeading, useAdminAction } from './shared';
 import { Form, text, number } from '@/components/ui/form';
@@ -11,6 +11,8 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { centsFromInput } from '@/lib/domain/format';
 import { IS_DEMO } from '@/lib/api/config';
 import type { WorkspaceSettings } from '@/lib/domain/types';
+// The URL only changes by navigation, which remounts this page.
+const noSubscription = () => () => {};
 const groups = [
   'Loja e contato',
   'Produção e estoque',
@@ -208,6 +210,7 @@ export function WorkspaceSettingsPanel() {
                     <h2>Frete e expedição</h2>
                     <IntegrationState provider="melhor-envio" />
                   </div>
+                  <ShippingConnectionResult />
                   <p>
                     Melhor Envio para cotação, contratação de etiquetas e acompanhamento de
                     entregas.
@@ -415,6 +418,36 @@ function IntegrationState({ provider }: { provider: string }) {
                     : 'Configurado'
       }
     />
+  );
+}
+const shippingFailures: Record<string, string> = {
+  access_denied: 'A autorização foi cancelada no Melhor Envio.',
+  INVALID_STATE: 'A autorização expirou. Clique em Conectar Melhor Envio novamente.',
+  STATE_USED: 'Esta autorização já foi usada. Clique em Conectar Melhor Envio novamente.',
+};
+/** Result of the Melhor Envio OAuth round trip (?frete=conectado|erro&motivo=…). */
+function ShippingConnectionResult() {
+  const search = useSyncExternalStore(
+      noSubscription,
+      () => window.location.search,
+      () => '',
+    ),
+    params = new URLSearchParams(search),
+    status = params.get('frete'),
+    result =
+      status === 'conectado' || status === 'erro'
+        ? { ok: status === 'conectado', reason: params.get('motivo') || '' }
+        : null;
+  if (!result) return null;
+  return result.ok ? (
+    <p className="notice" role="status">
+      Melhor Envio conectado. Os fretes já podem ser cotados no checkout.
+    </p>
+  ) : (
+    <p className="form-error" role="alert">
+      {shippingFailures[result.reason] ||
+        `Não foi possível conectar o Melhor Envio (${result.reason || 'erro desconhecido'}). Tente novamente.`}
+    </p>
   );
 }
 function ConnectShipping() {

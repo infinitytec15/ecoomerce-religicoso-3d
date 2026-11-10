@@ -255,7 +255,21 @@ class TeamController {
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
-    res.redirect(303, await this.shipping.callback(query));
+    // The owner lands here from Melhor Envio in the browser: always return to the admin
+    // with a readable result instead of a JSON error (denied, invalid scope, expired state).
+    const back = (reason: string) =>
+      res.redirect(
+        303,
+        this.ctx.config.PUBLIC_WEB_URL +
+          '/admin/configuracoes?frete=erro&motivo=' +
+          encodeURIComponent(reason.slice(0, 60)),
+      );
+    if (typeof query.error === 'string') return back(query.error);
+    try {
+      res.redirect(303, await this.shipping.callback(query));
+    } catch (error) {
+      back(error instanceof DomainError ? error.code : 'falha');
+    }
   }
 }
 @Module({ controllers: [OperationsController, MediaController, TeamController] })

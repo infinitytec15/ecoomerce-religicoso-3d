@@ -198,6 +198,33 @@ describe('Mercado Pago por contrato HTTP', () => {
   });
 });
 describe('Melhor Envio', () => {
+  it('pede somente escopos OAuth existentes no Melhor Envio', () => {
+    const url = new URL(
+      createShipping({
+        INTEGRATIONS_MODE: 'live',
+        ME_CLIENT_ID: '1',
+        ME_REDIRECT_URI: 'https://api.example.test/api/v1/integrations/melhor-envio/callback',
+        ME_SANDBOX: 'false',
+        EMAIL_REPLY_TO: 'ajuda@example.test',
+      }).authorizationUrl('state-value'),
+    );
+    // An unknown scope (e.g. shipping-services) makes Melhor Envio reject the whole
+    // authorization with error=invalid_scope before the owner can approve it.
+    expect(url.searchParams.get('scope')?.split(' ').sort()).toEqual(
+      [
+        'cart-read',
+        'cart-write',
+        'shipping-calculate',
+        'shipping-cancel',
+        'shipping-checkout',
+        'shipping-companies',
+        'shipping-generate',
+        'shipping-preview',
+        'shipping-print',
+        'shipping-tracking',
+      ].sort(),
+    );
+  });
   it('converte gramas/centavos, conserva opções válidas e usa campos custom', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json([
