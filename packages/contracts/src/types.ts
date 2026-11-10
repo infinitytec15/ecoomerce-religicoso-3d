@@ -66,6 +66,7 @@ export type Permission =
   | 'team'
   | 'settings';
 export interface Session {
+  guest?: boolean;
   id: string;
   name: string;
   email: string;
@@ -99,6 +100,7 @@ export interface InventoryProduct extends Product {
   costCents: number;
 }
 export interface Address {
+  document?: string;
   name: string;
   email: string;
   phone: string;

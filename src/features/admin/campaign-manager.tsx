@@ -1,4 +1,5 @@
 'use client';
+import { IS_DEMO } from '@/lib/api/config';
 import { useState } from 'react';
 import type { Campaign } from '@/lib/domain/types';
 import { useAdminData } from './admin-frame';
@@ -30,9 +31,13 @@ export function CampaignManager() {
       <AdminMetrics
         items={[
           {
-            label: 'Inscrições locais ativas',
-            value: data.newsletter?.subscribed ? 1 : 0,
-            note: 'Somente este navegador',
+            label: IS_DEMO ? 'Inscrição local ativa' : 'Mensagens aceitas',
+            value: IS_DEMO
+              ? data.newsletter?.subscribed
+                ? 1
+                : 0
+              : data.campaigns.reduce((n, c) => n + c.recipients, 0),
+            note: IS_DEMO ? 'Somente este navegador' : 'Aceitas pelo provedor de e-mail',
           },
           {
             label: 'Em preparação',
@@ -42,7 +47,7 @@ export function CampaignManager() {
           {
             label: 'Agendadas',
             value: data.campaigns.filter((c) => c.status === 'Agendada').length,
-            note: 'Agendamentos demonstrativos',
+            note: IS_DEMO ? 'Agendamentos demonstrativos' : 'Aguardando o horário de Brasília',
           },
         ]}
       />
@@ -70,7 +75,9 @@ export function CampaignManager() {
                   onClick={() =>
                     action.execute(
                       { type: 'campaign.action', id: c.id, action: 'schedule' },
-                      'Agendamento demonstrativo salvo. Nenhum e-mail será enviado.',
+                      IS_DEMO
+                        ? 'Agendamento demonstrativo salvo. Nenhum e-mail será enviado.'
+                        : 'Oração agendada para os inscritos confirmados.',
                     )
                   }
                 >
@@ -101,8 +108,9 @@ export function CampaignManager() {
         </section>
       )}
       <p className="notice" style={{ marginTop: 24 }}>
-        Envio demonstrativo. O backend validará consentimento, descadastro e horário antes de
-        processar os e-mails.
+        {IS_DEMO
+          ? 'Envio demonstrativo. Nenhum e-mail será enviado.'
+          : 'Os envios respeitam confirmação de inscrição, descadastro e o horário de Brasília. Aceite pelo provedor e entrega são etapas distintas.'}
       </p>
       <Modal
         open={!!editing}

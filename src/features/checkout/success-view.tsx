@@ -1,5 +1,8 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
+import { HttpClient } from '@/lib/api/http';
+import { checkoutResultSchema } from '@/lib/api/response-schemas';
 import { useAccount, useCommand, useGateway, useSession } from '@/lib/api/query';
 import { IS_DEMO } from '@/lib/api/config';
 import { money } from '@/lib/domain/format';
@@ -9,6 +12,22 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { errorMessage } from '@/lib/api/contracts';
 export function SuccessView({ orderId }: { orderId?: string }) {
+  const retryKey = useRef<string | null>(null),
+    cache = useQueryClient();
+  const retry = useMutation({
+    mutationFn: async (id: string) => {
+      retryKey.current ??= crypto.randomUUID();
+      return new HttpClient().request(
+        'orders/' + encodeURIComponent(id) + '/payment',
+        checkoutResultSchema,
+        { method: 'POST', body: {}, idempotencyKey: retryKey.current },
+      );
+    },
+    onSuccess: async () => {
+      retryKey.current = null;
+      await cache.invalidateQueries();
+    },
+  });
   const session = useSession(),
     account = useAccount(!IS_DEMO),
     gateway = useGateway(),
@@ -61,7 +80,13 @@ export function SuccessView({ orderId }: { orderId?: string }) {
         <div className="success-icon">
           <Icon name={pending ? 'pix' : 'check'} />
         </div>
-        <h1>{pending ? 'Seu pedido está reservado.' : 'Sua escolha ganhou forma.'}</h1>
+        <h1>
+          {pending
+            ? 'Acompanhe seu pagamento.'
+            : charge.status === 'Cancelada' || charge.status === 'Estornado'
+              ? 'Seu pagamento foi encerrado.'
+              : 'Sua escolha ganhou forma.'}
+        </h1>
         <p>
           {pending
             ? 'Acompanhe o pagamento para iniciar o preparo da sua peça.'
@@ -100,6 +125,23 @@ export function SuccessView({ orderId }: { orderId?: string }) {
                 </p>
               )}
             </div>
+          )}
+          {!IS_DEMO &&
+            charge.method === 'pix' &&
+            ['Cancelada', 'Recusado'].includes(charge.status) &&
+            order.status !== 'Cancelado' && (
+              <Button
+                className="full"
+                loading={retry.isPending}
+                onClick={() => retry.mutate(order.id)}
+              >
+                Gerar um novo Pix
+              </Button>
+            )}
+          {retry.error && (
+            <p className="form-error" role="alert">
+              {errorMessage(retry.error)}
+            </p>
           )}
           {pending && !IS_DEMO && action?.type === 'redirect' && (
             <a className="btn full payment-provider-link" href={action.url}>

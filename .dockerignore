@@ -1,5 +1,7 @@
 node_modules
 .next
+.next-http
+var
 .git
 .env*
 storybook-static
@@ -9,3 +11,6 @@ tests
 .impeccable
 packages/emails/.preview
 *.log
+
+apps/*/dist
+*.tsbuildinfo

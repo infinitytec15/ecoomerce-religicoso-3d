@@ -1,0 +1,24 @@
+{
+  "name": "@maos-em-oracao/database",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "seed": "tsx ../../scripts/backend-seed.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "7.10.1",
+    "@prisma/adapter-pg": "7.10.1",
+    "pg": "8.23.1",
+    "prisma": "7.10.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.20.0"
+  }
+}

@@ -288,13 +288,14 @@ export function AdminSubscriptionDetail({ id }: { id: string }) {
                 {sub.id} · {dateLabel(sub.nextRenewal)} · {money(sub.priceCents)}
               </p>
               <label>
-                Resultado{IS_DEMO ? ' simulado' : ''}
+                {IS_DEMO ? 'Resultado simulado' : 'Conciliação com o provedor'}
                 <select name="result">
-                  {(sub.payment === 'pix' ? ['Pendente'] : ['Pago', 'Pendente', 'Recusado']).map(
-                    (s) => (
-                      <option key={s}>{s}</option>
-                    ),
-                  )}
+                  {(!IS_DEMO || sub.payment === 'pix'
+                    ? ['Pendente']
+                    : ['Pago', 'Pendente', 'Recusado']
+                  ).map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
                 </select>
               </label>
               <div className="notice">

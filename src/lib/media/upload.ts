@@ -29,6 +29,18 @@ export async function uploadMedia(
         headers: session.headers,
         retryDelays: [0, 1000, 3000, 5000],
         metadata: { filetype: file.type, title: file.name },
+        onBeforeRequest: async (request) => {
+          if (Number(session.headers?.AuthorizationExpire || 0) * 1000 < Date.now() + 60000) {
+            const fresh = await client.request(
+              'admin/media/uploads/' + encodeURIComponent(session.id) + '/renew',
+              uploadSessionSchema,
+              { method: 'POST', body: {} },
+            );
+            session.headers = fresh.headers;
+          }
+          for (const [name, value] of Object.entries(session.headers || {}))
+            request.setHeader(name, value);
+        },
         onProgress: (sent, total) => onProgress?.((sent / total) * 100),
         onError: reject,
         onSuccess: () => resolve(),

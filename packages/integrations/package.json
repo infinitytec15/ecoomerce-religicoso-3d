@@ -1,0 +1,18 @@
+{
+  "name": "@maos-em-oracao/integrations",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@maos-em-oracao/contracts": "*",
+    "@maos-em-oracao/emails": "*",
+    "zod": "4.6.7",
+    "resend": "6.37.0"
+  }
+}

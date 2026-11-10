@@ -1,6 +1,19 @@
-# Validação da operação administrativa
+# Validação do monorepo
 
-Verificado em 9 de novembro de 2026. Esta entrega amplia o frontend Next.js e planeja o backend; não implementa serviços comerciais reais.
+## Backend e integração · 10/11/2026
+
+- TypeScript estrito em todos os workspaces e ESLint sem erros ou avisos.
+- Vitest: 104 testes aprovados; segurança, adaptadores e geometria GLB real incluídos.
+- 30 cenários integrados passaram com PostgreSQL, Redis, API e worker reais antes da ampliação final da suíte; provedores em mock, sem transações externas.
+- A suíte ampliada e o build Docker são executados em serviços isolados na [CI do commit](https://github.com/infinitytec15/ecoomerce-religicoso-3d/actions/workflows/ci.yml). Consulte o resultado da execução associada ao SHA publicado.
+- Next e Storybook tiveram builds aprovados; prévias dos 17 templates HTML/texto geradas localmente.
+- `npm audit`: zero vulnerabilidades após corrigir as dependências transitivas de glob/minimatch e validar Storybook.
+- O Docker Desktop local apresentou indisponibilidade de engine/WSL durante a rodada final. A CI possui PostgreSQL e Redis próprios e valida também a imagem de API/worker.
+- As credenciais comerciais não foram fornecidas. Não foram feitos pagamentos, compras de etiqueta nem disparos externos. [Operação e limites do backend](BACKEND-RUNBOOK.md).
+
+## Histórico da validação visual · 09/11/2026
+
+Verificado em 9 de novembro de 2026. A entrega daquele dia ampliou o frontend e documentou o planejamento, antes da implementação do backend.
 
 ## Checks executados
 

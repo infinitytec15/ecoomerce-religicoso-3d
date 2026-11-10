@@ -1,4 +1,6 @@
 'use client';
+import { IS_DEMO } from '@/lib/api/config';
+import { ShippingDocuments } from './shipping-documents';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import type { RecordReference } from '@/lib/domain/types';
@@ -264,9 +266,11 @@ function RecordContent({ record: r }: { record: RecordReference }) {
             <StatusBadge status={order.labelStatus || 'Não solicitada'} />
           </div>
           <p className="notice">
-            Demonstração de preparação e geração. Nenhuma etiqueta é comprada ou válida para
-            postagem.
+            {IS_DEMO
+              ? 'Demonstração de preparação e geração. Nenhuma etiqueta é comprada ou válida para postagem.'
+              : 'Confira o custo atualizado e a documentação. Comprar e gerar etiqueta utiliza o saldo da loja no Melhor Envio.'}
           </p>
+          {!IS_DEMO && <ShippingDocuments orderId={order.id} />}
           <div className="row wrap">
             <button
               className="btn secondary small"
@@ -283,11 +287,13 @@ function RecordContent({ record: r }: { record: RecordReference }) {
               onClick={() =>
                 action.execute(
                   { type: 'shipping.label', id: order.id, action: 'generate' },
-                  'Etiqueta simulada gerada. Nenhuma compra realizada.',
+                  IS_DEMO
+                    ? 'Etiqueta simulada gerada. Nenhuma compra realizada.'
+                    : 'Solicitação de etiqueta enviada. Acompanhe o processamento.',
                 )
               }
             >
-              Gerar etiqueta simulada
+              {IS_DEMO ? 'Gerar etiqueta simulada' : 'Comprar e gerar etiqueta'}
             </button>
             <button
               className="btn text"

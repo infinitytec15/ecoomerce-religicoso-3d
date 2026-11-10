@@ -1,4 +1,9 @@
 'use client';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
+import { HttpClient } from '@/lib/api/http';
+import { IS_DEMO } from '@/lib/api/config';
+import { errorMessage } from '@/lib/api/contracts';
 import { useState } from 'react';
 import { useAdminData } from './admin-frame';
 import { AdminHeading } from './shared';
@@ -330,19 +335,30 @@ export function ReportCenter() {
             </div>
             <p>{m.description}</p>
             <div className="row wrap">
-              <Button
-                variant="secondary"
-                className="small"
-                onClick={() =>
-                  downloadCsv(
-                    m.id,
-                    m.headers,
-                    filtered(m.rows).map((r) => r.values),
-                  )
-                }
-              >
-                Baixar CSV
-              </Button>
+              {IS_DEMO ? (
+                <Button
+                  variant="secondary"
+                  className="small"
+                  onClick={() =>
+                    downloadCsv(
+                      m.id,
+                      m.headers,
+                      filtered(m.rows).map((r) => r.values),
+                    )
+                  }
+                >
+                  Baixar CSV
+                </Button>
+              ) : (
+                <ServerExportButton
+                  resource={resourceNames[m.id]}
+                  filters={{
+                    ...(from ? { from: from + 'T00:00:00-03:00' } : {}),
+                    ...(to ? { to: to + 'T23:59:59.999-03:00' } : {}),
+                    ...(status !== 'Todas' ? { status } : {}),
+                  }}
+                />
+              )}
               <Button variant="text" onClick={() => setPreview(m.id)}>
                 Consultar dados
               </Button>
@@ -350,7 +366,19 @@ export function ReportCenter() {
           </section>
         ))}
       </div>
-      {selected && (
+      {selected && !IS_DEMO && (
+        <ServerReportPreview
+          key={selected.id + from + to + status}
+          resource={resourceNames[selected.id]}
+          title={selected.name}
+          filters={{
+            ...(from ? { from: from + 'T00:00:00-03:00' } : {}),
+            ...(to ? { to: to + 'T23:59:59.999-03:00' } : {}),
+            ...(status !== 'Todas' ? { status } : {}),
+          }}
+        />
+      )}
+      {selected && IS_DEMO && (
         <section className="admin-panel report-preview" style={{ marginTop: 24 }}>
           <div className="admin-panel-heading">
             <h2>{selected.name}</h2>
@@ -385,3 +413,208 @@ export function ReportCenter() {
     </>
   );
 }
+
+const resourceNames: Record<string, string> = {
+  pedidos: 'orders',
+  assinaturas: 'subscriptions',
+  producao: 'production',
+  catalogo: 'products',
+  clientes: 'customers',
+  financeiro: 'finance',
+  despesas: 'expenses',
+  suporte: 'support',
+  comunidade: 'prayers',
+  oracoes: 'campaigns',
+  edicoes: 'editions',
+  equipe: 'team',
+  atividade: 'audit',
+};
+const exportSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  downloadUrl: z.string().nullable().optional(),
+});
+function ServerExportButton({
+  resource,
+  filters,
+}: {
+  resource: string;
+  filters: Record<string, string>;
+}) {
+  const job = useMutation({
+    mutationFn: () =>
+      new HttpClient().request('admin/exports', exportSchema, {
+        method: 'POST',
+        body: { kind: resource, filters },
+      }),
+  });
+  const status = useQuery({
+    queryKey: ['admin', 'export', job.data?.id],
+    enabled: !!job.data?.id,
+    queryFn: () => new HttpClient().request('admin/exports/' + job.data!.id, exportSchema),
+    refetchInterval: (q) =>
+      q.state.data?.status === 'ready' || q.state.data?.status === 'failed' ? false : 1000,
+  });
+  return (
+    <>
+      <Button
+        variant="secondary"
+        className="small"
+        loading={
+          job.isPending ||
+          (!!job.data && !['ready', 'failed'].includes(status.data?.status || 'pending'))
+        }
+        onClick={() => job.mutate()}
+      >
+        Preparar CSV completo
+      </Button>
+      {status.data?.status === 'ready' && (
+        <a className="admin-link" href={'/api/v1/admin/exports/' + status.data.id + '/download'}>
+          Baixar arquivo
+        </a>
+      )}
+      {status.data?.status === 'failed' && (
+        <span role="alert">A exportação falhou. Reduza o período e tente novamente.</span>
+      )}
+      {(job.error || status.error) && (
+        <span role="alert">{errorMessage(job.error || status.error)}</span>
+      )}
+    </>
+  );
+}
+const pageSchema = z.object({
+  items: z.array(z.record(z.string(), z.unknown())),
+  total: z.number(),
+  nextCursor: z.string().nullable(),
+});
+function ServerReportPreview({
+  resource,
+  title,
+  filters,
+}: {
+  resource: string;
+  title: string;
+  filters: Record<string, string>;
+}) {
+  const [cursor, setCursor] = useState<string | undefined>();
+  const page = useQuery({
+    queryKey: ['admin', 'report', resource, filters, cursor],
+    queryFn: () =>
+      new HttpClient().request(
+        'admin/reports/' +
+          resource +
+          '?' +
+          new URLSearchParams({ ...filters, limit: '25', ...(cursor ? { cursor } : {}) }),
+        pageSchema,
+      ),
+  });
+  const columns = Object.keys(page.data?.items[0] || {}).filter(
+    (k) => !['items', 'address', 'messages', 'model', 'media', 'history'].includes(k),
+  );
+  return (
+    <section className="admin-panel report-preview" style={{ marginTop: 24 }}>
+      <h2>{title}</h2>
+      <p>{page.data?.total ?? '…'} registros no servidor</p>
+      {page.error && (
+        <p className="form-error" role="alert">
+          {errorMessage(page.error)}
+        </p>
+      )}
+      <div className="admin-table-wrap" tabIndex={0}>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              {columns.map((c) => (
+                <th key={c} scope="col">
+                  {columnLabels[c] || c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {page.data?.items.map((item, index) => (
+              <tr key={String(item.id || index)}>
+                {columns.map((c) => (
+                  <td key={c}>
+                    {item[c] === null || item[c] === undefined
+                      ? '—'
+                      : typeof item[c] === 'object'
+                        ? JSON.stringify(item[c]).slice(0, 150)
+                        : String(item[c])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="row wrap">
+        <Button variant="text" disabled={!cursor} onClick={() => setCursor(undefined)}>
+          Primeira página
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!page.data?.nextCursor || page.isFetching}
+          onClick={() => setCursor(page.data?.nextCursor || undefined)}
+        >
+          Próxima página
+        </Button>
+      </div>
+    </section>
+  );
+}
+const columnLabels: Record<string, string> = {
+  id: 'Registro',
+  number: 'Número',
+  name: 'Nome',
+  email: 'E-mail',
+  phone: 'Telefone',
+  document: 'Documento',
+  customerId: 'Cliente',
+  subscriptionId: 'Assinatura',
+  orderId: 'Pedido',
+  type: 'Tipo',
+  created: 'Criado em',
+  createdAt: 'Criado em',
+  updatedAt: 'Atualizado em',
+  status: 'Situação',
+  stage: 'Etapa',
+  due: 'Prazo',
+  amountCents: 'Valor (centavos)',
+  totalCents: 'Total (centavos)',
+  subtotalCents: 'Subtotal (centavos)',
+  shippingCents: 'Frete (centavos)',
+  discountCents: 'Desconto (centavos)',
+  priceCents: 'Preço (centavos)',
+  costCents: 'Custo (centavos)',
+  stock: 'Estoque',
+  active: 'Publicado',
+  archived: 'Arquivado',
+  sku: 'SKU',
+  category: 'Categoria',
+  date: 'Data',
+  method: 'Pagamento',
+  payment: 'Pagamento',
+  paidAt: 'Pago em',
+  profile: 'Perfil',
+  finish: 'Acabamento',
+  nextRenewal: 'Renovação',
+  nextShipment: 'Próximo envio',
+  tracking: 'Rastreio',
+  carrier: 'Transportadora',
+  subject: 'Assunto',
+  message: 'Mensagem',
+  recipients: 'Destinatários',
+  audience: 'Público',
+  month: 'Competência',
+  role: 'Perfil de acesso',
+  permissions: 'Permissões',
+  notes: 'Observações',
+  action: 'Ação',
+  entity: 'Entidade',
+  actor: 'Responsável',
+  assignee: 'Responsável',
+  hours: 'Horas',
+  grams: 'Gramas',
+  priority: 'Prioridade',
+};

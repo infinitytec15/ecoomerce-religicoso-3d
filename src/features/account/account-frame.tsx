@@ -41,18 +41,31 @@ export function AccountFrame({ children }: { children: ReactNode }) {
       <div className="account-layout">
         <aside className="account-side">
           <h2>Olá, {session.data.name.split(' ')[0]}.</h2>
-          <p>Que bom ter você por aqui.</p>
-          {nav.map(([href, label, icon]) => (
-            <Link
-              href={href}
-              className={path === href ? 'active' : ''}
-              aria-current={path === href ? 'page' : undefined}
-              key={href}
-            >
-              <Icon name={icon} />
-              {label}
-            </Link>
-          ))}
+          <p>
+            {session.data.guest ? 'Acesso seguro ao seu pedido.' : 'Que bom ter você por aqui.'}
+          </p>
+          {session.data.guest && (
+            <p>
+              <Link href="/login">Entre ou crie sua conta para reunir seus pedidos.</Link>
+            </p>
+          )}
+          {nav
+            .filter(
+              ([href]) =>
+                !session.data?.guest ||
+                ['/conta', '/conta/pedidos', '/conta/cobrancas'].includes(href),
+            )
+            .map(([href, label, icon]) => (
+              <Link
+                href={href}
+                className={path === href ? 'active' : ''}
+                aria-current={path === href ? 'page' : undefined}
+                key={href}
+              >
+                <Icon name={icon} />
+                {label}
+              </Link>
+            ))}
           <Link href="/favoritos">
             <Icon name="heart" />
             Favoritos

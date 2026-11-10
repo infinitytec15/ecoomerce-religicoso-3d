@@ -1,0 +1,19 @@
+{
+  "name": "@maos-em-oracao/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "node ../../scripts/build-backend.mjs worker",
+    "start": "node dist/main.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@maos-em-oracao/backend-core": "*",
+    "@maos-em-oracao/database": "*",
+    "@maos-em-oracao/integrations": "*",
+    "bullmq": "6.7.2",
+    "ioredis": "6.0.0"
+  }
+}

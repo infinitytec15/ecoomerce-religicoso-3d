@@ -47,7 +47,13 @@ export function Header({ compact = false }: { compact?: boolean }) {
               Receba uma oração diária grátis <Icon name="mail" />
             </button>
           </span>
-          {IS_DEMO && <span className="demo">Demonstração · compras e valores ilustrativos</span>}
+          {(IS_DEMO || process.env.NEXT_PUBLIC_ENVIRONMENT === 'staging') && (
+            <span className="demo">
+              {IS_DEMO
+                ? 'Demonstração · compras e valores ilustrativos'
+                : 'Homologação · pagamentos, fretes e e-mails de teste'}
+            </span>
+          )}
         </div>
       </div>
       <header className="header">

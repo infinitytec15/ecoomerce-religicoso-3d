@@ -1,5 +1,7 @@
 # Arquitetura do frontend
 
+> Atualização de 10/11/2026: API, worker, banco e integrações foram implementados. O estado atual, os comandos, os limites e o deploy estão no [runbook do backend](BACKEND-RUNBOOK.md). As seções de planejamento abaixo preservam a especificação anterior; não são um registro de implantação em provedores.
+
 ```text
 src/app/                   App Router, metadados, layouts e BFF
 src/components/ui/         Botões, formulários, diálogo, tabela e estados

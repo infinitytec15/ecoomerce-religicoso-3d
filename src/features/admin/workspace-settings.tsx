@@ -1,4 +1,7 @@
 'use client';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
+import { HttpClient } from '@/lib/api/http';
 import { useState } from 'react';
 import { useAdminData } from './admin-frame';
 import { AdminHeading, useAdminAction } from './shared';
@@ -203,7 +206,7 @@ export function WorkspaceSettingsPanel() {
                 <div data-settings-tab={2} hidden={tab !== 2} className="stack">
                   <div className="row between">
                     <h2>Frete e expedição</h2>
-                    <StatusBadge status={IS_DEMO ? 'Simulado' : 'Não configurado'} />
+                    <IntegrationState provider="melhor-envio" />
                   </div>
                   <p>
                     Melhor Envio para cotação, contratação de etiquetas e acompanhamento de
@@ -237,14 +240,15 @@ export function WorkspaceSettingsPanel() {
                     </label>
                   </div>
                   <div className="notice">
-                    A conexão OAuth e os tokens do Melhor Envio serão gerenciados no servidor. A
-                    cotação preservará serviço, volumes, seguro e validade.
+                    A conexão OAuth e os tokens ficam no servidor. As cotações preservam serviço,
+                    volumes, seguro e validade.
+                    {!IS_DEMO && <ConnectShipping />}
                   </div>
                 </div>
                 <div data-settings-tab={3} hidden={tab !== 3} className="stack">
                   <div className="row between">
                     <h2>Pagamentos e clube</h2>
-                    <StatusBadge status={IS_DEMO ? 'Simulado' : 'Não configurado'} />
+                    <IntegrationState provider="mercado-pago" />
                   </div>
                   <p>Mercado Pago · checkout transparente por Pix e cartão.</p>
                   <div className="form-grid">
@@ -318,7 +322,9 @@ export function WorkspaceSettingsPanel() {
                         <h3>{title}</h3>
                         <p>{description}</p>
                       </div>
-                      <StatusBadge status={IS_DEMO ? 'Local' : 'Não configurado'} />
+                      <IntegrationState
+                        provider={title === 'Bunny Stream' ? 'bunny-stream' : 'bunny-storage'}
+                      />
                     </section>
                   ))}
                   {toggle('youtubeEnabled', 'Permitir vídeos externos do YouTube')}
@@ -356,8 +362,10 @@ export function WorkspaceSettingsPanel() {
                   {toggle('notificationTicket', 'Avisar sobre novos atendimentos')}
                   {field('lowStockEmails', 'E-mails adicionais de alerta')}
                   <p className="demo-text">
-                    Preferências salvas para integração. Neste modo, nenhum e-mail ou aviso externo
-                    é enviado.
+                    {IS_DEMO
+                      ? 'Neste modo, nenhum e-mail ou aviso externo é enviado.'
+                      : 'E-mails são processados pelo worker e enviados quando o Resend está habilitado no servidor.'}
+                    <IntegrationState provider="resend" />
                   </p>
                 </div>
                 <div className="editor-footer">
@@ -369,6 +377,78 @@ export function WorkspaceSettingsPanel() {
           </Form>
         </section>
       </div>
+    </>
+  );
+}
+
+const integrationSchema = z.array(
+  z.object({
+    provider: z.string(),
+    configured: z.boolean(),
+    enabled: z.boolean().optional(),
+    sandbox: z.boolean().optional(),
+  }),
+);
+function IntegrationState({ provider }: { provider: string }) {
+  const q = useQuery({
+    queryKey: ['admin', 'integrations'],
+    queryFn: () => new HttpClient().request('admin/integrations', integrationSchema),
+    enabled: !IS_DEMO,
+    refetchInterval: 30000,
+  });
+  const item = q.data?.find((v) => v.provider === provider);
+  return (
+    <StatusBadge
+      status={
+        IS_DEMO
+          ? 'Simulado'
+          : q.isError
+            ? 'Falha na consulta'
+            : !q.data
+              ? 'Consultando'
+              : !item?.configured
+                ? 'Não configurado'
+                : item.enabled === false
+                  ? 'Desabilitado'
+                  : item.sandbox
+                    ? 'Sandbox'
+                    : 'Configurado'
+      }
+    />
+  );
+}
+function ConnectShipping() {
+  const action = useMutation({
+    mutationFn: () =>
+      new HttpClient().request(
+        'admin/integrations/melhor-envio/authorize',
+        z.object({
+          url: z
+            .url()
+            .refine((v) =>
+              ['melhorenvio.com.br', 'sandbox.melhorenvio.com.br'].includes(new URL(v).hostname),
+            ),
+        }),
+        { method: 'POST', body: {} },
+      ),
+    onSuccess: (data) => window.location.assign(data.url),
+  });
+  return (
+    <>
+      <Button
+        type="button"
+        variant="secondary"
+        className="small"
+        loading={action.isPending}
+        onClick={() => action.mutate()}
+      >
+        Conectar Melhor Envio
+      </Button>
+      {action.error && (
+        <p className="form-error" role="alert">
+          {action.error.message}
+        </p>
+      )}
     </>
   );
 }

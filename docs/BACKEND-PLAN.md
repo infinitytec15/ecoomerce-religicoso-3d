@@ -1,5 +1,7 @@
 # Backend Mãos em Oração — plano de implementação
 
+> Atualização de 10/11/2026: API, worker, banco e integrações foram implementados. O estado atual, os comandos, os limites e o deploy estão no [runbook do backend](BACKEND-RUNBOOK.md). As seções de planejamento abaixo preservam a especificação anterior; não são um registro de implantação em provedores.
+
 Decisões confirmadas em 09/11/2026: NestJS modular, Prisma, PostgreSQL, Redis, Railway; Bunny Storage para imagens e arquivos de fabricação; Bunny Stream e YouTube para vídeos; Melhor Envio para frete; Mercado Pago para checkout transparente Pix/cartão e assinatura do clube; Resend para e-mails transacionais e oração diária. O usuário aprovou este plano. Este documento planeja a API e o worker, que ainda não foram implementados nem implantados. O frontend funciona em demonstração e já possui contratos HTTP, tokenização e upload preparados. O workspace de templates/adaptador de e-mail está implementado e testado localmente, sem disparos reais.
 
 ## Estrutura do monorepo e versões

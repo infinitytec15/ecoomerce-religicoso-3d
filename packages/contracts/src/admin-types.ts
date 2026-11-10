@@ -138,7 +138,7 @@ export interface PaymentToken {
 }
 export interface ShippingRequest {
   cep: string;
-  items?: { productId: string; quantity: number }[];
+  items?: { productId: string; quantity: number; sizeIndex?: number }[];
 }
 export interface UploadSession {
   id: string;

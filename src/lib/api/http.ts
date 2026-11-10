@@ -160,7 +160,7 @@ export class HttpGateway implements CommerceGateway {
       checkoutResultSchema,
     );
   }
-  shipping(cep: string, items?: { productId: string; quantity: number }[]) {
+  shipping(cep: string, items?: { productId: string; quantity: number; sizeIndex?: number }[]) {
     return this.client.request(
       items ? 'shipping/quotes' : 'shipping/quotes?cep=' + encodeURIComponent(cep),
       shippingResponseSchema,
@@ -225,8 +225,12 @@ export class HttpGateway implements CommerceGateway {
   admin() {
     return this.client.request('admin/operations', operationsSchema);
   }
-  adminCommand(command: AdminCommand) {
-    return this.client.request('admin/commands', voidSchema, { method: 'POST', body: command });
+  adminCommand(command: AdminCommand, idempotencyKey = crypto.randomUUID()) {
+    return this.client.request('admin/commands', voidSchema, {
+      method: 'POST',
+      body: command,
+      idempotencyKey,
+    });
   }
   reportPrayer(id: string, reason: string) {
     return this.client.request(
@@ -238,7 +242,7 @@ export class HttpGateway implements CommerceGateway {
   invitation(token: string) {
     return this.client.request('team/invitations/' + encodeURIComponent(token), invitationSchema);
   }
-  acceptInvitation(input: { token: string; name: string }) {
+  acceptInvitation(input: { token: string; name: string; password?: string }) {
     return this.client.request(
       'team/invitations/' + encodeURIComponent(input.token) + '/accept',
       z.void(),

@@ -1,5 +1,7 @@
 # E-mails Mãos em Oração
 
+> Atualização de 10/11/2026: API, worker, banco e integrações foram implementados. O estado atual, os comandos, os limites e o deploy estão no [runbook do backend](BACKEND-RUNBOOK.md). As seções de planejamento abaixo preservam a especificação anterior; não são um registro de implantação em provedores.
+
 Resend aprovado em 09/11/2026. O workspace `@maos-em-oracao/emails` contém 16 templates no visual Essência, renderer tipado com validação Zod, versões HTML/texto simples e adaptador do SDK oficial Resend 6.37.0. Sem leitura automática de secrets, chamadas ao importar ou disparo durante build/testes.
 
 **Implementado:** templates, prévia local, adaptador de envio, chave determinística, classificação de falhas e verificação de assinatura pelo SDK. **Planejado:** módulos Nest, worker BullMQ, tabelas Prisma, rotas de confirmação/descadastro, domínio verificado e configuração de produção. O formulário demo de oração diária e os comandos administrativos ainda não enviam e-mails reais.

@@ -12,6 +12,7 @@ const id = z.string().min(1),
   cents = z.number().int().nonnegative(),
   text = z.string();
 export const sessionSchema = z.object({
+  guest: z.boolean().optional(),
   id,
   name: text,
   email: z.email(),
@@ -35,7 +36,17 @@ export const sessionSchema = z.object({
   ),
   demo: z.boolean(),
 });
-export const customerSchema = addressSchema.extend({
+const addressResponseSchema = addressSchema.extend({
+  phone: text,
+  cep: text,
+  street: text,
+  number: text,
+  district: text,
+  city: text,
+  state: text,
+  email: z.union([z.email(), z.literal('')]),
+});
+export const customerSchema = addressResponseSchema.extend({
   id,
   status: z.enum(['Ativo', 'Inativo']),
   created: text,
@@ -78,7 +89,7 @@ export const orderSchema = z.object({
   ]),
   created: text,
   due: text,
-  address: addressSchema,
+  address: addressResponseSchema,
   chargeId: id,
   tracking: text,
   carrier: text,

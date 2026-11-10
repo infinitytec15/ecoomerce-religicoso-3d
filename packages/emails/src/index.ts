@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EMAIL_TEMPLATE_VERSION = '2026-11-09.1';
+export const EMAIL_TEMPLATE_VERSION = '2026-11-10.1';
 const line = z
   .string()
   .trim()
@@ -14,12 +14,19 @@ const https = z
   .max(2048)
   .refine((value) => {
     const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password && !/[\r\n]/.test(value);
+    return (
+      (url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) &&
+      !url.username &&
+      !url.password &&
+      !/[\r\n]/.test(value)
+    );
   }, 'Use uma URL HTTPS sem credenciais.');
 const base = { name: line, actionUrl: https };
 const order = { ...base, orderNumber: line, totalCents: cents };
 
 export const emailMessageSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('operation-alert'), ...base, title: line, summary: prose }),
   z.strictObject({ kind: z.literal('verify-email'), ...base, expiresAtLabel: line }),
   z.strictObject({ kind: z.literal('password-reset'), ...base, expiresAtLabel: line }),
   z.strictObject({ kind: z.literal('team-invite'), ...base, role: line, expiresAtLabel: line }),
@@ -83,6 +90,7 @@ export const emailMessageSchema = z.discriminatedUnion('kind', [
 export type EmailMessage = z.infer<typeof emailMessageSchema>;
 export type EmailKind = EmailMessage['kind'];
 export const emailContextSchema = z.strictObject({
+  allowLocalHttp: z.boolean().optional(),
   webUrl: https,
   supportEmail: z.email().max(254),
 });
@@ -98,6 +106,7 @@ export interface RenderedEmail {
 }
 
 export const emailLabels: Record<EmailKind, string> = {
+  'operation-alert': 'Alerta da operação',
   'verify-email': 'Confirmar e-mail',
   'password-reset': 'Recuperar acesso',
   'team-invite': 'Convite para a equipe',
@@ -136,6 +145,13 @@ interface Content {
 
 function content(message: EmailMessage): Content {
   switch (message.kind) {
+    case 'operation-alert':
+      return {
+        title: message.title,
+        intro: message.summary,
+        cta: 'Abrir a gestão',
+        note: 'Alerta da operação Mãos em Oração. Consulte o registro completo no painel.',
+      };
     case 'verify-email':
       return {
         title: 'Seu próximo passo começa aqui.',
@@ -318,6 +334,8 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
   ];
   if (localLinks.some((value) => new URL(value).origin !== origin))
     throw new Error('Links de ação devem pertencer ao domínio público da loja.');
+  if (new URL(context.webUrl).protocol !== 'https:' && !context.allowLocalHttp)
+    throw new Error('HTTP local exige habilitação explícita no contexto de desenvolvimento.');
   if (message.kind === 'order-received') {
     const subtotal = message.items.reduce((sum, item) => sum + item.lineTotalCents, 0);
     if (subtotal + message.shippingCents - message.discountCents !== message.totalCents)

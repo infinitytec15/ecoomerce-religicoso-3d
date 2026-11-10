@@ -9,6 +9,14 @@ const base = { name: 'Mariana', actionUrl: 'https://loja.example/conta' };
 const order = { ...base, orderNumber: 'MEO-EXEMPLO-1042', totalCents: 14890 };
 export const sampleEmails: EmailMessage[] = [
   {
+    kind: 'operation-alert',
+    name: 'Equipe',
+    actionUrl: 'https://loja.example/admin/produtos',
+    title: 'Uma peça precisa de reposição.',
+    summary:
+      'O estoque disponível da Cruz Essencial atingiu 3 unidades. Revise a reposição no painel.',
+  },
+  {
     kind: 'verify-email',
     ...base,
     actionUrl: 'https://loja.example/conta/confirmar?token=amostra',

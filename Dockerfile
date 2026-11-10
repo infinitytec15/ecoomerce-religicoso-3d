@@ -3,6 +3,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/emails/package.json packages/emails/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/backend-core/package.json packages/backend-core/package.json
+COPY packages/integrations/package.json packages/integrations/package.json
+COPY apps/api/package.json apps/api/package.json
+COPY apps/worker/package.json apps/worker/package.json
 RUN npm ci --ignore-scripts --no-fund
 
 FROM dependencies AS builder

@@ -9,3 +9,6 @@ src/data
 DESIGN.md
 tests
 packages/emails/.preview/
+apps/*/dist/
+var/
+.next-http/

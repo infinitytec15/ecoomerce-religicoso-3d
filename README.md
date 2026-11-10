@@ -1,6 +1,6 @@
-# Mãos em Oração · Next.js + Storybook
+# Mãos em Oração · monorepo de e-commerce
 
-Loja de peças cristãs em impressão 3D, com clube mensal, área do cliente e administrador. Aplicação **Next.js 16 / React 19 / TypeScript**, mantendo o visual Essência aprovado.
+Loja de peças cristãs em impressão 3D, com clube mensal, área do cliente e administrador. Aplicação **Next.js 16 / React 19 / TypeScript**, mantendo o visual Essência aprovado. Backend NestJS com PostgreSQL, Redis e worker: [instruções de execução e Railway](docs/BACKEND-RUNBOOK.md).
 
 ## Rodar
 
@@ -43,7 +43,7 @@ Acesso de teste da equipe: **gestao@maosemoracao.demo** / **Essencia3D!**. O log
 
 Para conectar uma API, copie `.env.example` para `.env.local`, configure o modo `http` e a URL exclusiva do servidor, e faça um novo build. Veja o **[contrato completo do backend](docs/BACKEND.md)** e a **[arquitetura](docs/ARCHITECTURE.md)**. A camada HTTP valida respostas e não usa gravações fictícias como fallback.
 
-A API real, banco, autenticação, gateway/webhooks, scheduler de recorrência, transportadora e disparos reais de e-mail **não estão implementados nesta entrega do frontend**. O workspace `packages/emails` já contém 16 templates Essência e adaptador Resend testado sem envios. Consulte [docs/EMAILS.md](docs/EMAILS.md) e rode `npm run emails:preview` para gerar o catálogo local.
+O backend está implementado em NestJS, Prisma/PostgreSQL e Redis/BullMQ, com Mercado Pago, Melhor Envio, Bunny e Resend. API e worker possuem migrations, autenticação real, permissões, conciliação, recorrência e testes de integração. **[Rodar backend e publicar no Railway](docs/BACKEND-RUNBOOK.md)**. Os provedores precisam das credenciais da loja e de homologação antes de vendas reais. Há 17 templates Essência HTML/texto; `npm run emails:preview` gera o catálogo local, sem disparos.
 
 ## Qualidade
 
@@ -58,7 +58,7 @@ npm run build-storybook
 npm run check
 ```
 
-A integração contínua executa os checks e publica o build do Storybook e as prévias fictícias de e-mail como artefatos. `npm run format` formata o novo código. Os testes novos ficam em `src/**/*.test.*` e `packages/*/src/**/*.test.ts`; `tests/*.cjs` são a suíte histórica do protótipo estático.
+A integração contínua executa os checks e publica o build do Storybook e as prévias fictícias de e-mail como artefatos. `npm run format` formata o novo código. A CI também executa API e worker com PostgreSQL/Redis isolados. Os testes novos ficam em `src/**/*.test.*` e `packages/*/src/**/*.test.ts`; `tests/*.cjs` são a suíte histórica do protótipo estático.
 
 ## Vercel
 
@@ -68,7 +68,7 @@ Importe o repositório com o framework **Next.js**, build `npm run build` e saí
 
 Marca: **Mãos em Oração**, creme, oliva e terracota; Cormorant Garamond, DM Sans e Manrope locais. A logo tem símbolo de mãos em oração e assinatura tipográfica. SVGs portáteis em `public/assets/maos-em-oracao-logo.svg` e `maos-em-oracao-logo-clara.svg` incorporam o símbolo PNG e letras em contorno; o símbolo não é integralmente vetorial. Licenças e proveniência acompanham os assets.
 
-As fotos são cenas conceituais geradas por IA e os modelos 3D são procedurais ilustrativos, sem correspondência com arquivos de fabricação. Produtos, valores e políticas precisam de aprovação comercial antes de vendas reais.
+As fotos iniciais são cenas conceituais geradas por IA. O cadastro atual aceita STL/3MF e produz um preview da geometria real; o 3D só é disponibilizado após enviar e validar um arquivo de fabricação. Produtos, valores e políticas precisam de aprovação comercial antes de vendas reais.
 
 Links antigos `/#/...` redirecionam para rotas nativas. A migração lê os dados `amago-*`, grava o novo formato e preserva os originais. Armazenamento pertence ao mesmo host/porta. `dist/` conserva o protótipo estático anterior para referência; não é a aplicação publicada nem a saída do Next.js.
 

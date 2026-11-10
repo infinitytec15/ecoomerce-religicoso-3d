@@ -1,5 +1,7 @@
 'use client';
 import Link from 'next/link';
+import { useAdminOverview } from './server-data';
+import { IS_DEMO } from '@/lib/api/config';
 import { useAdminData } from './admin-frame';
 import { AdminAnalytics } from './analytics';
 import { AdminHeading, AdminMetrics, AuditList } from './shared';
@@ -10,6 +12,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Icon } from '@/components/ui/icon';
 export function AdminOverview() {
+  const totals = useAdminOverview();
   const data = useAdminData(),
     f = financialSummary(data),
     active = data.subscriptions.filter((s) => s.status === 'Ativa').length;
@@ -34,16 +37,26 @@ export function AdminOverview() {
         items={[
           {
             label: 'Pedidos em andamento',
-            value: data.orders.filter((o) => !['Entregue', 'Cancelado'].includes(o.status)).length,
+            value: IS_DEMO
+              ? data.orders.filter((o) => !['Entregue', 'Cancelado'].includes(o.status)).length
+              : (totals.data?.ordersInProgress ?? '—'),
             note: 'Loja + clube',
           },
-          { label: 'Assinaturas ativas', value: active, note: 'Clientes com plano ativo' },
+          {
+            label: 'Assinaturas ativas',
+            value: IS_DEMO ? active : (totals.data?.activeSubscriptions ?? '—'),
+            note: 'Clientes com plano ativo',
+          },
           {
             label: 'Receita mensal do clube',
-            value: money(f.mrr),
+            value: IS_DEMO ? money(f.mrr) : totals.data ? money(totals.data.mrrCents) : '—',
             note: 'Projeção das assinaturas ativas',
           },
-          { label: 'A receber', value: money(f.pending), note: 'Cobranças pendentes' },
+          {
+            label: 'A receber',
+            value: IS_DEMO ? money(f.pending) : totals.data ? money(totals.data.pendingCents) : '—',
+            note: 'Cobranças pendentes',
+          },
         ]}
       />
       <AdminAnalytics />

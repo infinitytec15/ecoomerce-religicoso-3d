@@ -120,7 +120,11 @@ export function CheckoutView() {
                 addressSchema.parse(address);
                 const quoted = await gateway.shipping(
                   address.cep,
-                  items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+                  items.map((i) => ({
+                    productId: i.productId,
+                    quantity: i.quantity,
+                    sizeIndex: i.sizeIndex,
+                  })),
                 );
                 if (!quoted.length) throw new Error('Nenhum frete disponível para este CEP.');
                 setRates(quoted);

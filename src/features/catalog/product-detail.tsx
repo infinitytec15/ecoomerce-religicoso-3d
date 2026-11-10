@@ -137,7 +137,11 @@ export function ProductDetail({
           <div className="shipping-box">
             <Form
               onSubmit={async (d) =>
-                setRates(await gateway.shipping(text(d, 'cep'), [{ productId: p.id, quantity }]))
+                setRates(
+                  await gateway.shipping(text(d, 'cep'), [
+                    { productId: p.id, quantity, sizeIndex: size },
+                  ]),
+                )
               }
             >
               <label htmlFor="product-cep">

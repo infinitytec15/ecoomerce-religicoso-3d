@@ -11,6 +11,14 @@ const paymentTokenSchema = z.object({
   }),
 });
 export const addressSchema = z.object({
+  document: z
+    .string()
+    .max(20)
+    .refine(
+      (v) => !v || /^\d{11}$|^\d{14}$/.test(v.replace(/\D/g, '')),
+      'Informe um CPF ou CNPJ válido.',
+    )
+    .optional(),
   name: z.string().trim().min(3, 'Informe seu nome completo.').max(120),
   email: z.email('Informe um e-mail válido.').max(200),
   phone: z.string().min(10, 'Informe o telefone com DDD.').max(20),

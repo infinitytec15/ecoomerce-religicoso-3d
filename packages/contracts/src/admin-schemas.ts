@@ -1,4 +1,8 @@
 import { z } from 'zod';
+const publishedAssetUrl = z.union([
+  z.url().refine((value) => new URL(value).protocol === 'https:', 'Use HTTPS.'),
+  z.string().regex(/^\/api\/media\/public\/[a-zA-Z0-9_-]+\/(image\.webp|preview\.glb|video)$/),
+]);
 export const permissionSchema = z.enum([
   'orders',
   'subscriptions',
@@ -38,7 +42,7 @@ export const productModelSchema = z.object({
   filename: z.string(),
   format: z.enum(['stl', '3mf']),
   status: z.enum(['ready', 'processing', 'failed']),
-  previewUrl: z.url().optional(),
+  previewUrl: publishedAssetUrl.optional(),
   stats: modelStatsSchema.optional(),
 });
 export const productShippingSchema = z.object({
@@ -136,12 +140,6 @@ export const stockMovementSchema = z.object({
   date: z.string(),
   actor: z.string(),
 });
-const httpsUrl = z
-  .url()
-  .refine(
-    (value) => new URL(value).protocol === 'https:',
-    'Use HTTPS para os arquivos publicados.',
-  );
 export const uploadSessionSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   transport: z.enum(['proxy', 'tus']),
@@ -157,8 +155,8 @@ export const mediaAssetSchema = z.object({
   storage: z.enum(['local', 'bunny-storage', 'bunny-stream']),
   status: z.enum(['ready', 'processing', 'failed']),
   created: z.string(),
-  url: httpsUrl.optional(),
-  previewUrl: httpsUrl.optional(),
-  thumbnailUrl: httpsUrl.optional(),
+  url: publishedAssetUrl.optional(),
+  previewUrl: publishedAssetUrl.optional(),
+  thumbnailUrl: publishedAssetUrl.optional(),
   stats: modelStatsSchema.optional(),
 });

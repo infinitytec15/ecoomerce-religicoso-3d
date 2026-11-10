@@ -88,6 +88,22 @@ export function AdminProduction() {
                     >
                       {order?.items[0]?.name || 'Cesta do clube'}
                     </RecordButton>
+                    {!IS_DEMO &&
+                      order?.items.map((item) => {
+                        const assetId = data.products.find((p) => p.id === item.productId)?.model
+                          ?.assetId;
+                        return assetId ? (
+                          <a
+                            className="admin-link"
+                            href={
+                              '/api/v1/admin/media/' + encodeURIComponent(assetId) + '/original'
+                            }
+                            key={item.productId}
+                          >
+                            Baixar arquivo de {item.name}
+                          </a>
+                        ) : null;
+                      })}
                     <Link href={'/admin/pedidos/' + j.orderId}>{order?.number || j.orderId}</Link>
                     <p>
                       {data.clients.find((c) => c.id === order?.customerId)?.name}

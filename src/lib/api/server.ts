@@ -10,7 +10,10 @@ async function publicFetch<T>(path: string, schema: z.ZodType<T>): Promise<T> {
   const base = process.env.API_BASE_URL;
   if (!base) throw new Error('Configure API_BASE_URL para usar o modo HTTP.');
   const response = await fetch(base.replace(/\/$/, '') + '/' + path, {
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(process.env.BFF_SHARED_SECRET ? { 'x-bff-secret': process.env.BFF_SHARED_SECRET } : {}),
+    },
     next: { revalidate: 60, tags: ['catalog'] },
     signal: AbortSignal.timeout(10000),
   });

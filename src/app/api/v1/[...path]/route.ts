@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 const routes =
-  /^(catalog\/products(?:\/[a-zA-Z0-9_-]+)?|store\/settings|auth\/(session|login|logout|recover)|account(?:\/profile)?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/unsubscribe)?|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content))?))$/;
+  /^(catalog\/products(?:\/[a-zA-Z0-9_-]+)?|store\/settings|auth\/(session|login|logout|recover|verify|reset|email-change|guest-order)|account(?:\/profile)?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/(unsubscribe|confirm))?|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|overview|integrations|jobs|webhooks|reports\/[a-zA-Z0-9_-]+|exports(?:\/[a-zA-Z0-9_-]+(?:\/download)?)?|resources\/[a-zA-Z0-9_-]+|orders\/[a-zA-Z0-9_-]+\/(fiscal|shipment)|integrations\/melhor-envio\/authorize|media\/[a-zA-Z0-9_-]+\/(status|original)|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content|renew))?))$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params,
     pathname = path.join('/');
@@ -90,6 +90,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     : undefined;
   try {
     const headers = new Headers({ Accept: 'application/json' });
+    if (process.env.BFF_SHARED_SECRET) headers.set('x-bff-secret', process.env.BFF_SHARED_SECRET);
+    const origin = request.headers.get('origin');
+    if (origin) headers.set('origin', origin);
+    const forwarded = request.headers.get('x-forwarded-for');
+    if (forwarded) headers.set('x-forwarded-for', forwarded);
     for (const name of ['cookie', 'content-type', 'idempotency-key', 'x-csrf-token']) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
@@ -115,6 +120,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     });
     for (const cookie of upstream.headers.getSetCookie())
       response.headers.append('set-cookie', cookie);
+    const disposition = upstream.headers.get('content-disposition');
+    if (disposition) response.headers.set('content-disposition', disposition);
     return response;
   } catch {
     return NextResponse.json(

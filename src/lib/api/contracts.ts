@@ -32,7 +32,7 @@ export interface CommerceGateway {
   payment(id: string): Promise<CheckoutResult>;
   shipping(
     cep: string,
-    items?: { productId: string; quantity: number }[],
+    items?: { productId: string; quantity: number; sizeIndex?: number }[],
   ): Promise<ShippingQuote[]>;
   changeSubscription(change: SubscriptionChange): Promise<void>;
   createTicket(input: {
@@ -51,9 +51,9 @@ export interface CommerceGateway {
   newsletter(input: NewsletterInput): Promise<{ message: string; token?: string }>;
   unsubscribeNewsletter(token?: string): Promise<void>;
   admin(): Promise<Operations>;
-  adminCommand(command: AdminCommand): Promise<void>;
+  adminCommand(command: AdminCommand, idempotencyKey?: string): Promise<void>;
   invitation(token: string): Promise<import('@/lib/domain/types').TeamInvitation>;
-  acceptInvitation(input: { token: string; name: string }): Promise<void>;
+  acceptInvitation(input: { token: string; name: string; password?: string }): Promise<void>;
 }
 export class ApiError extends Error {
   constructor(

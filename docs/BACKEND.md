@@ -1,8 +1,10 @@
 # Contrato de integração
 
-O plano completo da próxima etapa está em [BACKEND-PLAN.md](BACKEND-PLAN.md): NestJS, Prisma, PostgreSQL, Redis, Railway, Mercado Pago, Melhor Envio e Bunny. O pacote compartilhado em packages/contracts contém os tipos e validações ativos.
+> Atualização de 10/11/2026: API, worker, banco e integrações foram implementados. O estado atual, os comandos, os limites e o deploy estão no [runbook do backend](BACKEND-RUNBOOK.md). As seções de planejamento abaixo preservam a especificação anterior; não são um registro de implantação em provedores.
 
-O frontend é uma aplicação Next.js real. O backend comercial não acompanha esta entrega. No modo `demo`, a operação é simulada no navegador; no modo `http`, as mesmas telas usam a API e não recorrem aos dados fictícios quando uma chamada falha.
+O histórico do planejamento está em [BACKEND-PLAN.md](BACKEND-PLAN.md); o estado implementado e o deploy estão no [runbook](BACKEND-RUNBOOK.md). O pacote compartilhado em packages/contracts contém os tipos e validações ativos.
+
+O frontend é uma aplicação Next.js real. O backend comercial está nos workspaces `apps/api`, `apps/worker` e `packages/backend-core`. No modo `demo`, a operação é simulada no navegador; no modo `http`, as mesmas telas usam a API e não recorrem aos dados fictícios quando uma chamada falha.
 
 ## Configurar
 
@@ -10,6 +12,7 @@ O frontend é uma aplicação Next.js real. O backend comercial não acompanha e
 NEXT_PUBLIC_DATA_MODE=http
 NEXT_PUBLIC_API_BASE_URL=/api/v1
 API_BASE_URL=https://api.sua-empresa.com/api/v1
+BFF_SHARED_SECRET=mesmo-secret-privado-da-api
 NEXT_PUBLIC_SITE_URL=https://sua-loja.com.br
 IMAGE_HOSTS=cdn.sua-empresa.com
 ```

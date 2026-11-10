@@ -7,6 +7,7 @@ export const emptyAddress: Address = {
   name: '',
   email: '',
   phone: '',
+  document: '',
   cep: '',
   street: '',
   number: '',
@@ -19,6 +20,7 @@ const fields: [keyof Address, string, string?, boolean?][] = [
   ['name', 'Nome completo', 'text', true],
   ['email', 'E-mail', 'email', true],
   ['phone', 'Telefone com DDD', 'tel'],
+  ['document', 'CPF ou CNPJ para o envio', 'text', true],
   ['cep', 'CEP', 'text'],
   ['street', 'Rua ou avenida', 'text', true],
   ['number', 'Número'],
@@ -49,10 +51,10 @@ export function AddressFields({
             {key === 'extra' && <span className="muted"> (opcional)</span>}
             <input
               name={key}
-              value={value[key]}
+              value={value[key] || ''}
               onChange={(e) => onChange({ ...value, [key]: e.target.value })}
               type={type || 'text'}
-              required={key !== 'extra'}
+              required={key !== 'extra' && (key !== 'document' || !IS_DEMO)}
               minLength={key === 'phone' ? 10 : key === 'name' ? 3 : undefined}
               pattern={key === 'cep' ? '[0-9]{5}-?[0-9]{3}' : undefined}
               maxLength={key === 'cep' ? 9 : 120}

@@ -100,11 +100,14 @@ export function useOperations() {
   return useQuery({
     queryKey: queryKeys.admin(session.data?.id),
     refetchInterval: (query) =>
-      query.state.data?.products.some(
-        (p) => p.model?.status === 'processing' || p.media?.some((m) => m.status === 'processing'),
-      )
-        ? 5000
-        : false,
+      gateway.mode === 'http'
+        ? 10000
+        : query.state.data?.products.some(
+              (p) =>
+                p.model?.status === 'processing' || p.media?.some((m) => m.status === 'processing'),
+            )
+          ? 5000
+          : false,
     queryFn: () => gateway.admin(),
     enabled: !!session.data && session.data.role !== 'customer',
   });

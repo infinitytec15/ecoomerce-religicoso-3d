@@ -238,7 +238,7 @@ export function AuthScreen({
                               name="password"
                               type={show ? 'text' : 'password'}
                               required
-                              minLength={IS_DEMO ? 4 : 8}
+                              minLength={IS_DEMO ? 4 : register ? 12 : 8}
                               value={password}
                               onChange={(e) => setPassword(e.target.value)}
                               placeholder={

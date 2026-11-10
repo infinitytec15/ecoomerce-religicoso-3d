@@ -81,8 +81,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   if (!session.data || session.data.role === 'customer')
     return <AuthScreen key="staff" kind="staff" returnTo={path} />;
   const user = session.data,
-    allowed = (permission?: Permission) =>
-      !permission || user.role === 'admin' || user.permissions.includes(permission),
+    allowed = (permission?: Permission) => !permission || user.permissions.includes(permission),
     required = adminNavigation.find(([id]) => id === section)?.[3],
     data = operations.data,
     ticketCount = data?.tickets.filter((t) => t.status !== 'Resolvido').length || 0,

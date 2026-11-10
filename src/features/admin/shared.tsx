@@ -1,9 +1,9 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useCommand } from '@/lib/api/query';
 import type { AdminCommand, Operations } from '@/lib/domain/types';
 import { downloadCsv } from '@/lib/domain/format';
-import { errorMessage } from '@/lib/api/contracts';
+import { ApiError, errorMessage } from '@/lib/api/contracts';
 import { useNotify } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -51,7 +51,23 @@ export function AdminError({ error }: { error: unknown }) {
   ) : null;
 }
 export function useAdminAction() {
-  const mutation = useCommand((g, command: AdminCommand) => g.adminCommand(command)),
+  const keys = useRef(new Map<string, string>());
+  const mutation = useCommand(async (g, command: AdminCommand) => {
+      const fingerprint = JSON.stringify(command);
+      let key = keys.current.get(fingerprint);
+      if (!key) {
+        key = crypto.randomUUID();
+        keys.current.set(fingerprint, key);
+      }
+      try {
+        await g.adminCommand(command, key);
+      } catch (error) {
+        if (error instanceof ApiError && error.status < 500 && error.code !== 'OPERATION_PENDING')
+          keys.current.delete(fingerprint);
+        throw error;
+      }
+      keys.current.delete(fingerprint);
+    }),
     notify = useNotify();
   return {
     pending: mutation.isPending,

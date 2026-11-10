@@ -1,4 +1,5 @@
 'use client';
+import { useAdminOverview } from './server-data';
 import { useState } from 'react';
 import { useAdminData } from './admin-frame';
 import { AdminAnalytics } from './analytics';
@@ -22,6 +23,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ReceiptButton } from '@/features/account/shipment-card';
 export function AdminFinance() {
+  const totals = useAdminOverview();
   const data = useAdminData(),
     f = financialSummary(data),
     action = useAdminAction(),
@@ -60,13 +62,29 @@ export function AdminFinance() {
       />
       <AdminMetrics
         items={[
-          { label: 'Recebido', value: money(f.paid), note: 'Cobranças com situação Pago' },
-          { label: 'A receber', value: money(f.pending), note: 'Pendentes e recusadas' },
-          { label: 'Despesas pagas', value: money(f.expenses), note: 'Saídas registradas' },
+          {
+            label: 'Recebido',
+            value: IS_DEMO ? money(f.paid) : totals.data ? money(totals.data.grossCents) : '—',
+            note: 'Recebimentos no mês de Brasília',
+          },
+          {
+            label: 'A receber',
+            value: IS_DEMO ? money(f.pending) : totals.data ? money(totals.data.pendingCents) : '—',
+            note: 'Cobranças pendentes',
+          },
+          {
+            label: 'Despesas pagas',
+            value: IS_DEMO
+              ? money(f.expenses)
+              : totals.data
+                ? money(totals.data.expensesCents)
+                : '—',
+            note: 'Despesas e taxas no mês',
+          },
           {
             label: IS_DEMO ? 'Resultado simulado' : 'Resultado',
-            value: money(f.net),
-            note: 'Recebimentos menos despesas pagas',
+            value: IS_DEMO ? money(f.net) : totals.data ? money(totals.data.netCents) : '—',
+            note: 'Recebimentos menos saídas e estornos no mês',
           },
         ]}
       />

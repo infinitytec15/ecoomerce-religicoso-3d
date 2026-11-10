@@ -1,4 +1,6 @@
 'use client';
+import { IS_DEMO } from '@/lib/api/config';
+import { useAdminOverview } from './server-data';
 import { useMemo, useState } from 'react';
 import {
   AreaChart,
@@ -23,11 +25,16 @@ export function AdminAnalytics({ finance = false }: { finance?: boolean }) {
   const [clock] = useState(() => Date.now());
   const since =
       period === 'custom'
-        ? start
+        ? start || today()
         : period === 'all'
           ? '0000-01-01'
           : new Date(clock - Number(period) * 86400000).toISOString().slice(0, 10),
     until = period === 'custom' ? end : today();
+  const totals = useAdminOverview({
+    from: (since === '0000-01-01' ? '2000-01-01' : since) + 'T00:00:00-03:00',
+    to: until + 'T23:59:59.999-03:00',
+    ...(origin !== 'Todos' ? { origin } : {}),
+  });
   const orders = data.orders.filter((o) => origin === 'Todos' || o.type === origin),
     ids = new Set(orders.map((o) => o.id));
   const charges = data.charges.filter(
@@ -37,7 +44,7 @@ export function AdminAnalytics({ finance = false }: { finance?: boolean }) {
         (c.paidAt || c.due).slice(0, 10) <= until,
     ),
     expenses = data.expenses.filter((e) => e.date >= since && e.date <= until);
-  const series = useMemo(() => {
+  const localSeries = useMemo(() => {
     const days = new Map<
       string,
       { date: string; receita: number; despesas: number; pedidos: number }
@@ -70,21 +77,38 @@ export function AdminAnalytics({ finance = false }: { finance?: boolean }) {
         get(o.created).pedidos++;
     return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
   }, [data, since, until, origin]);
-  const received = charges
-      .filter((c) => c.status === 'Pago')
-      .reduce((sum, c) => sum + c.amountCents, 0),
-    paidExpenses = expenses
-      .filter((e) => e.status === 'Pago')
-      .reduce((sum, e) => sum + e.amountCents, 0),
-    paid = charges.filter((c) => c.status === 'Pago').length,
+  const series = IS_DEMO
+    ? localSeries
+    : (totals.data?.daily || []).map((d) => ({
+        date: d.date,
+        receita: d.income / 100,
+        despesas: d.expense / 100,
+        pedidos: d.orders,
+      }));
+  const received = !IS_DEMO
+      ? totals.data?.grossCents || 0
+      : charges.filter((c) => c.status === 'Pago').reduce((sum, c) => sum + c.amountCents, 0),
+    paidExpenses = !IS_DEMO
+      ? (totals.data?.expensesCents || 0) + (totals.data?.refundsCents || 0)
+      : expenses.filter((e) => e.status === 'Pago').reduce((sum, e) => sum + e.amountCents, 0),
+    paid = IS_DEMO
+      ? charges.filter((c) => c.status === 'Pago').length
+      : totals.data?.paidCount || 0,
     distribution = ['card', 'pix', 'split'].map((method) => ({
       method: method === 'card' ? 'Cartão' : method === 'pix' ? 'Pix' : 'Pix + cartão',
-      total: charges
-        .filter((c) => c.method === method && c.status === 'Pago')
-        .reduce((sum, c) => sum + c.amountCents / 100, 0),
+      total: !IS_DEMO
+        ? (totals.data?.distribution.find((d) => d.method === method)?.cents || 0) / 100
+        : charges
+            .filter((c) => c.method === method && c.status === 'Pago')
+            .reduce((sum, c) => sum + c.amountCents / 100, 0),
     }));
   return (
     <section className="admin-analytics" aria-label="Análise da operação">
+      {!IS_DEMO && totals.error && (
+        <p className="form-error" role="alert">
+          {totals.error.message}
+        </p>
+      )}
       <div className="analytics-heading">
         <div>
           <h2>{finance ? 'Movimentação financeira' : 'A loja em movimento'}</h2>
@@ -296,7 +320,11 @@ export function AdminAnalytics({ finance = false }: { finance?: boolean }) {
                   <div className="pipeline-row" key={status}>
                     <div>
                       <span>{label}</span>
-                      <strong>{records.length}</strong>
+                      <strong>
+                        {IS_DEMO
+                          ? records.length
+                          : totals.data?.pipeline.find((p) => p.status === status)?.count || 0}
+                      </strong>
                     </div>
                     <div className="pipeline-track">
                       <span

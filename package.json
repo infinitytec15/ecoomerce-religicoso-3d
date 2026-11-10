@@ -10,7 +10,7 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
-    "typecheck": "next typegen && tsc --noEmit && npm run typecheck --workspace @maos-em-oracao/emails",
+    "typecheck": "npm run backend:generate && next typegen && tsc --noEmit && npm run typecheck --workspace @maos-em-oracao/emails && npm run backend:typecheck",
     "emails:preview": "node scripts/render-email-previews.mjs",
     "lint": "eslint .",
     "test": "vitest run",
@@ -18,8 +18,17 @@
     "storybook": "storybook dev -p 6006 --host 127.0.0.1 --no-open",
     "build-storybook": "storybook build",
     "check": "npm run typecheck && npm run lint && npm test && npm run emails:preview && npm run build && npm run build-storybook",
-    "format": "prettier --write src packages scripts .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md",
-    "format:check": "prettier --check src packages scripts .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml README.md"
+    "format": "prettier --write src packages apps scripts deploy .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json tsconfig.backend.json compose.backend.yml .prettierrc.json .github/workflows/ci.yml README.md",
+    "format:check": "prettier --check src packages apps scripts deploy .storybook docs next.config.ts vitest.config.ts eslint.config.mjs package.json tsconfig.json tsconfig.backend.json compose.backend.yml .prettierrc.json .github/workflows/ci.yml README.md",
+    "backend:generate": "npm run generate --workspace @maos-em-oracao/database",
+    "backend:build": "npm run backend:generate && npm run build --workspace @maos-em-oracao/api && npm run build --workspace @maos-em-oracao/worker",
+    "backend:typecheck": "npm run typecheck --workspace @maos-em-oracao/database --workspace @maos-em-oracao/integrations --workspace @maos-em-oracao/backend-core --workspace @maos-em-oracao/api --workspace @maos-em-oracao/worker",
+    "backend:migrate": "npm run migrate --workspace @maos-em-oracao/database",
+    "backend:seed": "npm run seed --workspace @maos-em-oracao/database",
+    "backend:dev": "npm run dev --workspace @maos-em-oracao/api",
+    "worker:dev": "npm run dev --workspace @maos-em-oracao/worker",
+    "backend:test": "node --import tsx scripts/backend-test.mjs",
+    "backend:local": "node scripts/backend-local.mjs"
   },
   "dependencies": {
     "@mercadopago/sdk-react": "1.0.7",
@@ -56,12 +65,17 @@
     "storybook": "10.6.6",
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
   },
   "overrides": {
-    "sharp": "$sharp"
+    "sharp": "$sharp",
+    "glob@13": "14.0.4",
+    "minimatch@>=7 <11.0.1": "11.0.6"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ]
 }
