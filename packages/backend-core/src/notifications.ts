@@ -124,7 +124,9 @@ export class Notifications {
     const rendered = renderEmail(message, {
       webUrl: c.PUBLIC_WEB_URL,
       supportEmail: replyTo,
-      allowLocalHttp: c.NODE_ENV !== 'production' && c.INTEGRATIONS_MODE === 'mock',
+      // loadConfig only accepts an http PUBLIC_WEB_URL on loopback outside production, so
+      // this also covers local live homologation (SHIPPING_SIMULATED) without weakening prod.
+      allowLocalHttp: c.NODE_ENV !== 'production',
     });
     const envelope: EmailEnvelope = {
       to: recipient,

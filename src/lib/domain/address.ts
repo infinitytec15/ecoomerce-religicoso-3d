@@ -5,6 +5,28 @@ export function maskCep(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 8);
   return digits.length > 5 ? digits.slice(0, 5) + '-' + digits.slice(5) : digits;
 }
+/** (11) 3333-4444 or (11) 99999-8888 while typing. */
+export function maskPhone(value: string) {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d ? '(' + d : '';
+  const local = d.slice(2),
+    split = d.length === 11 ? 5 : 4;
+  return `(${d.slice(0, 2)}) ${local.length > split ? local.slice(0, split) + '-' + local.slice(split) : local}`;
+}
+/** CPF 000.000.000-00, switching to CNPJ 00.000.000/0000-00 after 11 digits. */
+export function maskDocument(value: string) {
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 11)
+    return d
+      .replace(/^(\d{3})(\d)/, '$1.$2')
+      .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3/$4')
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, '$1.$2.$3/$4-$5');
+}
 const viaCepSchema = z.union([
   z.object({ erro: z.union([z.literal(true), z.literal('true')]) }),
   z.object({

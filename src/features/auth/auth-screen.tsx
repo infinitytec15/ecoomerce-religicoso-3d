@@ -16,8 +16,10 @@ export const STAFF_DEMO_EMAIL = 'gestao@maosemoracao.demo';
 export const STAFF_DEMO_PASSWORD = 'Essencia3D!';
 export function safeReturnTo(path: string | undefined, kind: 'customer' | 'staff') {
   const fallback = kind === 'staff' ? '/admin' : '/conta';
+  // Customers may also return to the checkout they left to sign in.
+  const allowed = kind === 'staff' ? ['/admin'] : ['/conta', '/checkout'];
   return path &&
-    path.startsWith(fallback) &&
+    allowed.some((prefix) => path === prefix || path.startsWith(prefix + '/')) &&
     !path.includes('\\') &&
     !path.includes('://') &&
     !path.includes('/login')

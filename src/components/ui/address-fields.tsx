@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Address } from '@/lib/domain/types';
 import { demoAddress } from '@/lib/domain/schemas';
-import { lookupCep, maskCep } from '@/lib/domain/address';
+import { lookupCep, maskCep, maskDocument, maskPhone } from '@/lib/domain/address';
 import { IS_DEMO } from '@/lib/api/config';
 import { Button } from './button';
 export const emptyAddress: Address = {
@@ -73,11 +73,19 @@ export function AddressFields({
   value,
   onChange,
   showDemo = true,
+  section = 'all',
+  identity = true,
 }: {
   value: Address;
   onChange: (value: Address) => void;
   showDemo?: boolean;
+  /** contact = name/e-mail/phone/document; place = CEP-first address; all = both. */
+  section?: 'all' | 'contact' | 'place';
+  /** Hide name/e-mail when they come from the signed-in account. */
+  identity?: boolean;
 }) {
+  const showContact = section !== 'place',
+    showPlace = section !== 'contact';
   const [lookup, setLookup] = useState<Lookup>('idle'),
     numberRef = useRef<HTMLInputElement>(null),
     latest = useRef(value),
@@ -88,7 +96,7 @@ export function AddressFields({
   // Address details open once the CEP is complete, or when an address is already saved.
   const open = digits.length === 8 || !!value.street;
   useEffect(() => {
-    if (digits.length !== 8 || resolved.current === digits) return;
+    if (!showPlace || digits.length !== 8 || resolved.current === digits) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLookup('loading');
@@ -114,7 +122,7 @@ export function AddressFields({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [digits, onChange]);
+  }, [digits, onChange, showPlace]);
   const input = ([key, label, type, wide]: Field) => (
     <label className={wide ? 'span2' : ''} key={key}>
       {label}
@@ -123,11 +131,25 @@ export function AddressFields({
         ref={key === 'number' ? numberRef : undefined}
         name={key}
         value={value[key] || ''}
-        onChange={(e) => onChange({ ...value, [key]: e.target.value })}
+        onChange={(e) =>
+          onChange({
+            ...value,
+            [key]:
+              key === 'phone'
+                ? maskPhone(e.target.value)
+                : key === 'document'
+                  ? maskDocument(e.target.value)
+                  : e.target.value,
+          })
+        }
         type={type || 'text'}
+        inputMode={key === 'phone' || key === 'document' ? 'numeric' : undefined}
+        placeholder={
+          key === 'phone' ? '(00) 00000-0000' : key === 'document' ? '000.000.000-00' : undefined
+        }
         required={key !== 'extra' && (key !== 'document' || !IS_DEMO)}
         minLength={key === 'phone' ? 10 : key === 'name' ? 3 : undefined}
-        maxLength={120}
+        maxLength={key === 'phone' ? 15 : key === 'document' ? 18 : 120}
         autoComplete={
           IS_DEMO
             ? 'off'
@@ -148,46 +170,56 @@ export function AddressFields({
   );
   return (
     <>
-      {IS_DEMO && showDemo && (
+      {IS_DEMO && showDemo && showContact && (
         <Button type="button" variant="text" onClick={() => onChange({ ...demoAddress })}>
           Preencher com dados fictícios
         </Button>
       )}
       <div className="form-grid">
-        {contactFields.map(input)}
-        <label className="span2 cep-field">
-          CEP
-          <input
-            name="cep"
-            value={value.cep}
-            onChange={(e) => {
-              const cep = maskCep(e.target.value);
-              if (cep.replace(/\D/g, '') !== resolved.current) setLookup('idle');
-              onChange({ ...value, cep });
-            }}
-            inputMode="numeric"
-            required
-            pattern="[0-9]{5}-?[0-9]{3}"
-            maxLength={9}
-            autoComplete={IS_DEMO ? 'off' : 'postal-code'}
-            placeholder="00000-000"
-            aria-describedby="cep-status"
-          />
-          <span id="cep-status" className={`cep-status ${lookup}`} role="status" aria-live="polite">
-            {lookup === 'loading' && <span className="cep-spinner" aria-hidden="true" />}
-            {lookupMessage[lookup]}{' '}
-            {lookup === 'idle' && (
-              <a
-                href="https://buscacepinter.correios.com.br/app/endereco/index.php"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Não sei meu CEP
-              </a>
-            )}
-          </span>
-        </label>
-        {open && (
+        {showContact &&
+          contactFields
+            .filter(([key]) => identity || (key !== 'name' && key !== 'email'))
+            .map(input)}
+        {showPlace && (
+          <label className="span2 cep-field">
+            CEP
+            <input
+              name="cep"
+              value={value.cep}
+              onChange={(e) => {
+                const cep = maskCep(e.target.value);
+                if (cep.replace(/\D/g, '') !== resolved.current) setLookup('idle');
+                onChange({ ...value, cep });
+              }}
+              inputMode="numeric"
+              required
+              pattern="[0-9]{5}-?[0-9]{3}"
+              maxLength={9}
+              autoComplete={IS_DEMO ? 'off' : 'postal-code'}
+              placeholder="00000-000"
+              aria-describedby="cep-status"
+            />
+            <span
+              id="cep-status"
+              className={`cep-status ${lookup}`}
+              role="status"
+              aria-live="polite"
+            >
+              {lookup === 'loading' && <span className="cep-spinner" aria-hidden="true" />}
+              {lookupMessage[lookup]}{' '}
+              {lookup === 'idle' && (
+                <a
+                  href="https://buscacepinter.correios.com.br/app/endereco/index.php"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Não sei meu CEP
+                </a>
+              )}
+            </span>
+          </label>
+        )}
+        {showPlace && open && (
           <>
             {placeFields.map(input)}
             <label>

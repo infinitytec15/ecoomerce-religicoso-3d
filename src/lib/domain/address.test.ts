@@ -1,7 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-import { lookupCep, maskCep } from './address';
+import { lookupCep, maskCep, maskDocument, maskPhone } from './address';
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+describe('máscaras de contato', () => {
+  it('formata celular e fixo com DDD', () => {
+    expect(maskPhone('15997855287')).toBe('(15) 99785-5287');
+    expect(maskPhone('1133334444')).toBe('(11) 3333-4444');
+    expect(maskPhone('(15) 9978')).toBe('(15) 9978');
+    expect(maskPhone('1')).toBe('(1');
+    expect(maskPhone('')).toBe('');
+  });
+  it('formata CPF e passa para CNPJ quando há mais dígitos', () => {
+    expect(maskDocument('35206258814')).toBe('352.062.588-14');
+    expect(maskDocument('3520625')).toBe('352.062.5');
+    expect(maskDocument('11222333000181')).toBe('11.222.333/0001-81');
+    expect(maskDocument('352.062.588-14').replace(/\D/g, '')).toBe('35206258814');
+  });
+});
 describe('CEP', () => {
   it('aplica a máscara enquanto a pessoa digita', () => {
     expect(maskCep('0100')).toBe('0100');

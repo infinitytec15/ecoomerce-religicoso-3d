@@ -2468,6 +2468,26 @@ small {
   padding: 10px;
   image-rendering: pixelated;
 }
+/* Checkout identity and shipping choice */
+.checkout-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.checkout-identity small {
+  color: var(--muted);
+}
+.shipping-options {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.shipping-options legend {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
 /* CEP-first address entry */
 .cep-field input {
   display: block;
