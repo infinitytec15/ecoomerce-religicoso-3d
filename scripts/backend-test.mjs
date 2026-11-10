@@ -1154,19 +1154,19 @@ try {
       dedication: '',
     };
     const code = 'REAL' + runId.toUpperCase();
-    await ctx.db.coupon.create({
-      data: {
+    await owner.command({
+      type: 'coupon.save',
+      coupon: {
+        id: randomUUID(),
         code,
         active: true,
         limit: 10,
         used: 0,
-        data: {
-          kind: 'fixed',
-          amount: 1700,
-          minimumCents: 0,
-          startsAt: '2020-01-01',
-          endsAt: '2099-12-31',
-        },
+        kind: 'fixed',
+        amount: 1700,
+        minimumCents: 0,
+        startsAt: '2020-01-01',
+        endsAt: '2099-12-31',
       },
     });
     const r = await owner.call('checkout/estimate', 'POST', { items: [item], coupon: code });
