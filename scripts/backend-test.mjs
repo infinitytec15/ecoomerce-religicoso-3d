@@ -1313,6 +1313,21 @@ try {
       await ctx.db.webhookInbox.count({ where: { provider: 'mercado-pago', eventId: value.id } }),
       1,
     );
+    // Legacy IPN and unused topics are acknowledged (no retries) but never stored or acted on.
+    const before = await ctx.db.webhookInbox.count({ where: { provider: 'mercado-pago' } });
+    for (const [query, payload] of [
+      ['?topic=payment&id=123456789', { resource: '123456789', topic: 'payment' }],
+      ['?data.id=987&type=merchant_order', { type: 'merchant_order', data: { id: '987' } }],
+    ]) {
+      const response = await fetch(base + '/webhooks/mercado-pago' + query, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).ignored, true);
+    }
+    assert.equal(await ctx.db.webhookInbox.count({ where: { provider: 'mercado-pago' } }), before);
   });
   await check('webhook Resend usa corpo bruto e assinatura SDK', async () => {
     await engine.dispatch();

@@ -17,6 +17,20 @@ class WebhooksController {
   }
   @Post('mercado-pago') @HttpCode(200) async payments(@Req() req: ApiRequest) {
     await rateLimit(this.ctx, 'webhook/mp/' + req.clientKey, 600, 60000);
+    // Mercado Pago also sends unsigned legacy IPN (`?topic=…&id=…`) and topics this store
+    // does not use (e.g. merchant_order). Acknowledge them without acting, otherwise they
+    // are retried for days; signed Webhooks of the handled types are processed below.
+    const kind = (req.body as { type?: unknown } | undefined)?.type;
+    if (
+      typeof kind !== 'string' ||
+      ![
+        'payment',
+        'subscription_preapproval',
+        'subscription_authorized_payment',
+        'chargebacks',
+      ].includes(kind)
+    )
+      return { received: true, ignored: true };
     const queryId = typeof req.query['data.id'] === 'string' ? req.query['data.id'] : undefined,
       input = z
         .object({
