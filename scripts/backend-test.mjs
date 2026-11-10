@@ -1117,7 +1117,7 @@ try {
     assert.equal(
       (await owner.call('checkout/estimate', 'POST', { items: [item], coupon: 'INVALID-' + runId }))
         .status,
-      400,
+      422,
     );
     assert.equal(
       (

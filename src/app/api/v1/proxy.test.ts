@@ -65,6 +65,30 @@ describe('same-origin backend proxy', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('set-cookie')).toContain('HttpOnly');
   });
+  it('validates the canonical public origin behind a reverse proxy', async () => {
+    vi.stubEnv('API_BASE_URL', 'http://api.railway.internal:4000/api/v1');
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://shop.example.com');
+    const fetcher = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}'));
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3000/api/v1/auth/login', {
+        method: 'POST',
+        headers: { origin: 'https://shop.example.com' },
+        body: '{}',
+      }),
+      context('auth/login'),
+    );
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledOnce();
+    const rejected = await POST(
+      new NextRequest('http://0.0.0.0:3000/api/v1/auth/login', {
+        method: 'POST',
+        headers: { origin: 'https://evil.example', 'x-forwarded-host': 'evil.example' },
+        body: '{}',
+      }),
+      context('auth/login'),
+    );
+    expect(rejected.status).toBe(403);
+  });
   it('enforces the mutation payload limit', async () => {
     vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
     const response = await POST(

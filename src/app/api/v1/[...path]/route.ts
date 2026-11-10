@@ -21,7 +21,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       { status: 503 },
     );
   const mutation = !['GET', 'HEAD'].includes(request.method);
-  if (mutation && request.headers.get('origin') !== request.nextUrl.origin)
+  const trustedOrigin = process.env.NEXT_PUBLIC_SITE_URL
+    ? new URL(process.env.NEXT_PUBLIC_SITE_URL).origin
+    : request.nextUrl.origin;
+  if (mutation && request.headers.get('origin') !== trustedOrigin)
     return NextResponse.json(
       { error: { code: 'INVALID_ORIGIN', message: 'Origem da solicitação não permitida.' } },
       { status: 403 },
