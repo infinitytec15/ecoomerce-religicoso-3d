@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   inventoryProductSchema,
-  costBreakdownTotal,
+  unitCostCents,
   workspaceSchema,
   publicSettingsSchema,
   type InventoryProduct,
@@ -88,13 +88,19 @@ export class CatalogService {
           'IMAGE_REQUIRED',
           'Inclua uma imagem pronta antes de publicar o produto.',
         );
+      // Each size needs its own price and cost: a short list would silently fall back to the step.
+      if (
+        (p.sizePrices && p.sizePrices.length !== p.sizes.length) ||
+        (p.costBySize && p.costBySize.length !== p.sizes.length)
+      )
+        throw new DomainError('INVALID_PRICES', 'Informe preço e custo para cada tamanho.', 422);
       const v = {
         sku: p.sku.trim().toUpperCase(),
         name: p.name,
         category: p.category,
-        priceCents: p.priceCents,
-        // The breakdown is the source of truth when present.
-        costCents: p.costBreakdown ? costBreakdownTotal(p.costBreakdown) : p.costCents,
+        priceCents: p.sizePrices?.[0] ?? p.priceCents,
+        // Columns mirror the first size; the per-size values live in `data`.
+        costCents: unitCostCents(p, 0),
         stock: p.stock,
         active,
         archived: !!p.archived,

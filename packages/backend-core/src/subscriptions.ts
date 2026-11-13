@@ -286,7 +286,7 @@ export class SubscriptionsService {
             productId: i.productId,
             quantity: i.quantity,
             unitCents: i.unitCents,
-            costCents: (unitCost.get(i.productId) || 0) * i.quantity,
+            costCents: (unitCost.get(i.productId + '/' + i.sizeIndex) || 0) * i.quantity,
             data: json(i),
           })),
         },

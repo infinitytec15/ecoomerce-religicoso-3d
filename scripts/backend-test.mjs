@@ -1387,6 +1387,65 @@ try {
       assert.equal(refused.body.error.code, 'ORDER_HAS_PAYMENT');
     }
   });
+  await check('preço e custo por tamanho no pedido', async () => {
+    const ops2 = await owner.data('admin/operations'),
+      base = ops2.products.find((p) => p.id === product.id),
+      part = (n) => ({
+        materialCents: n,
+        packagingCents: 0,
+        energyCents: 0,
+        laborCents: 0,
+        otherCents: 0,
+      }),
+      sizes = [...base.sizes, 'Tamanho extra 1', 'Tamanho extra 2'].slice(0, 3);
+    const sized = {
+      ...base,
+      sizes,
+      stock: Math.max(base.stock, 20),
+      sizePrices: [9990, 12990, 15990],
+      costBySize: [part(1000), part(1800), part(2600)],
+    };
+    await owner.command({ type: 'product.save', product: sized });
+    try {
+      const q = await customer.call('shipping/quotes', 'POST', {
+        cep: '01001-000',
+        items: [{ productId: product.id, quantity: 2, sizeIndex: 2 }],
+      });
+      assert.equal(q.status, 200, q.body?.error?.code);
+      const shipQuote = q.body.data[0],
+        saved = await ctx.db.shippingQuote.findUniqueOrThrow({ where: { id: shipQuote.quoteId } });
+      assert.equal(saved.data.products[0].insuranceCents, 15990);
+      const who = await register(customer, 'tamanho'),
+        body = checkout(product, shipQuote, who.email);
+      body.items = [{ ...body.items[0], quantity: 2, sizeIndex: 2 }];
+      const placed = await buy(customer, body);
+      assert.equal(placed.status, 200, placed.body?.error?.code);
+      const order = await ctx.db.order.findUniqueOrThrow({
+          where: { id: placed.body.data.orderId },
+          include: { items: true },
+        }),
+        line = order.items[0];
+      assert.equal(order.subtotalCents, 15990 * 2);
+      assert.equal(line.unitCents, 15990);
+      assert.equal(line.costCents, 2600 * 2);
+      const mismatch = await owner.call(
+        'admin/commands',
+        'POST',
+        { type: 'product.save', product: { ...sized, sizePrices: [9990, 12990] } },
+        { headers: { 'idempotency-key': randomUUID() } },
+      );
+      assert.equal(mismatch.status, 422);
+      assert.equal(mismatch.body.error.code, 'INVALID_PRICES');
+      const row = await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } });
+      assert.equal(row.priceCents, 9990);
+      assert.equal(row.costCents, 1000);
+      const pub = await guest.data('catalog/products/' + product.id);
+      assert.deepEqual(pub.sizePrices, [9990, 12990, 15990]);
+      assert(!('costBySize' in pub) && !('costBreakdown' in pub) && !('costCents' in pub));
+    } finally {
+      await owner.command({ type: 'product.save', product: base });
+    }
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

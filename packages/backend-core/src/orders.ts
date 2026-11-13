@@ -8,6 +8,9 @@ import {
   type OrderItemInput,
   type Coupon,
   type ProductShipping,
+  unitPriceCents,
+  unitCostCents,
+  type CostBreakdown,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -28,13 +31,27 @@ import {
 /** Current production cost per product, frozen into each order line at sale time. */
 export async function productCosts(
   tx: Transaction | Context['db'],
-  items: { productId: string }[],
+  items: { productId: string; sizeIndex: number }[],
 ) {
   const rows = await tx.product.findMany({
     where: { id: { in: [...new Set(items.map((i) => i.productId))] } },
-    select: { id: true, costCents: true },
+    select: { id: true, costCents: true, data: true },
   });
-  return new Map(rows.map((r) => [r.id, r.costCents]));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const costs = new Map<string, number>();
+  for (const i of items) {
+    const row = byId.get(i.productId);
+    if (!row) continue;
+    const d = data<{ costBreakdown?: CostBreakdown; costBySize?: CostBreakdown[] }>(row.data);
+    costs.set(
+      i.productId + '/' + i.sizeIndex,
+      unitCostCents(
+        { costCents: row.costCents, costBreakdown: d.costBreakdown, costBySize: d.costBySize },
+        i.sizeIndex,
+      ),
+    );
+  }
+  return costs;
 }
 export class OrdersService {
   readonly payments: PaymentsService;
@@ -54,9 +71,13 @@ export class OrdersService {
         }),
         'Produto indisponível.',
       );
-      const p = data<{ colors: string[]; sizes: string[]; image: string; imageIndex: number }>(
-        product.data,
-      );
+      const p = data<{
+        colors: string[];
+        sizes: string[];
+        image: string;
+        imageIndex: number;
+        sizePrices?: number[];
+      }>(product.data);
       if (!p.colors.includes(item.color) || !p.sizes[item.sizeIndex])
         throw new DomainError('INVALID_VARIANT', 'Confira a cor e o tamanho do produto.');
       result.push({
@@ -68,7 +89,10 @@ export class OrdersService {
         color: item.color,
         size: p.sizes[item.sizeIndex],
         sizeIndex: item.sizeIndex,
-        unitCents: product.priceCents + item.sizeIndex * 2000,
+        unitCents: unitPriceCents(
+          { priceCents: product.priceCents, sizePrices: p.sizePrices },
+          item.sizeIndex,
+        ),
         quantity: item.quantity,
         dedication: item.dedication,
       });
@@ -145,6 +169,7 @@ export class OrdersService {
       );
       const d = data<{
         sizes: string[];
+        sizePrices?: number[];
         shipping?: ProductShipping;
       }>(p.data);
       if (!d.sizes[i.sizeIndex || 0])
@@ -154,7 +179,10 @@ export class OrdersService {
         ...d.shipping,
         ...(d.shipping.bySize?.[i.sizeIndex || 0] || {}),
       };
-      const unit = p.priceCents + (i.sizeIndex || 0) * 2000;
+      const unit = unitPriceCents(
+        { priceCents: p.priceCents, sizePrices: d.sizePrices },
+        i.sizeIndex || 0,
+      );
       subtotal += unit * i.quantity;
       lead = Math.max(lead, dims?.leadTimeDays || 0);
       products.push({
@@ -392,7 +420,7 @@ export class OrdersService {
               productId: i.productId,
               quantity: i.quantity,
               unitCents: i.unitCents,
-              costCents: (unitCost.get(i.productId) || 0) * i.quantity,
+              costCents: (unitCost.get(i.productId + '/' + i.sizeIndex) || 0) * i.quantity,
               data: json(i),
             })),
           },
