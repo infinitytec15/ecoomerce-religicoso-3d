@@ -11,6 +11,7 @@ import {
   unitPriceCents,
   unitCostCents,
   type CostBreakdown,
+  type ReviewStatus,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -634,7 +635,7 @@ export class OrdersService {
         charges: [chargeDto(o)].filter(Boolean),
         subscriptions: [],
         tickets: [],
-        reviews: [],
+        reviews: await this.myReviews(o.customerId, o.id),
       };
     }
     const c = requireValue(
@@ -665,7 +666,17 @@ export class OrdersService {
       charges: orders.map(chargeDto).filter(Boolean),
       subscriptions: subscriptions.map(subscriptionDto),
       tickets: tickets.map((t) => ticketDto(t)),
-      reviews: [],
+      reviews: await this.myReviews(c.id),
     };
+  }
+  private async myReviews(customerId: string, orderId?: string) {
+    return (
+      await this.ctx.db.review.findMany({
+        where: { customerId, ...(orderId ? { orderId } : {}) },
+        select: { orderItemId: true, rating: true, status: true },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      })
+    ).map((r) => ({ ...r, status: r.status as ReviewStatus }));
   }
 }

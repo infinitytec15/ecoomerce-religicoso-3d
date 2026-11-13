@@ -21,6 +21,7 @@ import { CatalogService } from '@maos-em-oracao/backend-core/catalog';
 import { OrdersService } from '@maos-em-oracao/backend-core/orders';
 import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions';
 import { ContentService } from '@maos-em-oracao/backend-core/content';
+import { ReviewsService } from '@maos-em-oracao/backend-core/reviews';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { sessionHash } from '@maos-em-oracao/backend-core/security';
 import { CONTEXT } from './context.module';
@@ -265,6 +266,23 @@ class ContentController {
     await this.service.reply(req.actor, id, body);
   }
 }
+@ApiTags('Avaliações')
+@Controller()
+class ReviewsController {
+  private service: ReviewsService;
+  constructor(@Inject(CONTEXT) ctx: Context) {
+    this.service = new ReviewsService(ctx);
+  }
+  @Get('catalog/products/:id/reviews') async list(
+    @Param('id') id: string,
+    @Query('rating') rating?: string,
+  ) {
+    return result(await this.service.forProduct(id, rating));
+  }
+  @Post('reviews') @HttpCode(201) async create(@Req() req: ApiRequest, @Body() body: unknown) {
+    return result(await this.service.create(req.actor, body));
+  }
+}
 @Module({ controllers: [IdentityController] })
 export class IdentityModule {}
 @Module({ controllers: [CatalogController] })
@@ -275,3 +293,5 @@ export class OrdersModule {}
 export class ClubModule {}
 @Module({ controllers: [ContentController] })
 export class CommunityModule {}
+@Module({ controllers: [ReviewsController] })
+export class ReviewsModule {}

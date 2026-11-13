@@ -66,6 +66,7 @@ export const cartItemSchema = z.object({
   unitCents: cents,
   quantity: z.number().int().positive(),
   dedication: text,
+  itemId: id.optional(),
 });
 export const orderSchema = z.object({
   id,

@@ -42,6 +42,7 @@ import {
   OrdersModule,
   ClubModule,
   CommunityModule,
+  ReviewsModule,
 } from './commerce.module';
 @Controller('health')
 class HealthController {
@@ -122,6 +123,7 @@ class ApiErrors implements ExceptionFilter {
     OrdersModule,
     ClubModule,
     CommunityModule,
+    ReviewsModule,
     OperationsModule,
     WebhooksModule,
   ],

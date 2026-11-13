@@ -6,6 +6,7 @@ import { settings } from './context';
 import { commandSchema, type Command } from './command-schema';
 import { CatalogService } from './catalog';
 import { ContentService } from './content';
+import { ReviewsService } from './reviews';
 import { OrdersService } from './orders';
 import { SubscriptionsService } from './subscriptions';
 import { ShippingService } from './shipping';
@@ -21,6 +22,8 @@ import {
   ticketDto,
   prayerDto,
   productDto,
+  reviewDto,
+  reviewAdminInclude,
 } from './projections';
 import {
   type Actor,
@@ -129,6 +132,7 @@ export class AdminService {
   }
   readonly catalog: CatalogService;
   readonly content: ContentService;
+  readonly reviews: ReviewsService;
   readonly orders: OrdersService;
   readonly subscriptions: SubscriptionsService;
   readonly shipping: ShippingService;
@@ -137,6 +141,7 @@ export class AdminService {
   constructor(private ctx: Context) {
     this.catalog = new CatalogService(ctx);
     this.content = new ContentService(ctx);
+    this.reviews = new ReviewsService(ctx);
     this.orders = new OrdersService(ctx);
     this.subscriptions = new SubscriptionsService(ctx);
     this.shipping = new ShippingService(ctx);
@@ -168,6 +173,7 @@ export class AdminService {
       editions,
       coupons,
       movements,
+      reviews,
     ] = await Promise.all([
       can('catalog') || can('production')
         ? this.ctx.db.product.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 })
@@ -232,6 +238,13 @@ export class AdminService {
       can('catalog') ? this.ctx.db.coupon.findMany({ take: 500 }) : [],
       can('catalog')
         ? this.ctx.db.stockMovement.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 })
+        : [],
+      can('community')
+        ? this.ctx.db.review.findMany({
+            include: reviewAdminInclude,
+            orderBy: { createdAt: 'desc' },
+            take: 1000,
+          })
         : [],
     ]);
     const names = new Map(users.map((u) => [u.id, u.name]));
@@ -339,7 +352,7 @@ export class AdminService {
         date: instant(m.createdAt),
         actor: names.get(m.actorId) || 'Sistema',
       })),
-      reviews: [],
+      reviews: reviews.map((r) => reviewDto(r, true)),
     };
   }
   async execute(actor: Actor | null, value: unknown) {
@@ -687,8 +700,7 @@ export class AdminService {
       case 'prayer.review':
         return this.content.moderate(a, c.id, c.status, c.note);
       case 'review.moderate':
-        // Placeholder: Task 3 implements review moderation.
-        throw new DomainError('NOT_IMPLEMENTED', 'Moderação de avaliações indisponível.', 501);
+        return this.reviews.moderate(a, c.id, c.status, c.reply);
       case 'prayer.moderate': {
         const p = requireValue(await this.ctx.db.prayer.findUnique({ where: { id: c.id } }));
         return this.content.moderate(

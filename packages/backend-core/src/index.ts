@@ -9,6 +9,7 @@ export * from './subscriptions';
 export * from './shipping';
 export * from './media';
 export * from './content';
+export * from './reviews';
 export * from './admin';
 export * from './team';
 export * from './reports';

@@ -169,4 +169,33 @@ describe('same-origin backend proxy', () => {
     ).toBe(413);
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('forwards review routes: the public list with its filter and the customer post', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response('{"data":null}'));
+    const list = await GET(
+      new NextRequest('http://localhost/api/v1/catalog/products/prod-1/reviews?rating=5'),
+      context('catalog/products/prod-1/reviews'),
+    );
+    expect(list.status).toBe(200);
+    expect(fetcher.mock.calls[0][0]).toBe(
+      'https://api.example.com/api/v1/catalog/products/prod-1/reviews?rating=5',
+    );
+    const post = await POST(
+      new NextRequest('http://localhost/api/v1/reviews', {
+        method: 'POST',
+        headers: { origin: 'http://localhost', 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+      context('reviews'),
+    );
+    expect(post.status).toBe(200);
+    expect(fetcher.mock.calls[1][0]).toBe('https://api.example.com/api/v1/reviews');
+    const blocked = await GET(
+      new NextRequest('http://localhost/api/v1/catalog/products/prod-1/reviews/extra'),
+      context('catalog/products/prod-1/reviews/extra'),
+    );
+    expect(blocked.status).toBe(404);
+  });
 });

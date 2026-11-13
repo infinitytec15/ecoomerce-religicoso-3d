@@ -669,6 +669,162 @@ try {
       (await ctx.db.order.findUnique({ where: { id: orderId } })).deliveredAt instanceof Date,
     );
   });
+  await check('avaliação só de quem recebeu, moderada e na nota do catálogo', async () => {
+    const itemOf = (a, id) => a.orders.find((o) => o.id === id).items[0].itemId,
+      review = (client, orderItemId, rating = 4) =>
+        client.call('reviews', 'POST', {
+          orderItemId,
+          rating,
+          title: 'Linda peça',
+          text: 'Chegou bem embalada e o acabamento é muito bonito.',
+        });
+    let account = accountSchema.parse(await customer.data('account'));
+    assert.ok(itemOf(account, orderId), 'itemId ausente no pedido da conta');
+    const deliveredItem = itemOf(account, orderId),
+      pending = account.orders.find((o) => o.id !== orderId && o.status !== 'Entregue');
+    assert.equal((await review(other, deliveredItem)).status, 404);
+    assert.equal((await review(guest, deliveredItem)).status, 404);
+    const notDelivered = await review(customer, itemOf(account, pending.id));
+    assert.equal(notDelivered.status, 409);
+    assert.equal(notDelivered.body.error.code, 'NOT_DELIVERED');
+    const withPhoto = await customer.call('reviews', 'POST', {
+      orderItemId: deliveredItem,
+      rating: 4,
+      text: 'Chegou bem embalada e o acabamento é muito bonito.',
+      photoIds: [randomUUID()],
+    });
+    assert.equal(withPhoto.status, 422);
+    assert.equal(withPhoto.body.error.code, 'INVALID_PHOTO');
+    const created = await review(customer, deliveredItem);
+    assert.equal(created.status, 201, created.body?.error?.code);
+    assert.deepEqual(created.body.data, {
+      orderItemId: deliveredItem,
+      rating: 4,
+      status: 'Em análise',
+    });
+    account = accountSchema.parse(await customer.data('account'));
+    assert.deepEqual(
+      account.reviews.map((r) => r.orderItemId),
+      [deliveredItem],
+    );
+    const again = await review(customer, deliveredItem);
+    assert.equal(again.status, 409);
+    assert.equal(again.body.error.code, 'ALREADY_REVIEWED');
+    let list = await customer.data('catalog/products/' + product.id + '/reviews');
+    assert.equal(list.reviews.length, 0);
+    assert.equal(list.summary.count, 0);
+    assert.equal((await customer.data('catalog/products/' + product.id)).rating, undefined);
+    ops = await owner.data('admin/operations');
+    operationsSchema.parse(ops);
+    const pendingReview = ops.reviews.find((r) => r.orderId === orderId);
+    assert.equal(pendingReview.status, 'Em análise');
+    assert.equal(pendingReview.customerEmail, first.email);
+    await owner.command({
+      type: 'review.moderate',
+      id: pendingReview.id,
+      status: 'Publicado',
+      reply: 'Obrigado!',
+    });
+    list = await customer.data('catalog/products/' + product.id + '/reviews');
+    assert.equal(list.reviews.length, 1);
+    assert.equal(list.reviews[0].author, 'Cliente P.');
+    assert.equal(list.reviews[0].reply, 'Obrigado!');
+    assert.ok(list.reviews[0].repliedAt);
+    assert.equal(list.reviews[0].variant.includes(' · '), true);
+    assert(!JSON.stringify(list).includes(first.email));
+    assert(!JSON.stringify(list).includes('customerId'));
+    assert.deepEqual((await customer.data('catalog/products/' + product.id)).rating, {
+      average: 4,
+      count: 1,
+    });
+    assert.deepEqual(
+      (await customer.data('catalog/products')).find((p) => p.id === product.id).rating,
+      { average: 4, count: 1 },
+    );
+    const filtered = await customer.data('catalog/products/' + product.id + '/reviews?rating=5');
+    assert.equal(filtered.reviews.length, 0);
+    assert.equal(filtered.summary.count, 1);
+    assert.equal(
+      (await customer.call('catalog/products/' + product.id + '/reviews?rating=9')).status,
+      422,
+    );
+    await owner.command({
+      type: 'review.moderate',
+      id: pendingReview.id,
+      status: 'Oculto',
+      reply: 'Obrigado!',
+    });
+    assert.equal((await customer.data('catalog/products/' + product.id)).rating, undefined);
+    ops = await owner.data('admin/operations');
+    const hidden = ops.reviews.find((r) => r.id === pendingReview.id);
+    assert.equal(hidden.status, 'Oculto');
+    assert.equal(hidden.repliedAt, list.reviews[0].repliedAt);
+    accountSchema.parse(await customer.data('account'));
+    assert.equal(
+      await ctx.db.auditEntry.count({
+        where: { entity: pendingReview.id, action: 'Avaliação: Oculto' },
+      }),
+      1,
+    );
+
+    // Auto-publish: a 5-star review on a second delivered item goes live at once.
+    ops = await owner.data('admin/operations');
+    await owner.command({
+      type: 'workspace.save',
+      settings: {
+        ...ops.workspace,
+        reviews: { requestEnabled: true, requestDelayDays: 7, autoPublishMinRating: 4 },
+      },
+    });
+    const q = await quote(customer, product),
+      bought = await buy(customer, checkout(product, q, first.email)),
+      secondOrder = bought.body.data.orderId;
+    ops = await owner.data('admin/operations');
+    await owner.command({
+      type: 'charge.pay',
+      id: ops.charges.find((c) => c.orderId === secondOrder).id,
+    });
+    ops = await owner.data('admin/operations');
+    const job = ops.jobs.find((j) => j.orderId === secondOrder);
+    await owner.command({
+      type: 'production.update',
+      id: job.id,
+      printer: ops.printers[0].name,
+      hours: 2,
+      assignee: 'Equipe de teste',
+      due: job.due,
+      priority: 'Normal',
+      notes: '',
+      material: 'PLA',
+      grams: 20,
+    });
+    for (let i = 0; i < 4; i++) await owner.command({ type: 'production.advance', id: job.id });
+    await engine.dispatch();
+    await until(
+      async () =>
+        (await ctx.db.shipment.findUnique({ where: { orderId: secondOrder } }))?.state === 'ready',
+      'etiqueta da segunda entrega',
+    );
+    await owner.command({
+      type: 'shipping.dispatch',
+      id: secondOrder,
+      tracking: 'TESTE-SEM-ENVIO-2042',
+      carrier: 'Homologação',
+    });
+    await owner.command({ type: 'shipping.deliver', id: secondOrder });
+    account = accountSchema.parse(await customer.data('account'));
+    const auto = await review(customer, itemOf(account, secondOrder), 5);
+    assert.equal(auto.status, 201, auto.body?.error?.code);
+    assert.equal(auto.body.data.status, 'Publicado');
+    assert.deepEqual((await customer.data('catalog/products/' + product.id)).rating, {
+      average: 5,
+      count: 1,
+    });
+    await owner.command({
+      type: 'workspace.save',
+      settings: { ...ops.workspace, reviews: undefined },
+    });
+  });
   await check('suporte mantém nota interna fora da conta e do e-mail', async () => {
     assert.equal(
       (

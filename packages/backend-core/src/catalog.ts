@@ -56,13 +56,29 @@ export class CatalogService {
             : { createdAt: 'desc' },
       take: 200,
     });
+    const ratings = await this.ratings(products.map((p) => p.id));
     return products
-      .map((p) => productDto(p))
+      .map((p) => productDto(p, false, ratings.get(p.id)))
       .filter((p) => !query.color || query.color === 'Todos' || p.colors.includes(query.color));
   }
   async product(id: string) {
     const p = await this.ctx.db.product.findFirst({ where: { id, active: true, archived: false } });
-    return p ? productDto(p) : null;
+    return p ? productDto(p, false, (await this.ratings([p.id])).get(p.id)) : null;
+  }
+  /** Average and count of published reviews; products without any are absent from the map. */
+  private async ratings(productIds: string[]) {
+    const rows = await this.ctx.db.review.groupBy({
+      by: ['productId'],
+      where: { status: 'Publicado', productId: { in: productIds } },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    return new Map(
+      rows.map((r) => [
+        r.productId,
+        { average: Math.round((r._avg.rating ?? 0) * 10) / 10, count: r._count._all },
+      ]),
+    );
   }
   async save(actor: Actor | null, value: unknown) {
     const a = permit(actor, 'catalog'),

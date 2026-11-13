@@ -9,6 +9,8 @@ import type {
   Customer,
   Ticket,
   Prayer,
+  PublicReview,
+  AdminReview,
 } from '@maos-em-oracao/contracts';
 import type { Prisma } from '@maos-em-oracao/database';
 import { data, day, instant } from './shared';
@@ -21,6 +23,7 @@ export type OrderRow = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 export function productDto(
   p: Prisma.ProductGetPayload<object>,
   privateData = false,
+  rating?: Product['rating'],
 ): Product | InventoryProduct {
   const d = data<InventoryProduct>(p.data),
     value = {
@@ -33,6 +36,7 @@ export function productDto(
       stock: Math.max(0, p.stock - p.reserved),
       active: p.active,
       archived: p.archived,
+      ...(rating ? { rating } : {}),
     };
   if (privateData) return { ...value, costCents: p.costCents, stock: p.stock };
   const publicValue = { ...value };
@@ -66,6 +70,7 @@ export function orderDto(o: OrderRow, privateData = false): Order {
       quantity: i.quantity,
       unitCents: i.unitCents,
       productId: i.productId,
+      itemId: i.id,
     })),
     totalCents: o.totalCents,
     subtotalCents: o.subtotalCents,
@@ -203,4 +208,38 @@ export function prayerDto(
         }
       : {}),
   };
+}
+export type ReviewRow = Prisma.ReviewGetPayload<object>;
+export const reviewAdminInclude = {
+  product: true,
+  order: true,
+  customer: true,
+} satisfies Prisma.ReviewInclude;
+export type AdminReviewRow = Prisma.ReviewGetPayload<{ include: typeof reviewAdminInclude }>;
+export function reviewDto(r: ReviewRow): PublicReview;
+export function reviewDto(r: AdminReviewRow, privateData: true): AdminReview;
+export function reviewDto(r: ReviewRow | AdminReviewRow, privateData = false) {
+  const base: PublicReview = {
+    id: r.id,
+    rating: r.rating,
+    title: r.title,
+    text: r.text,
+    author: r.author,
+    createdAt: instant(r.createdAt),
+    variant: r.variant,
+    photos: data<{ url: string }[]>(r.photos).map((p) => ({ url: p.url })),
+    reply: r.reply || null,
+    repliedAt: r.repliedAt ? instant(r.repliedAt) : null,
+  };
+  if (!privateData || !('customer' in r)) return base;
+  return {
+    ...base,
+    status: r.status as AdminReview['status'],
+    productId: r.productId,
+    productName: r.product.name,
+    orderId: r.orderId,
+    orderNumber: 'MEO-' + String(r.order.number).padStart(6, '0'),
+    customerName: r.customer.name,
+    customerEmail: r.customer.email,
+  } satisfies AdminReview;
 }
