@@ -8,6 +8,7 @@ import type {
   Session,
   Subscription,
 } from './types';
+import { unitPriceCents } from '@maos-em-oracao/contracts';
 import { ApiError, requireValue } from '@/lib/api/contracts';
 import { addMonth, monthLabel, today, uid } from './format';
 import { normalizeAddress } from './address';
@@ -36,7 +37,7 @@ export function cartLine(
     color,
     size: product.sizes[sizeIndex],
     sizeIndex,
-    unitCents: product.priceCents + sizeIndex * 2000,
+    unitCents: unitPriceCents(product, sizeIndex),
     quantity,
     dedication: dedication.slice(0, 40),
   };

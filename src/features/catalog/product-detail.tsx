@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Product, ShippingQuote } from '@/lib/domain/types';
 import { colorHex, money } from '@/lib/domain/format';
 import { cartLine } from '@/lib/domain/commerce';
+import { unitPriceCents } from '@maos-em-oracao/contracts';
 import { useCatalog, useGateway } from '@/lib/api/query';
 import { useCartStore } from '@/lib/store/cart';
 import { IS_DEMO } from '@/lib/api/config';
@@ -36,7 +37,7 @@ export function ProductDetail({
     openCart = useCartStore((s) => s.setOpen),
     router = useRouter(),
     notify = useNotify(),
-    price = p.priceCents + size * 2000;
+    price = unitPriceCents(p, size);
   function buy(immediate = false) {
     add(cartLine(p, quantity, color, size, dedication));
     if (immediate) router.push('/checkout');
@@ -89,8 +90,7 @@ export function ProductDetail({
               <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
                 {p.sizes.map((s, i) => (
                   <option key={s} value={i}>
-                    {s}
-                    {i ? ' (+ ' + money(i * 2000) + ')' : ''}
+                    {`${s} · ${money(unitPriceCents(p, i))}`}
                   </option>
                 ))}
               </select>

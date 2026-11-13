@@ -49,6 +49,16 @@ describe('money and checkout rules', () => {
     expect(() => cartLine(p, 1, 'Inválida')).toThrow();
     expect(() => cartLine({ ...p, active: false })).toThrow();
   });
+  it('cart line uses the configured size price', () => {
+    const p = {
+      ...createSeed().products[0],
+      sizes: ['15 cm', '20 cm', '25 cm'],
+      priceCents: 9990,
+      sizePrices: [9990, 12990, 15990],
+    };
+    const line = cartLine(p, 1, p.colors[0], 2, '');
+    expect(line.unitCents).toBe(15990);
+  });
   it('ignores any client-side price and recomputes against the catalog', () => {
     const s = createSeed(),
       input = checkout();

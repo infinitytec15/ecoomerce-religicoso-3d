@@ -86,6 +86,7 @@ export interface Product {
   image: string;
   badge: string;
   sizes: string[];
+  sizePrices?: number[];
   colors: string[];
   active: boolean;
   sku: string;
