@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { ProductImage } from '@/components/ui/product-image';
 import { ShipmentCard, ReceiptButton } from './shipment-card';
 import { ClientTickets } from './tickets';
+import { ReviewForm } from './review-form';
 import { SubscriptionPreferences } from '@/features/club/subscription-preferences';
 import { useNotify } from '@/components/ui/feedback';
 export function SubscriberTabs({ active }: { active: string }) {
@@ -80,6 +81,7 @@ export function AccountView({ tab = 'overview', id }: { tab?: string; id?: strin
     change = useCommand((g, input: SubscriptionChange) => g.changeSubscription(input)),
     confirm = useCommand((g, chargeId: string) => g.confirmDemoPayment(chargeId)),
     [dialog, setDialog] = useState<'preferences' | 'cancel' | null>(null),
+    [reviewing, setReviewing] = useState<{ itemId: string; name: string } | null>(null),
     notify = useNotify();
   if (account.isPending) return <LoadingState />;
   if (account.isError || !data)
@@ -135,9 +137,37 @@ export function AccountView({ tab = 'overview', id }: { tab?: string; id?: strin
               </small>
               {item.dedication && <small>“{item.dedication}”</small>}
               <strong>{money(item.unitCents * item.quantity)}</strong>
+              {order.status === 'Entregue' &&
+                item.itemId &&
+                (() => {
+                  const itemId = item.itemId,
+                    review = data.reviews.find((r) => r.orderItemId === itemId);
+                  return review ? (
+                    <small className="review-state">
+                      {review.status === 'Publicado'
+                        ? 'Avaliação publicada'
+                        : 'Avaliação em análise'}
+                    </small>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      className="small"
+                      onClick={() => setReviewing({ itemId, name: item.name })}
+                    >
+                      Avaliar peça
+                    </Button>
+                  );
+                })()}
             </div>
           </div>
         ))}
+        <Modal
+          open={!!reviewing}
+          onOpenChange={(open) => !open && setReviewing(null)}
+          title="Avaliar peça"
+        >
+          {reviewing && <ReviewForm item={reviewing} onDone={() => setReviewing(null)} />}
+        </Modal>
         <div className="money-line total">
           <span>Total</span>
           <strong>{money(order.totalCents)}</strong>

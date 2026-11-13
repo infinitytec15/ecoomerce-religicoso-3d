@@ -2587,3 +2587,81 @@ small {
   font-size: 10px;
   padding-top: 10px;
 }
+.review-state {
+  display: block;
+  margin-top: 8px;
+  color: var(--olive);
+}
+.cart-item .btn.small {
+  margin-top: 10px;
+}
+.review-form-item {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.review-stars {
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.review-stars legend {
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+  padding: 0;
+}
+.review-stars label {
+  position: relative;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--line);
+  cursor: pointer;
+  padding: 4px;
+}
+.review-stars label.on {
+  color: var(--olive);
+}
+.review-stars input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.review-stars label:has(input:focus-visible) {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.review-counter {
+  display: block;
+  text-align: right;
+  color: var(--muted);
+}
+.review-photos {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.review-photos ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+.review-photos li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  min-width: 0;
+}
+.review-photos li span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 8rem;
+}
