@@ -197,6 +197,11 @@ export async function bootstrap() {
           permit(req.actor, 'catalog');
           return raw({ type: () => true, limit: '32mb' })(req, res, next);
         }
+        if (req.method === 'PUT' && /^\/api\/v1\/reviews\/uploads\/[^/]+\/content$/.test(path)) {
+          if (!req.actor?.customerId)
+            throw new DomainError('UNAUTHORIZED', 'Entre na conta para enviar fotos.', 401);
+          return raw({ type: () => true, limit: '8mb' })(req, res, next);
+        }
         return next();
       } catch (error) {
         return new ApiErrors().catch(error, {

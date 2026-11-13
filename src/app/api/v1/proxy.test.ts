@@ -198,4 +198,29 @@ describe('same-origin backend proxy', () => {
     );
     expect(blocked.status).toBe(404);
   });
+  it('lets only the review photo content route stream, capped at 8 MB', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const put = (path: string, length: number) =>
+      PUT(
+        new NextRequest('http://localhost/api/v1/' + path, {
+          method: 'PUT',
+          headers: { origin: 'http://localhost', 'content-length': String(length) },
+          body: length ? 'x'.repeat(length) : undefined,
+        }),
+        context(path),
+      );
+    const ok = await put('reviews/uploads/6f0c1b5e-aaaa-4bbb-8ccc-123456789012/content', 5);
+    expect(ok.status).toBe(204);
+    expect(fetcher.mock.calls[0][0]).toBe(
+      'https://api.example.com/api/v1/reviews/uploads/6f0c1b5e-aaaa-4bbb-8ccc-123456789012/content',
+    );
+    expect((await put('reviews/uploads/abc/content', 9 * 1024 * 1024)).status).toBe(413);
+    expect((await put('reviews/uploads/abc/content', 0)).status).toBe(413);
+    expect((await put('reviews', 5)).status).toBe(405);
+    expect((await put('reviews/uploads/abc/complete', 5)).status).toBe(405);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });

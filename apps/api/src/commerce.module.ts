@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -22,6 +23,7 @@ import { OrdersService } from '@maos-em-oracao/backend-core/orders';
 import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions';
 import { ContentService } from '@maos-em-oracao/backend-core/content';
 import { ReviewsService } from '@maos-em-oracao/backend-core/reviews';
+import { MediaService } from '@maos-em-oracao/backend-core/media';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { sessionHash } from '@maos-em-oracao/backend-core/security';
 import { CONTEXT } from './context.module';
@@ -270,14 +272,37 @@ class ContentController {
 @Controller()
 class ReviewsController {
   private service: ReviewsService;
+  private media: MediaService;
   constructor(@Inject(CONTEXT) ctx: Context) {
     this.service = new ReviewsService(ctx);
+    this.media = new MediaService(ctx);
   }
   @Get('catalog/products/:id/reviews') async list(
     @Param('id') id: string,
     @Query('rating') rating?: string,
   ) {
     return result(await this.service.forProduct(id, rating));
+  }
+  @Post('reviews/uploads') @HttpCode(200) async uploadCreate(
+    @Req() req: ApiRequest,
+    @Body() body: unknown,
+  ) {
+    return result(await this.media.customerCreate(req.actor, body));
+  }
+  @Put('reviews/uploads/:id/content') @HttpCode(204) async uploadContent(
+    @Req() req: ApiRequest,
+    @Param('id') id: string,
+    @Body() body: Buffer,
+  ) {
+    if (!Buffer.isBuffer(body))
+      throw new DomainError('INVALID_UPLOAD', 'Envie o conteúdo binário do arquivo.');
+    await this.media.customerContent(req.actor, id, body);
+  }
+  @Post('reviews/uploads/:id/complete') @HttpCode(200) async uploadComplete(
+    @Req() req: ApiRequest,
+    @Param('id') id: string,
+  ) {
+    return result(await this.media.customerComplete(req.actor, id));
   }
   @Post('reviews') @HttpCode(201) async create(@Req() req: ApiRequest, @Body() body: unknown) {
     return result(await this.service.create(req.actor, body));

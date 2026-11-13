@@ -6,10 +6,11 @@ export async function uploadMedia(
   file: File,
   kind: AssetKind,
   onProgress?: (percentage: number) => void,
+  base = 'admin/media',
 ): Promise<MediaAsset> {
   validateAsset(file, kind);
   const client = new HttpClient();
-  const session = await client.request('admin/media/uploads', uploadSessionSchema, {
+  const session = await client.request(base + '/uploads', uploadSessionSchema, {
     method: 'POST',
     body: { name: file.name, mime: file.type || 'application/octet-stream', size: file.size, kind },
   });
@@ -32,7 +33,7 @@ export async function uploadMedia(
         onBeforeRequest: async (request) => {
           if (Number(session.headers?.AuthorizationExpire || 0) * 1000 < Date.now() + 60000) {
             const fresh = await client.request(
-              'admin/media/uploads/' + encodeURIComponent(session.id) + '/renew',
+              base + '/uploads/' + encodeURIComponent(session.id) + '/renew',
               uploadSessionSchema,
               { method: 'POST', body: {} },
             );
@@ -57,7 +58,7 @@ export async function uploadMedia(
     if (!result.ok) throw new Error('O envio não foi concluído.');
   }
   return client.request(
-    `admin/media/uploads/${encodeURIComponent(session.id)}/complete`,
+    `${base}/uploads/${encodeURIComponent(session.id)}/complete`,
     mediaAssetSchema,
     { method: 'POST', body: {} },
   );

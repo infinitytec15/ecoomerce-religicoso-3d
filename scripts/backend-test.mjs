@@ -669,6 +669,45 @@ try {
       (await ctx.db.order.findUnique({ where: { id: orderId } })).deliveredAt instanceof Date,
     );
   });
+  const deliverNewOrder = async () => {
+    const q = await quote(customer, product),
+      bought = await buy(customer, checkout(product, q, first.email)),
+      secondOrder = bought.body.data.orderId;
+    ops = await owner.data('admin/operations');
+    await owner.command({
+      type: 'charge.pay',
+      id: ops.charges.find((c) => c.orderId === secondOrder).id,
+    });
+    ops = await owner.data('admin/operations');
+    const job = ops.jobs.find((j) => j.orderId === secondOrder);
+    await owner.command({
+      type: 'production.update',
+      id: job.id,
+      printer: ops.printers[0].name,
+      hours: 2,
+      assignee: 'Equipe de teste',
+      due: job.due,
+      priority: 'Normal',
+      notes: '',
+      material: 'PLA',
+      grams: 20,
+    });
+    for (let i = 0; i < 4; i++) await owner.command({ type: 'production.advance', id: job.id });
+    await engine.dispatch();
+    await until(
+      async () =>
+        (await ctx.db.shipment.findUnique({ where: { orderId: secondOrder } }))?.state === 'ready',
+      'etiqueta da segunda entrega',
+    );
+    await owner.command({
+      type: 'shipping.dispatch',
+      id: secondOrder,
+      tracking: 'TESTE-SEM-ENVIO-2042',
+      carrier: 'Homologação',
+    });
+    await owner.command({ type: 'shipping.deliver', id: secondOrder });
+    return secondOrder;
+  };
   await check('avaliação só de quem recebeu, moderada e na nota do catálogo', async () => {
     const itemOf = (a, id) => a.orders.find((o) => o.id === id).items[0].itemId,
       review = (client, orderItemId, rating = 4) =>
@@ -776,42 +815,7 @@ try {
         reviews: { requestEnabled: true, requestDelayDays: 7, autoPublishMinRating: 4 },
       },
     });
-    const q = await quote(customer, product),
-      bought = await buy(customer, checkout(product, q, first.email)),
-      secondOrder = bought.body.data.orderId;
-    ops = await owner.data('admin/operations');
-    await owner.command({
-      type: 'charge.pay',
-      id: ops.charges.find((c) => c.orderId === secondOrder).id,
-    });
-    ops = await owner.data('admin/operations');
-    const job = ops.jobs.find((j) => j.orderId === secondOrder);
-    await owner.command({
-      type: 'production.update',
-      id: job.id,
-      printer: ops.printers[0].name,
-      hours: 2,
-      assignee: 'Equipe de teste',
-      due: job.due,
-      priority: 'Normal',
-      notes: '',
-      material: 'PLA',
-      grams: 20,
-    });
-    for (let i = 0; i < 4; i++) await owner.command({ type: 'production.advance', id: job.id });
-    await engine.dispatch();
-    await until(
-      async () =>
-        (await ctx.db.shipment.findUnique({ where: { orderId: secondOrder } }))?.state === 'ready',
-      'etiqueta da segunda entrega',
-    );
-    await owner.command({
-      type: 'shipping.dispatch',
-      id: secondOrder,
-      tracking: 'TESTE-SEM-ENVIO-2042',
-      carrier: 'Homologação',
-    });
-    await owner.command({ type: 'shipping.deliver', id: secondOrder });
+    const secondOrder = await deliverNewOrder();
     account = accountSchema.parse(await customer.data('account'));
     const auto = await review(customer, itemOf(account, secondOrder), 5);
     assert.equal(auto.status, 201, auto.body?.error?.code);
@@ -820,6 +824,127 @@ try {
       average: 5,
       count: 1,
     });
+    await owner.command({
+      type: 'workspace.save',
+      settings: { ...ops.workspace, reviews: undefined },
+    });
+  });
+  await check('fotos da avaliação: só imagem do próprio cliente', async () => {
+    const png = await sharp({
+        create: { width: 8, height: 8, channels: 3, background: '#3e4934' },
+      })
+        .png()
+        .toBuffer(),
+      upload = async (client, name, bytes, steps = 3) => {
+        const session = await client.call('reviews/uploads', 'POST', {
+          name,
+          mime: name.endsWith('.png') ? 'image/png' : 'text/plain',
+          size: bytes.length,
+          kind: 'image',
+        });
+        if (session.status !== 200) return { session };
+        const path = 'reviews/uploads/' + session.body.data.id,
+          put = await client.call(path + '/content', 'PUT', undefined, { bytes });
+        return { session, put, path, id: session.body.data.id };
+      };
+    const ok = await upload(customer, 'foto.png', png);
+    assert.equal(ok.session.status, 200, ok.session.body?.error?.code);
+    assert.equal(ok.session.body.data.url, '/api/v1/' + ok.path + '/content');
+    assert.equal(ok.put.status, 204, ok.put.body?.error?.code);
+    assert.equal((await other.call(ok.path + '/complete', 'POST', {})).status, 404);
+    assert.equal(
+      (await other.call(ok.path + '/content', 'PUT', undefined, { bytes: png })).status,
+      404,
+    );
+    assert.equal((await new Client().call('reviews/uploads', 'POST', {})).status, 401);
+    const done = await customer.call(ok.path + '/complete', 'POST', {});
+    assert.equal(done.status, 200, done.body?.error?.code);
+    assert.equal(done.body.data.status, 'ready');
+    assert.match(done.body.data.url, /^(https:\/\/|\/api\/media\/public\/)/);
+    const asset = await ctx.db.mediaAsset.findUnique({ where: { id: ok.id } });
+    assert.ok(asset.uploaderId.startsWith('customer/'));
+    // Only images: a model declaration and a text file posing as an image both fail.
+    assert.equal(
+      (
+        await customer.call('reviews/uploads', 'POST', {
+          name: 'modelo.stl',
+          mime: 'application/octet-stream',
+          size: 10,
+          kind: 'model',
+        })
+      ).status,
+      422,
+    );
+    const fake = await upload(customer, 'falso.png', Buffer.from('isto não é uma imagem')),
+      fakeStatus = fake.put.status;
+    assert.ok(fakeStatus >= 400 && fakeStatus < 500, 'texto aceito como imagem: ' + fakeStatus);
+    assert.equal(
+      (await customer.call(fake.path + '/complete', 'POST', {})).body.data.status,
+      'failed',
+    );
+    const big = await customer.call('reviews/uploads', 'POST', {
+      name: 'grande.png',
+      mime: 'image/png',
+      size: 9 * 1024 * 1024,
+      kind: 'image',
+    });
+    assert.equal(big.status, 413);
+
+    const itemOf = (a, id) => a.orders.find((o) => o.id === id).items[0].itemId,
+      post = (client, orderItemId, photoIds, rating = 5) =>
+        client.call('reviews', 'POST', {
+          orderItemId,
+          rating,
+          text: 'Chegou bem embalada e o acabamento é muito bonito.',
+          photoIds,
+        }),
+      thirdOrder = await deliverNewOrder(),
+      account = accountSchema.parse(await customer.data('account')),
+      item = itemOf(account, thirdOrder);
+    const stolen = await post(other, item, [ok.id]);
+    assert.equal(stolen.status, 422);
+    assert.equal(stolen.body.error.code, 'INVALID_PHOTO');
+    const unfinished = await upload(customer, 'pendente.png', png);
+    assert.equal(
+      (await post(customer, item, [unfinished.id])).body.error.code,
+      'INVALID_PHOTO',
+      'foto sem concluir',
+    );
+    assert.equal(
+      (await post(customer, item, [ok.id, ok.id])).body.error.code,
+      'INVALID_PHOTO',
+      'foto repetida',
+    );
+    ops = await owner.data('admin/operations');
+    await owner.command({
+      type: 'workspace.save',
+      settings: {
+        ...ops.workspace,
+        reviews: { requestEnabled: true, requestDelayDays: 7, autoPublishMinRating: 4 },
+      },
+    });
+    const created = await post(customer, item, [ok.id]);
+    assert.equal(created.status, 201, created.body?.error?.code);
+    assert.equal(created.body.data.status, 'Em análise');
+    assert.equal(
+      (await ctx.db.review.findUnique({ where: { orderItemId: item } })).photos[0].assetId,
+      ok.id,
+    );
+    ops = await owner.data('admin/operations');
+    const row = ops.reviews.find((r) => r.orderId === thirdOrder);
+    await owner.command({ type: 'review.moderate', id: row.id, status: 'Publicado', reply: '' });
+    const list = await customer.data('catalog/products/' + product.id + '/reviews');
+    assert.equal(list.reviews.find((r) => r.id === row.id).photos[0].url, done.body.data.url);
+    // The same photo cannot illustrate a second review.
+    const fourth = await deliverNewOrder(),
+      reuse = await post(
+        customer,
+        itemOf(accountSchema.parse(await customer.data('account')), fourth),
+        [ok.id],
+      );
+    assert.equal(reuse.body.error.code, 'INVALID_PHOTO');
+    await owner.command({ type: 'review.moderate', id: row.id, status: 'Oculto', reply: '' });
+    ops = await owner.data('admin/operations');
     await owner.command({
       type: 'workspace.save',
       settings: { ...ops.workspace, reviews: undefined },
@@ -1099,6 +1224,7 @@ try {
       assert.equal(guestAccount.orders.length, 1);
       assert.equal(guestAccount.tickets.length, 0);
       assert.equal(guestAccount.subscriptions.length, 0);
+      assert.deepEqual(guestAccount.reviews, []);
       assert.equal(
         (await fresh.call('account/profile', 'PATCH', { name: 'Ataque', email })).status,
         403,

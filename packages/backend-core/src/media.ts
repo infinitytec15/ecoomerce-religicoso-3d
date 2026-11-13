@@ -5,10 +5,21 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import type { Context } from './context';
+import { rateLimit } from './context';
 import { Notifications } from './notifications';
 import { transaction } from '@maos-em-oracao/database';
 import { permit, requireValue, DomainError, type Actor, data, json, audit } from './shared';
 import type { MediaAsset, ModelStats } from '@maos-em-oracao/contracts';
+type MediaKind = 'image' | 'model' | 'video';
+/** Who is uploading: the admin team (catalog) or a customer attaching review photos. */
+type Uploader = {
+  id: string;
+  kinds: MediaKind[];
+  maxBytes?: number;
+  route: string;
+  access: (asset: { uploaderId: string }) => void;
+};
+const REVIEW_PHOTO_BYTES = 8 * 1024 * 1024;
 export class MediaService {
   private mail: Notifications;
   constructor(private ctx: Context) {
@@ -23,9 +34,43 @@ export class MediaService {
       throw new DomainError('INVALID_PATH', 'Caminho de arquivo inválido.');
     return path;
   }
-  async create(actor: Actor | null, value: unknown) {
-    const a = permit(actor, 'catalog'),
-      input = z
+  private admin(actor: Actor | null): Uploader {
+    const a = permit(actor, 'catalog');
+    return {
+      id: a.id,
+      kinds: ['image', 'model', 'video'],
+      route: 'admin/media',
+      access: (asset) => {
+        if (!a.owner && asset.uploaderId !== a.id)
+          throw new DomainError('FORBIDDEN', 'O upload pertence a outro integrante.', 403);
+      },
+    };
+  }
+  private customer(actor: Actor | null): Uploader {
+    if (!actor?.customerId)
+      throw new DomainError('UNAUTHORIZED', 'Entre na conta para enviar fotos.', 401);
+    const id = 'customer/' + actor.customerId;
+    return {
+      id,
+      kinds: ['image'],
+      maxBytes: REVIEW_PHOTO_BYTES,
+      route: 'reviews',
+      access: (asset) => {
+        if (asset.uploaderId !== id)
+          throw new DomainError('NOT_FOUND', 'Upload não encontrado.', 404);
+      },
+    };
+  }
+  create(actor: Actor | null, value: unknown) {
+    return this.reserve(this.admin(actor), value);
+  }
+  async customerCreate(actor: Actor | null, value: unknown) {
+    const uploader = this.customer(actor);
+    await rateLimit(this.ctx, 'review-upload/' + actor?.customerId, 12, 3600000);
+    return this.reserve(uploader, value);
+  }
+  private async reserve(uploader: Uploader, value: unknown) {
+    const input = z
         .object({
           name: z.string().min(1).max(160),
           mime: z.string().max(100),
@@ -34,7 +79,12 @@ export class MediaService {
         })
         .parse(value),
       extension = extname(input.name).toLowerCase();
-    if (input.size > { image: 12, model: 30, video: 150 }[input.kind] * 1024 * 1024)
+    if (!uploader.kinds.includes(input.kind))
+      throw new DomainError('INVALID_IMAGE', 'Use JPG, PNG, WebP ou AVIF.');
+    if (
+      input.size >
+      (uploader.maxBytes ?? { image: 12, model: 30, video: 150 }[input.kind] * 1024 * 1024)
+    )
       throw new DomainError('FILE_TOO_LARGE', 'O arquivo ultrapassa o limite permitido.', 413);
     if (input.kind === 'model' && !['.stl', '.3mf'].includes(extension))
       throw new DomainError('INVALID_MODEL', 'Envie um arquivo STL ou 3MF.');
@@ -52,7 +102,7 @@ export class MediaService {
     await this.ctx.db.mediaAsset.create({
       data: {
         id,
-        uploaderId: a.id,
+        uploaderId: uploader.id,
         ...input,
         storage:
           input.kind === 'video' && video
@@ -69,16 +119,27 @@ export class MediaService {
     });
     return video
       ? { id, transport: 'tus' as const, url: video.url, headers: video.headers }
-      : { id, transport: 'proxy' as const, url: '/api/v1/admin/media/uploads/' + id + '/content' };
+      : {
+          id,
+          transport: 'proxy' as const,
+          url: '/api/v1/' + uploader.route + '/uploads/' + id + '/content',
+        };
   }
-  async content(actor: Actor | null, id: string, bytes: Buffer) {
-    const a = permit(actor, 'catalog'),
-      asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
-    if (!a.owner && asset.uploaderId !== a.id)
-      throw new DomainError('FORBIDDEN', 'O upload pertence a outro integrante.', 403);
+  content(actor: Actor | null, id: string, bytes: Buffer) {
+    return this.receive(this.admin(actor), id, bytes);
+  }
+  customerContent(actor: Actor | null, id: string, bytes: Buffer) {
+    return this.receive(this.customer(actor), id, bytes);
+  }
+  private async receive(uploader: Uploader, id: string, bytes: Buffer) {
+    const asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
+    uploader.access(asset);
     if (asset.expiresAt < new Date() || asset.state !== 'reserved')
       throw new DomainError('UPLOAD_EXPIRED', 'Crie uma nova sessão de upload.', 409);
-    if (bytes.byteLength !== asset.size || bytes.byteLength > 32 * 1024 * 1024)
+    if (
+      bytes.byteLength !== asset.size ||
+      bytes.byteLength > (uploader.maxBytes ?? 32 * 1024 * 1024)
+    )
       throw new DomainError('UPLOAD_SIZE', 'O tamanho recebido difere do arquivo informado.', 413);
     if (asset.storage === 'bunny-stream')
       throw new DomainError('USE_TUS', 'Envie este vídeo pelo transporte TUS.');
@@ -93,7 +154,9 @@ export class MediaService {
         mime = asset.mime;
       if (asset.kind === 'image') {
         const image = sharp(bytes, { limitInputPixels: 40000000, failOn: 'error' }),
-          meta = await image.metadata();
+          meta = await image.metadata().catch(() => {
+            throw new DomainError('INVALID_IMAGE', 'A imagem não possui um formato aceito.');
+          });
         if (
           !['jpeg', 'png', 'webp', 'avif', 'heif'].includes(meta.format || '') ||
           (meta.pages && meta.pages > 1)
@@ -127,7 +190,7 @@ export class MediaService {
           data: json({ uploadedSize: output.byteLength }),
         },
       });
-      await audit(this.ctx.db, a.id, 'Arquivo recebido', id);
+      await audit(this.ctx.db, uploader.id, 'Arquivo recebido', id);
     } catch (error) {
       await this.ctx.db.mediaAsset.update({
         where: { id },
@@ -153,11 +216,15 @@ export class MediaService {
       transport: 'tus' as const,
     };
   }
-  async complete(actor: Actor | null, id: string) {
-    const a = permit(actor, 'catalog'),
-      asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
-    if (!a.owner && asset.uploaderId !== a.id)
-      throw new DomainError('FORBIDDEN', 'Este upload pertence a outro integrante.', 403);
+  complete(actor: Actor | null, id: string) {
+    return this.finish(this.admin(actor), id);
+  }
+  customerComplete(actor: Actor | null, id: string) {
+    return this.finish(this.customer(actor), id);
+  }
+  private async finish(uploader: Uploader, id: string) {
+    const asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
+    uploader.access(asset);
     if (asset.storage === 'bunny-stream') {
       await this.refreshVideo(id);
       return this.dto(requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } })));

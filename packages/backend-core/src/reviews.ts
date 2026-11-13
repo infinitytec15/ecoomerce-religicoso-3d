@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { transaction, lock } from '@maos-em-oracao/database';
+import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
 import {
   defaultReviewSettings,
   initialReviewStatus,
@@ -26,10 +26,16 @@ export class ReviewsService {
       .max(5)
       .optional()
       .parse(ratingFilter || undefined);
-    const [all, rows] = await Promise.all([
-      this.ctx.db.review.findMany({
+    const product = await this.ctx.db.product.findFirst({
+      where: { id: productId, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!product) return { summary: summarizeRatings([]), reviews: [] };
+    const [groups, rows] = await Promise.all([
+      this.ctx.db.review.groupBy({
+        by: ['rating'],
         where: { productId, status: 'Publicado' },
-        select: { rating: true },
+        _count: { _all: true },
       }),
       this.ctx.db.review.findMany({
         where: { productId, status: 'Publicado', ...(rating ? { rating } : {}) },
@@ -37,10 +43,15 @@ export class ReviewsService {
         take: 50,
       }),
     ]);
-    return {
-      summary: summarizeRatings(all.map((r) => r.rating)),
-      reviews: rows.map((r) => reviewDto(r)),
-    };
+    const summary = summarizeRatings([]);
+    let sum = 0;
+    for (const g of groups) {
+      summary.histogram[Math.min(5, Math.max(1, g.rating)) - 1] += g._count._all;
+      summary.count += g._count._all;
+      sum += g.rating * g._count._all;
+    }
+    summary.average = summary.count ? Math.round((sum / summary.count) * 10) / 10 : 0;
+    return { summary, reviews: rows.map((r) => reviewDto(r)) };
   }
   async create(actor: Actor | null, value: unknown): Promise<MyReview> {
     if (!actor?.customerId)
@@ -48,12 +59,10 @@ export class ReviewsService {
     const customerId = actor.customerId,
       input = reviewInputSchema.parse(value);
     await rateLimit(this.ctx, 'review/' + actor.id, 10, 3600000);
-    // Task 4 validates uploaded photos; until then any attachment is rejected.
-    if (input.photoIds.length)
-      throw new DomainError('INVALID_PHOTO', 'Não foi possível usar as fotos enviadas.', 422);
     const reviews = (await settings(this.ctx.db)).workspace.reviews ?? defaultReviewSettings;
     return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'review/' + input.orderItemId);
+      const photos = await this.photos(tx, customerId, input.photoIds);
       const item = requireValue(
         await tx.orderItem.findFirst({
           where: {
@@ -83,10 +92,10 @@ export class ReviewsService {
             rating: input.rating,
             title: input.title,
             text: input.text,
-            photos: [],
+            photos,
             author: reviewAuthorName(customer.name),
             variant: [d.size, d.color].filter(Boolean).join(' · '),
-            status: initialReviewStatus(reviews, input.rating, 0),
+            status: initialReviewStatus(reviews, input.rating, photos.length),
           },
         });
       await audit(tx, actor.id, 'Avaliação enviada', review.id);
@@ -95,6 +104,34 @@ export class ReviewsService {
         rating: review.rating,
         status: review.status as ReviewStatus,
       };
+    });
+  }
+  /** Photos must be the customer's own finished image uploads, each used by one review only. */
+  private async photos(tx: Transaction, customerId: string, ids: string[]) {
+    if (!ids.length) return [];
+    const unique = [...new Set(ids)].sort(),
+      invalid = () =>
+        new DomainError('INVALID_PHOTO', 'Não foi possível usar as fotos enviadas.', 422);
+    if (unique.length !== ids.length) throw invalid();
+    for (const id of unique) await lock(tx, 'review-photo/' + id);
+    const assets = await tx.mediaAsset.findMany({
+      where: {
+        id: { in: unique },
+        uploaderId: 'customer/' + customerId,
+        state: 'ready',
+        kind: 'image',
+      },
+    });
+    if (assets.length !== unique.length) throw invalid();
+    const used = await tx.review.count({
+      where: { OR: unique.map((assetId) => ({ photos: { array_contains: [{ assetId }] } })) },
+    });
+    if (used) throw invalid();
+    return ids.map((id) => {
+      const asset = assets.find((a) => a.id === id)!,
+        url = data<{ url?: string }>(asset.data).url;
+      if (!url) throw invalid();
+      return { assetId: id, url };
     });
   }
   async moderate(actor: Actor | null, id: string, status: unknown, reply: string) {
