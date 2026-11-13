@@ -1,4 +1,5 @@
 import type { FaithProfile, Permission, Role } from './types';
+import type { CalculatorSettings } from './print-cost';
 
 export type AssetKind = 'image' | 'video' | 'model';
 export interface ModelStats {
@@ -130,6 +131,8 @@ export interface WorkspaceSettings {
   notificationTicket: boolean;
   lowStockEmails: string;
   ticketReplies: string[];
+  /** Cost calculator configuration; callers fall back to defaultCalculatorSettings when absent. */
+  costCalculator?: CalculatorSettings;
 }
 export interface IntegrationHealth {
   provider: 'mercado-pago' | 'melhor-envio' | 'bunny-storage' | 'bunny-stream' | 'email';

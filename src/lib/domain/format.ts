@@ -24,6 +24,11 @@ export function addMonth(value: string, amount = 1) {
 export const uid = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 export const centsFromInput = (value: string | number) =>
   Math.round(Number(String(value).replace(',', '.')) * 100);
+/** Parses a percentage typed in pt-BR (comma accepted). Empty or invalid input yields 0. */
+export const parsePercent = (value: string): number => {
+  const n = Number(String(value).trim().replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
 export const colorHex = (color: string) =>
   ({ Marfim: '#eee8db', Areia: '#cfc0a2', Terracota: '#b87150' })[color] || '#eee8db';
 export function csvText(headers: string[], rows: (string | number | undefined)[][]) {

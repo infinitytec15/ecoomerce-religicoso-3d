@@ -75,4 +75,9 @@ describe('print cost engine', () => {
     expect(() => calculatePrintCost(settings, { ...fdmJob, printerId: 'x' })).toThrow('UNKNOWN_PRINTER');
     expect(calculatePrintCost(settings, { ...fdmJob, packagingKitId: 'x' }).breakdown.packagingCents).toBe(0);
   });
+
+  it('rejects a failure rate above 90 % (would divide by zero)', () => {
+    expect(calculatorSettingsSchema.safeParse({ ...settings, failureRatePct: 95 }).success).toBe(false);
+    expect(calculatorSettingsSchema.safeParse({ ...settings, failureRatePct: 90 }).success).toBe(true);
+  });
 });

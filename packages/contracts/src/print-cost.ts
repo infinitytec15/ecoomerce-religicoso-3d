@@ -32,7 +32,7 @@ export const calculatorSettingsSchema = z.object({
   ),
   energyKwhCents: cents,
   laborHourCents: cents,
-  failureRatePct: pct,
+  failureRatePct: z.number().min(0).max(90),
   resinConsumablesPerPrintCents: cents,
   pixFeePct: pct,
   cardFeePct: pct,
