@@ -295,7 +295,8 @@ export class AdminService {
         permissions: u.permissions as Permission[],
       })),
       settings: s.store,
-      workspace: s.workspace,
+      // Calculator settings hold production costs: only catalog staff may see them.
+      workspace: can('catalog') ? s.workspace : { ...s.workspace, costCalculator: undefined },
       campaigns: campaigns.map((c) => ({
         id: c.id,
         subject: c.subject,

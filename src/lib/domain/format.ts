@@ -22,11 +22,35 @@ export function addMonth(value: string, amount = 1) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 export const uid = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-export const centsFromInput = (value: string | number) =>
-  Math.round(Number(String(value).replace(',', '.')) * 100);
+/**
+ * Parses a money amount typed in pt-BR into cents. Accepts "49,90", "1.234,56", "6.000",
+ * "129.90", "129" and an optional leading "R$". Unparseable input yields NaN (empty yields 0).
+ */
+export const centsFromInput = (value: string | number): number => {
+  let text = String(value)
+    .trim()
+    .replace(/^R\$\s*/i, '')
+    .trim();
+  if (text.includes(',')) {
+    if (!/^-?(\d{1,3}(\.\d{3})*|\d*),\d*$/.test(text)) return NaN;
+    text = text.replaceAll('.', '').replace(',', '.');
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(text)) {
+    text = text.replaceAll('.', '');
+  }
+  if (text !== '' && !/^-?\d*\.?\d*$/.test(text)) return NaN;
+  if (!/\d/.test(text) && text !== '') return NaN;
+  return Math.round(Number(text) * 100);
+};
+/** Parses a plain decimal typed in pt-BR (comma accepted). Empty yields 0, invalid yields NaN. */
+export const parseDecimal = (value: string): number => {
+  const text = String(value).trim().replace(',', '.');
+  if (text === '') return 0;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : NaN;
+};
 /** Parses a percentage typed in pt-BR (comma accepted). Empty or invalid input yields 0. */
 export const parsePercent = (value: string): number => {
-  const n = Number(String(value).trim().replace(',', '.'));
+  const n = parseDecimal(value);
   return Number.isFinite(n) ? n : 0;
 };
 export const colorHex = (color: string) =>

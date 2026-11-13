@@ -79,6 +79,7 @@ export class AuthService {
       email: actor.email,
       role: actor.role,
       permissions: actor.permissions,
+      owner: actor.owner,
       demo: false,
       guest: !!actor.guestOrderId,
     };

@@ -35,6 +35,7 @@ export const sessionSchema = z.object({
       'settings',
     ]),
   ),
+  owner: z.boolean().optional(),
   demo: z.boolean(),
 });
 const addressResponseSchema = addressSchema.extend({

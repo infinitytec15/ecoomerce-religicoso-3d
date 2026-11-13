@@ -73,6 +73,8 @@ export interface Session {
   email: string;
   role: Role;
   permissions: Permission[];
+  /** Store owner: the only one who can change settings. */
+  owner?: boolean;
   demo: boolean;
 }
 export interface Product {
@@ -109,6 +111,7 @@ export interface CostBreakdown {
 export interface InventoryProduct extends Product {
   costCents: number;
   costBreakdown?: CostBreakdown;
+  costBySize?: CostBreakdown[];
 }
 export interface Address {
   document?: string;

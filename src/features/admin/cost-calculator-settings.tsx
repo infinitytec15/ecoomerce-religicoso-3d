@@ -1,19 +1,29 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { calculatorSettingsSchema, type CalculatorSettings } from '@maos-em-oracao/contracts';
 import { useAdminData } from './admin-frame';
 import { useAdminAction } from './shared';
 import { Button } from '@/components/ui/button';
 import { errorMessage } from '@/lib/api/contracts';
-import { centsFromInput, parsePercent } from '@/lib/domain/format';
+import { centsFromInput, parseDecimal } from '@/lib/domain/format';
 
 type Technology = 'fdm' | 'resin';
 type Kit = CalculatorSettings['packagingKits'][number];
 
-const toCents = (v: string) => {
-  const n = centsFromInput(v);
-  return Number.isFinite(n) ? n : 0;
+// Fields report text they cannot parse, keyed by field, so the save can be blocked.
+type MarkInvalid = (key: string, name: string | null) => void;
+const InvalidContext = createContext<MarkInvalid>(() => {});
+// "Valor de compra (R$)" + printer name -> "Valor de compra (Impressora FDM)".
+const fieldName = (label: string, owner?: string) => {
+  const base = label.replace(/\s*\([^)]*\)\s*$/, '');
+  return owner ? `${base} (${owner})` : base;
 };
+function useInvalidMark(label: string, owner?: string) {
+  const mark = useContext(InvalidContext),
+    key = useRef(`${label}-${Math.random().toString(36).slice(2)}`).current;
+  useEffect(() => () => mark(key, null), [mark, key]);
+  return (invalid: boolean) => mark(key, invalid ? fieldName(label, owner) : null);
+}
 const moneyText = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
 const numText = (n: number) => String(n).replace('.', ',');
 
@@ -21,40 +31,54 @@ const numText = (n: number) => String(n).replace('.', ',');
 // rows are keyed by id, so they only remount when an entry is added or removed.
 function MoneyField({
   label,
+  owner,
   cents,
   onChange,
 }: {
   label: string;
+  owner?: string;
   cents: number;
   onChange: (cents: number) => void;
 }) {
+  const report = useInvalidMark(label, owner);
   return (
     <label>
       {label}
       <input
         inputMode="decimal"
         defaultValue={moneyText(cents)}
-        onChange={(e) => onChange(toCents(e.target.value))}
+        onChange={(e) => {
+          const n = centsFromInput(e.target.value);
+          report(!Number.isFinite(n));
+          if (Number.isFinite(n)) onChange(n);
+        }}
       />
     </label>
   );
 }
 function NumberField({
   label,
+  owner,
   value,
   onChange,
 }: {
   label: string;
+  owner?: string;
   value: number;
   onChange: (value: number) => void;
 }) {
+  const report = useInvalidMark(label, owner);
   return (
     <label>
       {label}
       <input
         inputMode="decimal"
         defaultValue={numText(value)}
-        onChange={(e) => onChange(parsePercent(e.target.value))}
+        onChange={(e) => {
+          const n = parseDecimal(e.target.value);
+          report(!Number.isFinite(n));
+          if (Number.isFinite(n)) onChange(n);
+        }}
       />
     </label>
   );
@@ -125,16 +149,23 @@ function Section({
 export function CalculatorSettingsEditor({
   value,
   onSaved,
+  readOnly = false,
 }: {
   value: CalculatorSettings;
   onSaved?: () => void;
+  readOnly?: boolean;
 }) {
   const { workspace } = useAdminData(),
     action = useAdminAction(),
     [s, setS] = useState<CalculatorSettings>(value),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [kitRev, setKitRev] = useState(0);
+    [kitRev, setKitRev] = useState(0),
+    invalid = useRef(new Map<string, string>());
+  const markInvalid: MarkInvalid = (key, name) => {
+    if (name) invalid.current.set(key, name);
+    else invalid.current.delete(key);
+  };
   const patch = (next: Partial<CalculatorSettings>) => setS((cur) => ({ ...cur, ...next }));
   const updateMaterial = (i: number, change: Partial<CalculatorSettings['materials'][number]>) =>
     setS((cur) => ({
@@ -181,6 +212,11 @@ export function CalculatorSettingsEditor({
       };
     });
   const save = async () => {
+    const bad = [...invalid.current.values()][0];
+    if (bad) {
+      setError(`Valor inválido em ${bad}.`);
+      return;
+    }
     const parsed = calculatorSettingsSchema.safeParse(s);
     if (!parsed.success) {
       setError(
@@ -211,300 +247,326 @@ export function CalculatorSettingsEditor({
     </option>
   ));
   return (
-    <form
-      className="stack"
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <Section
-        title="Materiais"
-        addLabel="Adicionar material"
-        onAdd={() =>
-          patch({
-            materials: [
-              ...s.materials,
-              { id: crypto.randomUUID(), name: '', technology: 'fdm', priceCents: 0 },
-            ],
-          })
-        }
+    <InvalidContext.Provider value={markInvalid}>
+      <form
+        className="stack"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
       >
-        {s.materials.map((m, i) => (
-          <div className="form-grid" key={m.id}>
-            <TextField
-              label="Nome do material"
-              value={m.name}
-              onChange={(name) => updateMaterial(i, { name })}
-            />
-            <TechnologyField
-              label="Tecnologia do material"
-              value={m.technology}
-              onChange={(technology) => updateMaterial(i, { technology })}
-            />
-            <MoneyField
-              label={m.technology === 'resin' ? 'Preço por litro' : 'Preço por kg'}
-              cents={m.priceCents}
-              onChange={(priceCents) => updateMaterial(i, { priceCents })}
-            />
-            <Button
-              type="button"
-              variant="text"
-              onClick={() =>
-                setS((cur) => ({ ...cur, materials: cur.materials.filter((_, k) => k !== i) }))
-              }
-            >
-              Remover material
-            </Button>
-          </div>
-        ))}
-      </Section>
-      <Section
-        title="Impressoras"
-        addLabel="Adicionar impressora"
-        onAdd={() =>
-          patch({
-            printers: [
-              ...s.printers,
-              {
-                id: crypto.randomUUID(),
-                name: '',
-                technology: 'fdm',
-                powerWatts: 0,
-                purchaseCents: 0,
-                lifetimeHours: 1000,
-                maintenancePerHourCents: 0,
-              },
-            ],
-          })
-        }
-      >
-        {s.printers.map((p, i) => (
-          <div className="form-grid" key={p.id}>
-            <TextField
-              label="Nome da impressora"
-              value={p.name}
-              onChange={(name) => updatePrinter(i, { name })}
-            />
-            <TechnologyField
-              label="Tecnologia da impressora"
-              value={p.technology}
-              onChange={(technology) => updatePrinter(i, { technology })}
-            />
-            <NumberField
-              label="Potência (W)"
-              value={p.powerWatts}
-              onChange={(powerWatts) => updatePrinter(i, { powerWatts })}
-            />
-            <MoneyField
-              label="Valor de compra (R$)"
-              cents={p.purchaseCents}
-              onChange={(purchaseCents) => updatePrinter(i, { purchaseCents })}
-            />
-            <NumberField
-              label="Vida útil (horas)"
-              value={p.lifetimeHours}
-              onChange={(lifetimeHours) => updatePrinter(i, { lifetimeHours })}
-            />
-            <MoneyField
-              label="Manutenção por hora (R$)"
-              cents={p.maintenancePerHourCents}
-              onChange={(maintenancePerHourCents) => updatePrinter(i, { maintenancePerHourCents })}
-            />
-            <Button
-              type="button"
-              variant="text"
-              onClick={() =>
-                setS((cur) => ({ ...cur, printers: cur.printers.filter((_, k) => k !== i) }))
-              }
-            >
-              Remover impressora
-            </Button>
-          </div>
-        ))}
-      </Section>
-      <Section
-        title="Itens de embalagem"
-        addLabel="Adicionar item de embalagem"
-        onAdd={() =>
-          patch({
-            packagingItems: [
-              ...s.packagingItems,
-              { id: crypto.randomUUID(), name: '', unitCents: 0 },
-            ],
-          })
-        }
-      >
-        {s.packagingItems.map((item, i) => (
-          <div className="form-grid" key={item.id}>
-            <TextField
-              label="Nome do item de embalagem"
-              value={item.name}
-              onChange={(name) => updatePackagingItem(i, { name })}
-            />
-            <MoneyField
-              label="Custo por unidade (R$)"
-              cents={item.unitCents}
-              onChange={(unitCents) => updatePackagingItem(i, { unitCents })}
-            />
-            <Button type="button" variant="text" onClick={() => removePackagingItem(i)}>
-              Remover item de embalagem
-            </Button>
-          </div>
-        ))}
-      </Section>
-      <Section
-        title="Kits de embalagem"
-        addLabel="Adicionar kit de embalagem"
-        onAdd={() =>
-          patch({
-            packagingKits: [...s.packagingKits, { id: crypto.randomUUID(), name: '', items: [] }],
-          })
-        }
-      >
-        {s.packagingKits.map((kit, ki) => (
-          <div className="stack" key={kit.id}>
-            <div className="form-grid">
-              <TextField
-                label="Nome do kit"
-                value={kit.name}
-                onChange={(name) => updateKit(ki, { name })}
-              />
-              <Button
-                type="button"
-                variant="text"
-                onClick={() =>
-                  setS((cur) => ({
-                    ...cur,
-                    packagingKits: cur.packagingKits.filter((_, k) => k !== ki),
-                  }))
-                }
-              >
-                Remover kit de embalagem
-              </Button>
-            </div>
-            {kit.items.map((item, ii) => (
-              <div className="form-grid" key={`${kit.id}-${kitRev}-${ii}`}>
-                <label>
-                  Item do kit
-                  <select
-                    aria-label={`Item ${ii + 1} do kit ${kit.name || 'sem nome'}`}
-                    value={item.itemId}
-                    onChange={(e) => updateKitItem(ki, ii, { itemId: e.target.value })}
-                  >
-                    {itemOptions}
-                  </select>
-                </label>
-                <NumberField
-                  label="Quantidade"
-                  value={item.quantity}
-                  onChange={(quantity) => updateKitItem(ki, ii, { quantity })}
+        <fieldset
+          className="stack"
+          disabled={readOnly}
+          style={{ border: 0, padding: 0, margin: 0 }}
+        >
+          <Section
+            title="Materiais"
+            addLabel="Adicionar material"
+            onAdd={() =>
+              patch({
+                materials: [
+                  ...s.materials,
+                  { id: crypto.randomUUID(), name: '', technology: 'fdm', priceCents: 0 },
+                ],
+              })
+            }
+          >
+            {s.materials.map((m, i) => (
+              <div className="form-grid" key={m.id}>
+                <TextField
+                  label="Nome do material"
+                  value={m.name}
+                  onChange={(name) => updateMaterial(i, { name })}
+                />
+                <TechnologyField
+                  label="Tecnologia do material"
+                  value={m.technology}
+                  onChange={(technology) => updateMaterial(i, { technology })}
+                />
+                <MoneyField
+                  label={m.technology === 'resin' ? 'Preço por litro' : 'Preço por kg'}
+                  owner={m.name || 'sem nome'}
+                  cents={m.priceCents}
+                  onChange={(priceCents) => updateMaterial(i, { priceCents })}
                 />
                 <Button
                   type="button"
                   variant="text"
-                  onClick={() => {
-                    updateKit(ki, { items: kit.items.filter((_, n) => n !== ii) });
-                    setKitRev((r) => r + 1);
-                  }}
+                  onClick={() =>
+                    setS((cur) => ({ ...cur, materials: cur.materials.filter((_, k) => k !== i) }))
+                  }
                 >
-                  Remover item do kit
+                  Remover material
                 </Button>
               </div>
             ))}
-            <div>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!s.packagingItems.length}
-                onClick={() =>
-                  updateKit(ki, {
-                    items: [...kit.items, { itemId: s.packagingItems[0].id, quantity: 1 }],
-                  })
+          </Section>
+          <Section
+            title="Impressoras"
+            addLabel="Adicionar impressora"
+            onAdd={() =>
+              patch({
+                printers: [
+                  ...s.printers,
+                  {
+                    id: crypto.randomUUID(),
+                    name: '',
+                    technology: 'fdm',
+                    powerWatts: 0,
+                    purchaseCents: 0,
+                    lifetimeHours: 1000,
+                    maintenancePerHourCents: 0,
+                  },
+                ],
+              })
+            }
+          >
+            {s.printers.map((p, i) => (
+              <div className="form-grid" key={p.id}>
+                <TextField
+                  label="Nome da impressora"
+                  value={p.name}
+                  onChange={(name) => updatePrinter(i, { name })}
+                />
+                <TechnologyField
+                  label="Tecnologia da impressora"
+                  value={p.technology}
+                  onChange={(technology) => updatePrinter(i, { technology })}
+                />
+                <NumberField
+                  label="Potência (W)"
+                  owner={p.name || 'sem nome'}
+                  value={p.powerWatts}
+                  onChange={(powerWatts) => updatePrinter(i, { powerWatts })}
+                />
+                <MoneyField
+                  label="Valor de compra (R$)"
+                  owner={p.name || 'sem nome'}
+                  cents={p.purchaseCents}
+                  onChange={(purchaseCents) => updatePrinter(i, { purchaseCents })}
+                />
+                <NumberField
+                  label="Vida útil (horas)"
+                  owner={p.name || 'sem nome'}
+                  value={p.lifetimeHours}
+                  onChange={(lifetimeHours) => updatePrinter(i, { lifetimeHours })}
+                />
+                <MoneyField
+                  label="Manutenção por hora (R$)"
+                  owner={p.name || 'sem nome'}
+                  cents={p.maintenancePerHourCents}
+                  onChange={(maintenancePerHourCents) =>
+                    updatePrinter(i, { maintenancePerHourCents })
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="text"
+                  onClick={() =>
+                    setS((cur) => ({ ...cur, printers: cur.printers.filter((_, k) => k !== i) }))
+                  }
+                >
+                  Remover impressora
+                </Button>
+              </div>
+            ))}
+          </Section>
+          <Section
+            title="Itens de embalagem"
+            addLabel="Adicionar item de embalagem"
+            onAdd={() =>
+              patch({
+                packagingItems: [
+                  ...s.packagingItems,
+                  { id: crypto.randomUUID(), name: '', unitCents: 0 },
+                ],
+              })
+            }
+          >
+            {s.packagingItems.map((item, i) => (
+              <div className="form-grid" key={item.id}>
+                <TextField
+                  label="Nome do item de embalagem"
+                  value={item.name}
+                  onChange={(name) => updatePackagingItem(i, { name })}
+                />
+                <MoneyField
+                  label="Custo por unidade (R$)"
+                  owner={item.name || 'sem nome'}
+                  cents={item.unitCents}
+                  onChange={(unitCents) => updatePackagingItem(i, { unitCents })}
+                />
+                <Button type="button" variant="text" onClick={() => removePackagingItem(i)}>
+                  Remover item de embalagem
+                </Button>
+              </div>
+            ))}
+          </Section>
+          <Section
+            title="Kits de embalagem"
+            addLabel="Adicionar kit de embalagem"
+            onAdd={() =>
+              patch({
+                packagingKits: [
+                  ...s.packagingKits,
+                  { id: crypto.randomUUID(), name: '', items: [] },
+                ],
+              })
+            }
+          >
+            {s.packagingKits.map((kit, ki) => (
+              <div className="stack" key={kit.id}>
+                <div className="form-grid">
+                  <TextField
+                    label="Nome do kit"
+                    value={kit.name}
+                    onChange={(name) => updateKit(ki, { name })}
+                  />
+                  <Button
+                    type="button"
+                    variant="text"
+                    onClick={() =>
+                      setS((cur) => ({
+                        ...cur,
+                        packagingKits: cur.packagingKits.filter((_, k) => k !== ki),
+                      }))
+                    }
+                  >
+                    Remover kit de embalagem
+                  </Button>
+                </div>
+                {kit.items.map((item, ii) => (
+                  <div className="form-grid" key={`${kit.id}-${kitRev}-${ii}`}>
+                    <label>
+                      Item do kit
+                      <select
+                        aria-label={`Item ${ii + 1} do kit ${kit.name || 'sem nome'}`}
+                        value={item.itemId}
+                        onChange={(e) => updateKitItem(ki, ii, { itemId: e.target.value })}
+                      >
+                        {itemOptions}
+                      </select>
+                    </label>
+                    <NumberField
+                      label="Quantidade"
+                      owner={kit.name || 'sem nome'}
+                      value={item.quantity}
+                      onChange={(quantity) => updateKitItem(ki, ii, { quantity })}
+                    />
+                    <Button
+                      type="button"
+                      variant="text"
+                      onClick={() => {
+                        updateKit(ki, { items: kit.items.filter((_, n) => n !== ii) });
+                        setKitRev((r) => r + 1);
+                      }}
+                    >
+                      Remover item do kit
+                    </Button>
+                  </div>
+                ))}
+                <div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!s.packagingItems.length}
+                    onClick={() =>
+                      updateKit(ki, {
+                        items: [...kit.items, { itemId: s.packagingItems[0].id, quantity: 1 }],
+                      })
+                    }
+                  >
+                    Adicionar item ao kit
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </Section>
+          <section className="stack">
+            <h3>Custos gerais</h3>
+            <div className="form-grid">
+              <MoneyField
+                label="Energia por kWh (R$)"
+                cents={s.energyKwhCents}
+                onChange={(energyKwhCents) => patch({ energyKwhCents })}
+              />
+              <MoneyField
+                label="Mão de obra por hora (R$)"
+                cents={s.laborHourCents}
+                onChange={(laborHourCents) => patch({ laborHourCents })}
+              />
+              <NumberField
+                label="Taxa de falha (%, até 90)"
+                value={s.failureRatePct}
+                onChange={(failureRatePct) => patch({ failureRatePct })}
+              />
+              <MoneyField
+                label="Insumos de resina por impressão (R$)"
+                cents={s.resinConsumablesPerPrintCents}
+                onChange={(resinConsumablesPerPrintCents) =>
+                  patch({ resinConsumablesPerPrintCents })
                 }
-              >
-                Adicionar item ao kit
-              </Button>
+              />
+              <MoneyField
+                label="Custo fixo por pedido (R$)"
+                cents={s.fixedPerOrderCents}
+                onChange={(fixedPerOrderCents) => patch({ fixedPerOrderCents })}
+              />
+              <MoneyField
+                label="Custo fixo mensal (R$)"
+                cents={s.fixedMonthlyCents}
+                onChange={(fixedMonthlyCents) => patch({ fixedMonthlyCents })}
+              />
             </div>
+          </section>
+          <section className="stack">
+            <h3>Taxas e margem</h3>
+            <div className="form-grid">
+              <NumberField
+                label="Taxa Pix (%)"
+                value={s.pixFeePct}
+                onChange={(pixFeePct) => patch({ pixFeePct })}
+              />
+              <NumberField
+                label="Taxa do cartão (%)"
+                value={s.cardFeePct}
+                onChange={(cardFeePct) => patch({ cardFeePct })}
+              />
+              <NumberField
+                label="Vendas no cartão (%)"
+                value={s.cardSharePct}
+                onChange={(cardSharePct) => patch({ cardSharePct })}
+              />
+              <NumberField
+                label="Imposto (%)"
+                value={s.taxPct}
+                onChange={(taxPct) => patch({ taxPct })}
+              />
+              <NumberField
+                label="Margem-alvo (%)"
+                value={s.targetMarginPct}
+                onChange={(targetMarginPct) => patch({ targetMarginPct })}
+              />
+            </div>
+          </section>
+        </fieldset>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        {readOnly ? (
+          <p className="notice">Só o proprietário altera esta configuração.</p>
+        ) : (
+          <div className="editor-footer">
+            <Button type="submit" loading={busy}>
+              Salvar configuração
+            </Button>
           </div>
-        ))}
-      </Section>
-      <section className="stack">
-        <h3>Custos gerais</h3>
-        <div className="form-grid">
-          <MoneyField
-            label="Energia por kWh (R$)"
-            cents={s.energyKwhCents}
-            onChange={(energyKwhCents) => patch({ energyKwhCents })}
-          />
-          <MoneyField
-            label="Mão de obra por hora (R$)"
-            cents={s.laborHourCents}
-            onChange={(laborHourCents) => patch({ laborHourCents })}
-          />
-          <NumberField
-            label="Taxa de falha (%, até 90)"
-            value={s.failureRatePct}
-            onChange={(failureRatePct) => patch({ failureRatePct })}
-          />
-          <MoneyField
-            label="Insumos de resina por impressão (R$)"
-            cents={s.resinConsumablesPerPrintCents}
-            onChange={(resinConsumablesPerPrintCents) => patch({ resinConsumablesPerPrintCents })}
-          />
-          <MoneyField
-            label="Custo fixo por pedido (R$)"
-            cents={s.fixedPerOrderCents}
-            onChange={(fixedPerOrderCents) => patch({ fixedPerOrderCents })}
-          />
-          <MoneyField
-            label="Custo fixo mensal (R$)"
-            cents={s.fixedMonthlyCents}
-            onChange={(fixedMonthlyCents) => patch({ fixedMonthlyCents })}
-          />
-        </div>
-      </section>
-      <section className="stack">
-        <h3>Taxas e margem</h3>
-        <div className="form-grid">
-          <NumberField
-            label="Taxa Pix (%)"
-            value={s.pixFeePct}
-            onChange={(pixFeePct) => patch({ pixFeePct })}
-          />
-          <NumberField
-            label="Taxa do cartão (%)"
-            value={s.cardFeePct}
-            onChange={(cardFeePct) => patch({ cardFeePct })}
-          />
-          <NumberField
-            label="Vendas no cartão (%)"
-            value={s.cardSharePct}
-            onChange={(cardSharePct) => patch({ cardSharePct })}
-          />
-          <NumberField
-            label="Imposto (%)"
-            value={s.taxPct}
-            onChange={(taxPct) => patch({ taxPct })}
-          />
-          <NumberField
-            label="Margem-alvo (%)"
-            value={s.targetMarginPct}
-            onChange={(targetMarginPct) => patch({ targetMarginPct })}
-          />
-        </div>
-      </section>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="editor-footer">
-        <Button type="submit" loading={busy}>
-          Salvar configuração
-        </Button>
-      </div>
-    </form>
+        )}
+      </form>
+    </InvalidContext.Provider>
   );
 }

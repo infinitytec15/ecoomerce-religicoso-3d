@@ -100,6 +100,7 @@ export class BrowserDemoStorage implements DemoStorage {
           email: DEMO_EMAIL,
           role: 'admin',
           permissions: STAFF_PERMISSIONS,
+          owner: true,
           demo: true,
         };
       const client = JSON.parse(localStorage.getItem('amago-customer') || 'null');

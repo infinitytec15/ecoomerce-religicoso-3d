@@ -10,6 +10,10 @@ vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),
   useAdminAction: () => ({ run }),
 }));
+const { owner } = vi.hoisted(() => ({ owner: { value: true } }));
+vi.mock('@/lib/api/query', () => ({
+  useSession: () => ({ data: { owner: owner.value } }),
+}));
 vi.mock('./admin-frame', () => ({
   useAdminData: () => ({ workspace: { ...defaultWorkspaceSettings } }),
 }));
@@ -44,6 +48,41 @@ describe('calculator settings editor', () => {
     await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('reads a printer purchase value typed with thousand separators', async () => {
+    const user = userEvent.setup();
+    render(<CalculatorSettingsEditor value={defaultCalculatorSettings} />);
+    const purchase = screen.getAllByLabelText('Valor de compra (R$)')[0];
+    await user.clear(purchase);
+    await user.type(purchase, '6.000,00');
+    await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0].settings.costCalculator.printers[0].purchaseCents).toBe(600000);
+  });
+
+  it('blocks the save and names the field when money text is invalid', async () => {
+    const user = userEvent.setup();
+    render(<CalculatorSettingsEditor value={defaultCalculatorSettings} />);
+    const purchase = screen.getAllByLabelText('Valor de compra (R$)')[0];
+    await user.clear(purchase);
+    await user.type(purchase, 'abc');
+    await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
+    const name = defaultCalculatorSettings.printers[0].name;
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `Valor inválido em Valor de compra (${name}).`,
+    );
+    expect(run).not.toHaveBeenCalled();
+    await user.clear(purchase);
+    await user.type(purchase, '6.000');
+    await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+  });
+
+  it('hides the save button when read-only', () => {
+    render(<CalculatorSettingsEditor value={defaultCalculatorSettings} readOnly />);
+    expect(screen.queryByRole('button', { name: 'Salvar configuração' })).not.toBeInTheDocument();
+    expect(screen.getByText('Só o proprietário altera esta configuração.')).toBeInTheDocument();
   });
 
   it('adds and removes a material', async () => {
@@ -106,7 +145,10 @@ describe('print cost form', () => {
 
   it('shows a hint instead of crashing when no material exists for the technology', async () => {
     const user = userEvent.setup();
-    const settings = { ...defaultCalculatorSettings, materials: defaultCalculatorSettings.materials.filter((m) => m.technology === 'fdm') };
+    const settings = {
+      ...defaultCalculatorSettings,
+      materials: defaultCalculatorSettings.materials.filter((m) => m.technology === 'fdm'),
+    };
     render(<PrintCostForm settings={settings} />);
     await user.selectOptions(screen.getByLabelText('Tecnologia'), 'resin');
     expect(screen.getByText(/Cadastre um material e uma impressora/)).toBeInTheDocument();
@@ -121,5 +163,19 @@ describe('admin cost calculator page', () => {
     expect(screen.getByRole('option', { name: 'PLA' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Configuração' }));
     expect(screen.getAllByLabelText('Nome do material')[0]).toHaveValue('PLA');
+    expect(screen.getByRole('button', { name: 'Salvar configuração' })).toBeInTheDocument();
+  });
+
+  it('shows the configuration read-only to non-owners', async () => {
+    owner.value = false;
+    try {
+      const user = userEvent.setup();
+      render(<AdminCostCalculator />);
+      await user.click(screen.getByRole('button', { name: 'Configuração' }));
+      expect(screen.queryByRole('button', { name: 'Salvar configuração' })).not.toBeInTheDocument();
+      expect(screen.getByText(/Só o proprietário/)).toBeInTheDocument();
+    } finally {
+      owner.value = true;
+    }
   });
 });

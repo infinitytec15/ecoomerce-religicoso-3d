@@ -9,6 +9,7 @@ import {
   type PrintJob,
 } from '@maos-em-oracao/contracts';
 import { useAdminData } from './admin-frame';
+import { useSession } from '@/lib/api/query';
 import { AdminHeading } from './shared';
 import { CalculatorSettingsEditor } from './cost-calculator-settings';
 import { Button } from '@/components/ui/button';
@@ -56,13 +57,17 @@ export function PrintCostForm({
     printerId: settings.printers.find((p) => p.technology === tech)?.id ?? '',
   });
   const [technology, setTechnology] = useState<Technology>(initial?.technology ?? 'fdm');
-  const [materialId, setMaterialId] = useState(initial?.materialId ?? firstOf(technology).materialId);
+  const [materialId, setMaterialId] = useState(
+    initial?.materialId ?? firstOf(technology).materialId,
+  );
   const [printerId, setPrinterId] = useState(initial?.printerId ?? firstOf(technology).printerId);
   const [amount, setAmount] = useState(String(initial?.amount ?? ''));
   const [hours, setHours] = useState(String(initial?.printHours ?? ''));
   const [pieces, setPieces] = useState(String(initial?.piecesPerPlate ?? 1));
   const [minutes, setMinutes] = useState(String(initial?.laborMinutes ?? ''));
-  const [kitId, setKitId] = useState(initial?.packagingKitId ?? settings.packagingKits[0]?.id ?? '');
+  const [kitId, setKitId] = useState(
+    initial?.packagingKitId ?? settings.packagingKits[0]?.id ?? '',
+  );
   const [extra, setExtra] = useState(
     initial?.extraCents ? (initial.extraCents / 100).toFixed(2).replace('.', ',') : '',
   );
@@ -97,7 +102,9 @@ export function PrintCostForm({
 
   const priceCents = toCents(price);
   const projection =
-    result && priceCents > 0 ? projectProfit(result, settings, priceCents, Math.floor(toNumber(units))) : null;
+    result && priceCents > 0
+      ? projectProfit(result, settings, priceCents, Math.floor(toNumber(units)))
+      : null;
 
   return (
     <div className="calc-layout">
@@ -111,7 +118,11 @@ export function PrintCostForm({
         <div className="form-grid">
           <Field label="Tecnologia">
             {(id) => (
-              <select id={id} value={technology} onChange={(e) => switchTechnology(e.target.value as Technology)}>
+              <select
+                id={id}
+                value={technology}
+                onChange={(e) => switchTechnology(e.target.value as Technology)}
+              >
                 {(Object.keys(techLabel) as Technology[]).map((t) => (
                   <option key={t} value={t}>
                     {techLabel[t]}
@@ -147,16 +158,44 @@ export function PrintCostForm({
             )}
           </Field>
           <Field label={technology === 'fdm' ? 'Filamento (g)' : 'Resina (ml)'}>
-            {(id) => <input id={id} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />}
+            {(id) => (
+              <input
+                id={id}
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            )}
           </Field>
           <Field label="Tempo de impressão (h)">
-            {(id) => <input id={id} inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} />}
+            {(id) => (
+              <input
+                id={id}
+                inputMode="decimal"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+              />
+            )}
           </Field>
           <Field label="Peças por mesa">
-            {(id) => <input id={id} inputMode="numeric" value={pieces} onChange={(e) => setPieces(e.target.value)} />}
+            {(id) => (
+              <input
+                id={id}
+                inputMode="numeric"
+                value={pieces}
+                onChange={(e) => setPieces(e.target.value)}
+              />
+            )}
           </Field>
           <Field label="Mão de obra (min)">
-            {(id) => <input id={id} inputMode="decimal" value={minutes} onChange={(e) => setMinutes(e.target.value)} />}
+            {(id) => (
+              <input
+                id={id}
+                inputMode="decimal"
+                value={minutes}
+                onChange={(e) => setMinutes(e.target.value)}
+              />
+            )}
           </Field>
           <Field label="Embalagem">
             {(id) => (
@@ -171,7 +210,14 @@ export function PrintCostForm({
             )}
           </Field>
           <Field label="Custo extra (R$)">
-            {(id) => <input id={id} inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} />}
+            {(id) => (
+              <input
+                id={id}
+                inputMode="decimal"
+                value={extra}
+                onChange={(e) => setExtra(e.target.value)}
+              />
+            )}
           </Field>
         </div>
       </section>
@@ -183,7 +229,9 @@ export function PrintCostForm({
           </div>
         </div>
         {!result ? (
-          <p className="calc-hint">Cadastre um material e uma impressora de {techName[technology]} na configuração.</p>
+          <p className="calc-hint">
+            Cadastre um material e uma impressora de {techName[technology]} na configuração.
+          </p>
         ) : (
           <>
             <dl className="calc-parts">
@@ -236,10 +284,24 @@ export function PrintCostForm({
             </div>
             <div className="form-grid">
               <Field label="Preço praticado (R$)">
-                {(id) => <input id={id} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />}
+                {(id) => (
+                  <input
+                    id={id}
+                    inputMode="decimal"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                  />
+                )}
               </Field>
               <Field label="Vendas por mês">
-                {(id) => <input id={id} inputMode="numeric" value={units} onChange={(e) => setUnits(e.target.value)} />}
+                {(id) => (
+                  <input
+                    id={id}
+                    inputMode="numeric"
+                    value={units}
+                    onChange={(e) => setUnits(e.target.value)}
+                  />
+                )}
               </Field>
             </div>
             {projection ? (
@@ -263,7 +325,9 @@ export function PrintCostForm({
                 <div>
                   <dt>Ponto de equilíbrio</dt>
                   <dd data-testid="break-even">
-                    {projection.breakEvenUnits === null ? 'Sem lucro por venda' : `${projection.breakEvenUnits} vendas`}
+                    {projection.breakEvenUnits === null
+                      ? 'Sem lucro por venda'
+                      : `${projection.breakEvenUnits} vendas`}
                   </dd>
                 </div>
               </dl>
@@ -272,7 +336,9 @@ export function PrintCostForm({
             )}
             {onApply && (
               <div className="editor-footer">
-                <Button onClick={() => onApply(result)}>Usar este custo</Button>
+                <Button type="button" onClick={() => onApply(result)}>
+                  Usar este custo
+                </Button>
               </div>
             )}
           </>
@@ -283,7 +349,8 @@ export function PrintCostForm({
 }
 
 export function AdminCostCalculator() {
-  const { workspace } = useAdminData();
+  const { workspace } = useAdminData(),
+    session = useSession();
   const [tab, setTab] = useState<'calc' | 'config'>('calc');
   const settings = workspace.costCalculator ?? defaultCalculatorSettings;
   return (
@@ -304,7 +371,11 @@ export function AdminCostCalculator() {
           </button>
         ))}
       </div>
-      {tab === 'calc' ? <PrintCostForm settings={settings} /> : <CalculatorSettingsEditor value={settings} />}
+      {tab === 'calc' ? (
+        <PrintCostForm settings={settings} />
+      ) : (
+        <CalculatorSettingsEditor value={settings} readOnly={session.data?.owner !== true} />
+      )}
     </>
   );
 }

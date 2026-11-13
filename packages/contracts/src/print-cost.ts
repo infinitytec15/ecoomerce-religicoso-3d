@@ -133,13 +133,16 @@ export function calculatePrintCost(s: CalculatorSettings, job: PrintJob): PrintC
   if (!material) throw new Error('UNKNOWN_MATERIAL');
   const printer = s.printers.find((p) => p.id === job.printerId);
   if (!printer) throw new Error('UNKNOWN_PRINTER');
-  const kit = job.packagingKitId ? s.packagingKits.find((k) => k.id === job.packagingKitId) : undefined;
+  const kit = job.packagingKitId
+    ? s.packagingKits.find((k) => k.id === job.packagingKitId)
+    : undefined;
 
   const pieces = job.piecesPerPlate;
   const materialRaw = ((job.amount / 1000) * material.priceCents) / pieces;
   const energyRaw =
     ((printer.powerWatts / 1000) * job.printHours * s.energyKwhCents +
-      (printer.purchaseCents / printer.lifetimeHours + printer.maintenancePerHourCents) * job.printHours) /
+      (printer.purchaseCents / printer.lifetimeHours + printer.maintenancePerHourCents) *
+        job.printHours) /
     pieces;
   const laborRaw = (job.laborMinutes / 60) * s.laborHourCents;
   const packagingRaw = kit
@@ -162,7 +165,11 @@ export function calculatePrintCost(s: CalculatorSettings, job: PrintJob): PrintC
     otherCents: Math.round(otherRaw),
   };
   const totalCents =
-    breakdown.materialCents + breakdown.packagingCents + breakdown.energyCents + breakdown.laborCents + breakdown.otherCents;
+    breakdown.materialCents +
+    breakdown.packagingCents +
+    breakdown.energyCents +
+    breakdown.laborCents +
+    breakdown.otherCents;
 
   const fee = feeRatePct(s);
   const priceFor = (marginPct: number): number | null => {
@@ -181,7 +188,12 @@ export function calculatePrintCost(s: CalculatorSettings, job: PrintJob): PrintC
   return result;
 }
 
-export function projectProfit(r: PrintCostResult, s: CalculatorSettings, priceCents: number, unitsPerMonth: number) {
+export function projectProfit(
+  r: PrintCostResult,
+  s: CalculatorSettings,
+  priceCents: number,
+  unitsPerMonth: number,
+) {
   const unitFeesCents = Math.round((priceCents * r.feeRatePct) / 100);
   const unitProfitCents = priceCents - r.totalCents - s.fixedPerOrderCents - unitFeesCents;
   return {

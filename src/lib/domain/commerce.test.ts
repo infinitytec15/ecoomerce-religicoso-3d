@@ -37,6 +37,23 @@ describe('money and checkout rules', () => {
     });
     expect(centsFromInput('49,90')).toBe(4990);
   });
+  it('reads pt-BR money with thousand separators', () => {
+    const cases: [string, number][] = [
+      ['49,90', 4990],
+      ['129.90', 12990],
+      ['129', 12900],
+      ['6.000', 600000],
+      ['6.000,00', 600000],
+      ['1.234,56', 123456],
+      ['1.500.000', 150000000],
+      ['R$ 1.299,90', 129990],
+      ['  0,5 ', 50],
+      ['', 0],
+    ];
+    for (const [text, cents] of cases) expect(centsFromInput(text), text).toBe(cents);
+    for (const bad of ['abc', '1,2,3', '12a', '1.2.3,4,5', ','])
+      expect(centsFromInput(bad), bad).toBeNaN();
+  });
   it('rejects impossible split amounts and preserves the exact total', () => {
     for (const amount of [0, -1, 10000, 10001, 50.5, NaN])
       expect(() => validateSplit(10000, amount)).toThrow();

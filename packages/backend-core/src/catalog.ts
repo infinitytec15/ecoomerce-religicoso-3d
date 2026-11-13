@@ -94,18 +94,20 @@ export class CatalogService {
         (p.costBySize && p.costBySize.length !== p.sizes.length)
       )
         throw new DomainError('INVALID_PRICES', 'Informe preço e custo para cada tamanho.', 422);
-      const v = {
-        sku: p.sku.trim().toUpperCase(),
-        name: p.name,
-        category: p.category,
-        priceCents: p.sizePrices?.[0] ?? p.priceCents,
-        // Columns mirror the first size; the per-size values live in `data`.
-        costCents: unitCostCents(p, 0),
-        stock: p.stock,
-        active,
-        archived: !!p.archived,
-        data: json(hydrated),
-      };
+      const priceCents = p.sizePrices?.[0] ?? p.priceCents,
+        v = {
+          sku: p.sku.trim().toUpperCase(),
+          name: p.name,
+          category: p.category,
+          priceCents,
+          // Columns mirror the first size; the per-size values live in `data`.
+          costCents: unitCostCents(p, 0),
+          stock: p.stock,
+          active,
+          archived: !!p.archived,
+          // Keep `data` in step with the column so readers never see two different prices.
+          data: json({ ...hydrated, priceCents }),
+        };
       await tx.product.upsert({
         where: { id: p.id },
         create: { id: p.id, ...v },
@@ -214,6 +216,12 @@ export class CatalogService {
     const a = ownerOnly(actor),
       v = workspace ? workspaceSchema.parse(value) : publicSettingsSchema.parse(value);
     await transaction(this.ctx.db, async (tx) => {
+      // Clients without catalog access never receive the calculator, so a save that lacks it
+      // must not wipe the stored one.
+      if (workspace && !(v as { costCalculator?: unknown }).costCalculator) {
+        const current = (await settings(tx)).workspace.costCalculator;
+        if (current) (v as { costCalculator?: unknown }).costCalculator = current;
+      }
       await tx.appSetting.upsert({
         where: { key: workspace ? 'workspace' : 'store' },
         create: { key: workspace ? 'workspace' : 'store', data: json(v) },

@@ -92,6 +92,7 @@ export class DemoGateway implements CommerceGateway {
         email: DEMO_EMAIL,
         role: 'admin',
         permissions: STAFF_PERMISSIONS,
+        owner: true,
         demo: true,
       };
     } else {

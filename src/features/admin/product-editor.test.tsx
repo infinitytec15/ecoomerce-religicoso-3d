@@ -56,6 +56,18 @@ describe('product publishing and media controls', () => {
     expect(saved.costBySize[2].materialCents).toBe(2600);
     expect(saved.priceCents).toBe(saved.sizePrices[0]);
   });
+  it('reads thousand separators in the size price', async () => {
+    run.mockClear();
+    const user = userEvent.setup();
+    render(<ProductEditor product={createSeed().products[0]} onSuccess={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'Preço e custo' }));
+    const price = screen.getAllByLabelText(/^Preço — /)[0];
+    await user.clear(price);
+    await user.type(price, '1.299,90');
+    await user.click(screen.getByRole('button', { name: 'Salvar produto' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0].product.sizePrices[0]).toBe(129990);
+  });
   it('drops extra rows when the sizes list shrinks', async () => {
     run.mockClear();
     const user = userEvent.setup();
@@ -115,7 +127,7 @@ describe('product publishing and media controls', () => {
     await user.type(price, '0,50');
     expect(await screen.findByRole('alert')).toHaveTextContent('Algum tamanho está com prejuízo');
   });
-  it.each(['abc', '0', '-5', '1.234,56'])('blocks saving an invalid price (%s)', async (bad) => {
+  it.each(['abc', '0', '-5', '1,2,3'])('blocks saving an invalid price (%s)', async (bad) => {
     run.mockClear();
     const user = userEvent.setup();
     render(<ProductEditor product={createSeed().products[0]} onSuccess={() => {}} />);
