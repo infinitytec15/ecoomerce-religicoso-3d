@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { centsFromInput } from '@/lib/domain/format';
 import { IS_DEMO } from '@/lib/api/config';
 import type { WorkspaceSettings } from '@/lib/domain/types';
+import { defaultReviewSettings } from '@maos-em-oracao/contracts';
 // The URL only changes by navigation, which remounts this page.
 const noSubscription = () => () => {};
 const groups = [
@@ -26,7 +27,8 @@ export function WorkspaceSettingsPanel() {
   const data = useAdminData(),
     action = useAdminAction(),
     [tab, setTab] = useState(0),
-    w = data.workspace;
+    w = data.workspace,
+    reviewSettings = w.reviews ?? defaultReviewSettings;
   const field = (key: keyof WorkspaceSettings, label: string, type = 'text', minimum?: number) => (
     <label key={key}>
       {label}
@@ -111,6 +113,14 @@ export function WorkspaceSettingsPanel() {
               settings.freeShippingAboveCents = centsFromInput(text(d, 'freeShipping'));
               settings.autoShippingLabel = d.has('autoShippingLabel');
               settings.dailyPrayerAuto = d.has('dailyPrayerAuto');
+              settings.reviews = {
+                requestEnabled: d.has('reviewRequestEnabled'),
+                requestDelayDays: number(d, 'reviewRequestDelayDays'),
+                autoPublishMinRating:
+                  text(d, 'reviewAutoPublishMinRating') === ''
+                    ? null
+                    : number(d, 'reviewAutoPublishMinRating'),
+              };
               settings.inventoryPolicy = text(
                 d,
                 'inventoryPolicy',
@@ -384,6 +394,43 @@ export function WorkspaceSettingsPanel() {
                     Conteúdo de oração não deve ser reutilizado para publicidade sem consentimento
                     separado.
                   </p>
+                  <h3>Avaliações de produtos</h3>
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      name="reviewRequestEnabled"
+                      defaultChecked={reviewSettings.requestEnabled}
+                    />
+                    <span>
+                      <strong>Pedir avaliação por e-mail após a entrega</strong>
+                    </span>
+                  </label>
+                  <div className="form-grid">
+                    <label>
+                      Dias após a entrega
+                      <input
+                        name="reviewRequestDelayDays"
+                        type="number"
+                        min={1}
+                        max={60}
+                        required
+                        defaultValue={reviewSettings.requestDelayDays}
+                      />
+                    </label>
+                    <label>
+                      Publicar automaticamente
+                      <select
+                        name="reviewAutoPublishMinRating"
+                        defaultValue={String(reviewSettings.autoPublishMinRating ?? '')}
+                      >
+                        <option value="">Nunca — tudo passa por aprovação</option>
+                        <option value="5">Notas 5</option>
+                        <option value="4">Notas 4 ou mais</option>
+                        <option value="3">Notas 3 ou mais</option>
+                      </select>
+                      <small>Avaliações com fotos sempre passam pela sua aprovação.</small>
+                    </label>
+                  </div>
                   <label>
                     Respostas rápidas do atendimento (uma por linha)
                     <textarea

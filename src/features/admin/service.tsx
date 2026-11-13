@@ -1,5 +1,6 @@
 'use client';
 import { PrayerManager } from './prayer-manager';
+import { ReviewManager } from './review-manager';
 import { CampaignManager } from './campaign-manager';
 import { ReportCenter } from './report-center';
 import Link from 'next/link';
@@ -193,6 +194,9 @@ export function AdminSupport({ id }: { id?: string }) {
 }
 export function AdminCommunity() {
   return <PrayerManager />;
+}
+export function AdminReviews() {
+  return <ReviewManager />;
 }
 export function AdminMarketing() {
   return <CampaignManager />;

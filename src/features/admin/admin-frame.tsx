@@ -26,6 +26,7 @@ export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['financeiro', 'Financeiro', 'card', 'finance'],
   ['suporte', 'Atendimentos', 'chat', 'support'],
   ['comunidade', 'Mural de orações', 'heart', 'community'],
+  ['avaliacoes', 'Avaliações', 'spark', 'community'],
   ['marketing', 'Oração diária', 'mail', 'marketing'],
   ['relatorios', 'Relatórios', 'filter', 'reports'],
   ['equipe', 'Equipe e perfis', 'user', 'team'],
