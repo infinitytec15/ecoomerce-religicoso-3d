@@ -84,8 +84,8 @@ Descartadas:
 
 **Cálculo** (inputs por peça/tamanho): tecnologia, material, gramas (ou ml), horas de impressão,
 impressora, peças por mesa, minutos de mão de obra, kit de embalagem, extras.
-**Saída**: custo por peça quebrado nas 5 partes já existentes (falha e depreciação entram em
-"outros"), preço sugerido = custo ÷ (1 − taxas − imposto − margem), tabela de preços em margens
+**Saída**: custo por peça quebrado nas 5 partes já existentes (depreciação e manutenção da impressora entram em
+"Energia e máquina", como o rótulo atual; falha, insumos de resina e extras em "outros"), preço sugerido = custo ÷ (1 − taxas − imposto − margem), tabela de preços em margens
 20/30/40/50 %, lucro por unidade e **projeção** (unidades/mês informadas → faturamento, lucro,
 ponto de equilíbrio).
 
