@@ -4,7 +4,7 @@ import { calculatorSettingsSchema, type CalculatorSettings } from '@maos-em-orac
 import { useAdminData } from './admin-frame';
 import { useAdminAction } from './shared';
 import { Button } from '@/components/ui/button';
-import { useNotify } from '@/components/ui/feedback';
+import { errorMessage } from '@/lib/api/contracts';
 import { centsFromInput, parsePercent } from '@/lib/domain/format';
 
 type Technology = 'fdm' | 'resin';
@@ -131,10 +131,10 @@ export function CalculatorSettingsEditor({
 }) {
   const { workspace } = useAdminData(),
     action = useAdminAction(),
-    notify = useNotify(),
     [s, setS] = useState<CalculatorSettings>(value),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [kitRev, setKitRev] = useState(0);
   const patch = (next: Partial<CalculatorSettings>) => setS((cur) => ({ ...cur, ...next }));
   const updateMaterial = (i: number, change: Partial<CalculatorSettings['materials'][number]>) =>
     setS((cur) => ({
@@ -191,12 +191,16 @@ export function CalculatorSettingsEditor({
     setError('');
     setBusy(true);
     try {
-      await action.run({
-        type: 'workspace.save',
-        settings: { ...workspace, costCalculator: parsed.data },
-      });
-      notify('Configuração da calculadora salva.');
+      await action.run(
+        {
+          type: 'workspace.save',
+          settings: { ...workspace, costCalculator: parsed.data },
+        },
+        'Configuração da calculadora salva.',
+      );
       onSaved?.();
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -381,7 +385,7 @@ export function CalculatorSettingsEditor({
               </Button>
             </div>
             {kit.items.map((item, ii) => (
-              <div className="form-grid" key={`${kit.id}-${ii}`}>
+              <div className="form-grid" key={`${kit.id}-${kitRev}-${ii}`}>
                 <label>
                   Item do kit
                   <select
@@ -400,7 +404,10 @@ export function CalculatorSettingsEditor({
                 <Button
                   type="button"
                   variant="text"
-                  onClick={() => updateKit(ki, { items: kit.items.filter((_, n) => n !== ii) })}
+                  onClick={() => {
+                    updateKit(ki, { items: kit.items.filter((_, n) => n !== ii) });
+                    setKitRev((r) => r + 1);
+                  }}
                 >
                   Remover item do kit
                 </Button>

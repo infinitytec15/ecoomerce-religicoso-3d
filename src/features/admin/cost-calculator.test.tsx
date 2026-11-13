@@ -25,6 +25,7 @@ describe('calculator settings editor', () => {
     await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
     const call = run.mock.calls[0][0];
+    expect(run.mock.calls[0][1]).toBe('Configuração da calculadora salva.');
     expect(call.type).toBe('workspace.save');
     expect(call.settings.costCalculator.materials[0].priceCents).toBe(13000);
     expect(call.settings.costCalculator.pixFeePct).toBe(0.99);
@@ -48,5 +49,13 @@ describe('calculator settings editor', () => {
     expect(screen.getAllByLabelText('Nome do material')).toHaveLength(3);
     await user.click(screen.getAllByRole('button', { name: 'Remover material' })[2]);
     expect(screen.getAllByLabelText('Nome do material')).toHaveLength(2);
+  });
+
+  it('shows an alert when saving fails', async () => {
+    run.mockRejectedValueOnce(new Error('falhou'));
+    const user = userEvent.setup();
+    render(<CalculatorSettingsEditor value={defaultCalculatorSettings} />);
+    await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });
