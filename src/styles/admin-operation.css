@@ -1724,6 +1724,9 @@ html[data-input='keyboard'] .admin-main > div > div {
 .size-pricing-table {
   min-width: 960px;
 }
+.size-pricing .admin-table-wrap {
+  position: relative;
+}
 .size-pricing-table input {
   width: 100%;
   min-width: 76px;
