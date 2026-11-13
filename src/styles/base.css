@@ -2770,7 +2770,7 @@ small {
 .review-meta {
   color: var(--muted);
 }
-.review-photos {
+.review-gallery {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;

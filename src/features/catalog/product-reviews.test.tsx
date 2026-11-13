@@ -63,6 +63,24 @@ describe('ProductReviews', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('shows a message when the star filter has no matches', async () => {
+    const user = userEvent.setup();
+    render(<ProductReviews productId="p1" />);
+    h.useProductReviews.mockReturnValue({
+      data: { summary: DATA.summary, reviews: [] },
+      isPending: false,
+    });
+    await user.click(screen.getByRole('button', { name: 'Só 2 estrelas' }));
+    expect(screen.getByText('Nenhuma avaliação com essa nota.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Todas' })).toBeInTheDocument();
+  });
+
+  it('shows a quiet error line when loading fails', () => {
+    h.useProductReviews.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ProductReviews productId="p1" />);
+    expect(screen.getByText('Não foi possível carregar as avaliações agora.')).toBeInTheDocument();
+  });
+
   it('shows the empty state', () => {
     h.useProductReviews.mockReturnValue({
       data: { summary: { average: 0, count: 0, histogram: [0, 0, 0, 0, 0] }, reviews: [] },

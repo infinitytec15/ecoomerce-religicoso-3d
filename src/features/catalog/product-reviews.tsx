@@ -31,7 +31,7 @@ function PhotoThumb({ url, author }: { url: string; author: string }) {
 
 export function ProductReviews({ productId }: { productId: string }) {
   const [rating, setRating] = useState<number>(),
-    { data } = useProductReviews(productId, rating),
+    { data, isError } = useProductReviews(productId, rating),
     [lastSummary, setLastSummary] = useState(data?.summary);
   if (data && data.summary !== lastSummary) setLastSummary(data.summary);
   const summary = data?.summary ?? lastSummary,
@@ -76,6 +76,9 @@ export function ProductReviews({ productId }: { productId: string }) {
               </button>
             </div>
           </div>
+          {data && data.reviews.length === 0 && (
+            <p className="reviews-empty">Nenhuma avaliação com essa nota.</p>
+          )}
           <ul className="reviews-list">
             {(data?.reviews ?? []).map((r) => (
               <li key={r.id} className="review-item">
@@ -87,7 +90,7 @@ export function ProductReviews({ productId }: { productId: string }) {
                   {r.variant ? ` · ${r.variant}` : ''}
                 </small>
                 {r.photos.length > 0 && (
-                  <ul className="review-photos">
+                  <ul className="review-gallery">
                     {r.photos.map((photo) => (
                       <PhotoThumb key={photo.url} url={photo.url} author={r.author} />
                     ))}
@@ -103,6 +106,8 @@ export function ProductReviews({ productId }: { productId: string }) {
             ))}
           </ul>
         </>
+      ) : isError && !summary ? (
+        <p className="reviews-empty">Não foi possível carregar as avaliações agora.</p>
       ) : (
         data && <p className="reviews-empty">Ainda não há avaliações desta peça.</p>
       )}
