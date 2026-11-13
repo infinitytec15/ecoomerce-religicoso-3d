@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Form, text } from '@/components/ui/form';
 import { ProductGrid } from './product-grid';
+import { ProductReviews } from './product-reviews';
+import { RatingStars, reviewCountLabel } from './rating-stars';
 import { useNotify } from '@/components/ui/feedback';
 const ProductViewer = dynamic(() => import('@/features/viewer/product-viewer'), { ssr: false });
 export function ProductDetail({
@@ -61,6 +63,12 @@ export function ProductDetail({
             {p.category} · {p.badge}
           </span>
           <p>{p.description}</p>
+          {p.rating && p.rating.count > 0 && (
+            <a className="detail-rating" href="#avaliacoes">
+              <RatingStars value={p.rating.average} count={p.rating.count} />
+              <span>{reviewCountLabel(p.rating.count)}</span>
+            </a>
+          )}
           <div className="detail-price">{money(price)}</div>
           <small>
             ou 3× de {money(Math.round(price / 3))} sem juros
@@ -202,6 +210,7 @@ export function ProductDetail({
           </div>
         </div>
       </section>
+      <ProductReviews productId={p.id} />
       <section className="section">
         <div className="section-header">
           <h2>Outras formas de sentir.</h2>

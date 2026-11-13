@@ -7,6 +7,7 @@ import { useCartStore } from '@/lib/store/cart';
 import { Icon } from '@/components/ui/icon';
 import { ProductImage } from '@/components/ui/product-image';
 import { useNotify } from '@/components/ui/feedback';
+import { RatingStars } from './rating-stars';
 export function ProductCard({
   product: p,
   priority = false,
@@ -53,6 +54,12 @@ export function ProductCard({
         <Link href={'/produto/' + p.id}>
           <h3>{p.name}</h3>
         </Link>
+        {p.rating && p.rating.count > 0 && (
+          <div className="card-rating">
+            <RatingStars value={p.rating.average} count={p.rating.count} size={14} />
+            <small>({p.rating.count})</small>
+          </div>
+        )}
         <div className="price">
           {money(p.priceCents)} <small>ou 3× de {money(Math.round(p.priceCents / 3))}</small>
         </div>

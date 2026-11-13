@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { connection } from 'next/server';
 import { z } from 'zod';
+import { productReviewsSchema } from '@maos-em-oracao/contracts';
 import { seedCatalog, seedSettings } from '@/lib/demo/seed';
 import { productSchema, publicSettingsSchema } from '@/lib/domain/schemas';
 import { IS_DEMO } from './config';
@@ -25,6 +26,15 @@ export const getServerCatalog = cache(async () =>
 );
 export const getServerSettings = cache(async () =>
   IS_DEMO ? seedSettings : publicFetch('store/settings', publicSettingsSchema),
+);
+/** Published reviews for JSON-LD; the demo has none server-side. */
+export const getServerProductReviews = cache(async (id: string) =>
+  IS_DEMO
+    ? null
+    : publicFetch(
+        'catalog/products/' + encodeURIComponent(id) + '/reviews',
+        productReviewsSchema,
+      ).catch(() => null),
 );
 export const getServerProduct = cache(async (id: string) =>
   IS_DEMO
