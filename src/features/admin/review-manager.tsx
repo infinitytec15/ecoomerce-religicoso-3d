@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/modal';
 import { Form, text } from '@/components/ui/form';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { dateLabel } from '@/lib/domain/format';
+import { useAssetUrl } from '@/lib/media/use-asset';
 const excerpt = (value: string) => (value.length > 160 ? value.slice(0, 160) + '…' : value);
 export function ReviewManager() {
   const data = useAdminData(),
@@ -136,19 +137,25 @@ export function ReviewManager() {
     </>
   );
 }
+function ReviewPhoto({ url, index, size }: { url: string; index: number; size: number }) {
+  const src = useAssetUrl(url);
+  if (!src) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={`Foto ${index + 1} da avaliação`}
+      width={size}
+      height={size}
+      style={{ objectFit: 'cover', borderRadius: 8 }}
+    />
+  );
+}
 function ReviewPhotos({ photos, size }: { photos: { url: string }[]; size: number }) {
   return (
     <div className="row wrap">
       {photos.map((photo, i) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={i}
-          src={photo.url}
-          alt={`Foto ${i + 1} da avaliação`}
-          width={size}
-          height={size}
-          style={{ objectFit: 'cover', borderRadius: 8 }}
-        />
+        <ReviewPhoto key={photo.url} url={photo.url} index={i} size={size} />
       ))}
     </div>
   );

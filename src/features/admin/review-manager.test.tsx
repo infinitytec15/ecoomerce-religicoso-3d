@@ -80,6 +80,58 @@ describe('review moderation', () => {
       reply: 'Obrigado!',
     });
   });
+  it('renders a photo from a regular URL', () => {
+    adminData.value = {
+      reviews: [review({ photos: [{ url: 'https://cdn.example.com/a.jpg' }] })],
+    };
+    render(<ReviewManager />);
+    expect(screen.getByAltText('Foto 1 da avaliação')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/a.jpg',
+    );
+  });
+
+  it('prefills the reply and re-sends it unchanged', async () => {
+    adminData.value = { reviews: [review({ reply: 'Obrigada pelo carinho!' })] };
+    const user = userEvent.setup();
+    render(<ReviewManager />);
+    await user.click(screen.getByRole('button', { name: 'Revisar avaliação' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Resposta pública da loja')).toHaveValue(
+      'Obrigada pelo carinho!',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar moderação' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toEqual({
+      type: 'review.moderate',
+      id: 'rev-1',
+      status: 'Em análise',
+      reply: 'Obrigada pelo carinho!',
+    });
+  });
+
+  it('clears the reply with an empty string', async () => {
+    adminData.value = { reviews: [review({ reply: 'Obrigada!' })] };
+    const user = userEvent.setup();
+    render(<ReviewManager />);
+    await user.click(screen.getByRole('button', { name: 'Revisar avaliação' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.clear(within(dialog).getByLabelText('Resposta pública da loja'));
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar moderação' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0].reply).toBe('');
+  });
+
+  it('keeps the modal open when saving fails', async () => {
+    run.mockRejectedValueOnce(new Error('falhou'));
+    const user = userEvent.setup();
+    render(<ReviewManager />);
+    await user.click(screen.getAllByRole('button', { name: 'Revisar avaliação' })[0]);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar moderação' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 });
 
 describe('review settings', () => {
@@ -125,5 +177,29 @@ describe('review settings', () => {
       autoPublishMinRating: 4,
     });
     expect(call.settings.legalName).toBe(defaultWorkspaceSettings.legalName);
+  });
+  it('shows defaults when the workspace has no review settings and saves Nunca as null', async () => {
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceSettingsPanel />
+      </QueryClientProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Comunidade e oração' }));
+    expect(screen.getByLabelText('Pedir avaliação por e-mail após a entrega')).toBeChecked();
+    expect(screen.getByLabelText('Dias após a entrega')).toHaveValue(7);
+    expect(screen.getByLabelText(/Publicar automaticamente/)).toHaveValue('');
+    await user.selectOptions(screen.getByLabelText(/Publicar automaticamente/), 'Notas 3 ou mais');
+    await user.selectOptions(
+      screen.getByLabelText(/Publicar automaticamente/),
+      'Nunca — tudo passa por aprovação',
+    );
+    await user.click(screen.getByRole('button', { name: 'Salvar configurações' }));
+    await waitFor(() => expect(run).toHaveBeenCalled());
+    expect(run.mock.calls[0][0].settings.reviews).toEqual({
+      requestEnabled: true,
+      requestDelayDays: 7,
+      autoPublishMinRating: null,
+    });
   });
 });
