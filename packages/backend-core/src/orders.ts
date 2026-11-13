@@ -7,6 +7,7 @@ import {
   type Address,
   type OrderItemInput,
   type Coupon,
+  type ProductShipping,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -144,17 +145,15 @@ export class OrdersService {
       );
       const d = data<{
         sizes: string[];
-        shipping?: {
-          weightGrams: number;
-          widthCm: number;
-          heightCm: number;
-          lengthCm: number;
-          leadTimeDays: number;
-        };
+        shipping?: ProductShipping;
       }>(p.data);
       if (!d.sizes[i.sizeIndex || 0])
         throw new DomainError('INVALID_VARIANT', 'Tamanho indisponível.');
-      const dims = d.shipping;
+      // A larger size ships in a larger box: use its own measures when registered.
+      const dims = d.shipping && {
+        ...d.shipping,
+        ...(d.shipping.bySize?.[i.sizeIndex || 0] || {}),
+      };
       const unit = p.priceCents + (i.sizeIndex || 0) * 2000;
       subtotal += unit * i.quantity;
       lead = Math.max(lead, dims?.leadTimeDays || 0);

@@ -110,6 +110,7 @@ export function WorkspaceSettingsPanel() {
                 settings[key] = d.has(key);
               settings.freeShippingAboveCents = centsFromInput(text(d, 'freeShipping'));
               settings.autoShippingLabel = d.has('autoShippingLabel');
+              settings.dailyPrayerAuto = d.has('dailyPrayerAuto');
               settings.inventoryPolicy = text(
                 d,
                 'inventoryPolicy',
@@ -357,6 +358,22 @@ export function WorkspaceSettingsPanel() {
                 <div data-settings-tab={5} hidden={tab !== 5} className="stack">
                   <h2>Comunidade e oração diária</h2>
                   {toggle('reviewPrayers', 'Revisar novos pedidos antes de publicar no mural')}
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      name="dailyPrayerAuto"
+                      defaultChecked={w.dailyPrayerAuto !== false}
+                    />
+                    <span>
+                      <strong>Oração diária automática</strong>
+                      <br />
+                      <small>
+                        Todo dia, no horário abaixo, enviamos uma oração da nossa biblioteca para
+                        quem confirmou a inscrição. Se você agendar uma oração própria para o dia,
+                        ela tem prioridade.
+                      </small>
+                    </span>
+                  </label>
                   <div className="form-grid">
                     {field('prayerSenderName', 'Nome de quem envia a oração')}
                     {field('prayerReplyTo', 'E-mail para respostas', 'email')}

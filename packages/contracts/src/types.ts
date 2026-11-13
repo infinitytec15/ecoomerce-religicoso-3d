@@ -24,6 +24,7 @@ export type {
   PaymentToken,
   StockMovement,
   ProductShipping,
+  ProductPackage,
   IntegrationHealth,
   ShippingRequest,
   UploadSession,

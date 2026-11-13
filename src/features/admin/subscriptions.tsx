@@ -22,6 +22,9 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/states';
 import { SubscriptionPreferences } from '@/features/club/subscription-preferences';
 import { IS_DEMO } from '@/lib/api/config';
+/** Short, stable contract code for UUID ids (demo ids are already readable). */
+export const contractCode = (id: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id) ? 'ASS-' + id.slice(0, 8).toUpperCase() : id;
 export function AdminSubscriptions() {
   const data = useAdminData(),
     f = financialSummary(data),
@@ -83,7 +86,7 @@ export function AdminSubscriptions() {
             label: 'Assinatura',
             render: (s) => (
               <Link className="admin-link" href={'/admin/assinaturas/' + s.id}>
-                {s.id}
+                {contractCode(s.id)}
               </Link>
             ),
           },
@@ -138,7 +141,7 @@ export function AdminSubscriptionDetail({ id }: { id: string }) {
   return (
     <>
       <AdminHeading
-        title={sub.id}
+        title={`Assinatura ${contractCode(sub.id)}${customer ? ' · ' + customer.name : ''}`}
         description={`${customer?.name || 'Cliente'} · assinante desde ${dateLabel(sub.created)}`}
         actions={
           <>

@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import { createContext, closeContext } from '@maos-em-oracao/backend-core/context';
 import { unseal } from '@maos-em-oracao/backend-core/security';
 import { WorkerEngine, queueConnection } from '@maos-em-oracao/backend-core/worker';
+import { prayerForDay } from '@maos-em-oracao/backend-core/daily-prayers';
 const root = fileURLToPath(new URL('../', import.meta.url)),
   runId = randomBytes(6).toString('hex'),
   databaseName = 'meo_test_' + runId;
@@ -1233,6 +1234,114 @@ try {
       }
     },
   );
+  await check(
+    'oração diária automática: uma por dia, no horário e sem atropelar a manual',
+    async () => {
+      const email = 'auto-prayer-' + runId + '@example.test';
+      await ctx.db.devotionalSubscriber.upsert({
+        where: { email },
+        create: {
+          email,
+          name: 'Leitora',
+          consentVersion: 'prayer-v1',
+          consentAt: new Date(),
+          verifiedAt: new Date(),
+        },
+        update: { verifiedAt: new Date(), unsubscribedAt: null },
+      });
+      const original = await ctx.db.appSetting.findUniqueOrThrow({ where: { key: 'workspace' } });
+      const setWorkspace = (extra) =>
+        ctx.db.appSetting.update({
+          where: { key: 'workspace' },
+          data: { data: { ...original.data, prayerSendHour: '06:00', ...extra } },
+        });
+      try {
+        await setWorkspace({ dailyPrayerAuto: true });
+        // 05:00 in Brasília: too early.
+        assert.equal(await engine.scheduleDailyPrayer(new Date('2030-03-10T08:00:00Z')), null);
+        const id = await engine.scheduleDailyPrayer(new Date('2030-03-10T10:00:00Z'));
+        assert.ok(id, 'oração do dia não foi agendada');
+        assert.equal(await engine.scheduleDailyPrayer(new Date('2030-03-10T20:00:00Z')), null);
+        const created = await ctx.db.campaign.findUniqueOrThrow({ where: { id } });
+        assert.equal(created.subject, prayerForDay('2030-03-10').title);
+        assert.equal(created.state, 'Agendada');
+        // A prayer scheduled by the team for the day wins.
+        await ctx.db.campaign.create({
+          data: {
+            subject: 'Oração da equipe',
+            message: 'Oração escrita pela equipe para este dia.',
+            state: 'Agendada',
+            scheduledAt: new Date('2030-03-11T09:30:00Z'),
+          },
+        });
+        assert.equal(await engine.scheduleDailyPrayer(new Date('2030-03-11T10:00:00Z')), null);
+        await setWorkspace({ dailyPrayerAuto: false });
+        assert.equal(await engine.scheduleDailyPrayer(new Date('2030-03-12T10:00:00Z')), null);
+      } finally {
+        await ctx.db.appSetting.update({
+          where: { key: 'workspace' },
+          data: { data: original.data },
+        });
+        await ctx.db.campaign.deleteMany({
+          where: { scheduledAt: { gte: new Date('2030-03-01T00:00:00Z') } },
+        });
+      }
+    },
+  );
+  await check('frete usa a caixa do tamanho escolhido', async () => {
+    const row = await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } });
+    const base = { weightGrams: 300, widthCm: 15, heightCm: 20, lengthCm: 15 };
+    const big = { weightGrams: 900, widthCm: 25, heightCm: 32, lengthCm: 25 };
+    await ctx.db.product.update({
+      where: { id: product.id },
+      data: {
+        data: { ...row.data, shipping: { ...base, leadTimeDays: 5, bySize: [base, big] } },
+      },
+    });
+    try {
+      const quoted = async (sizeIndex) => {
+        const r = await customer.call('shipping/quotes', 'POST', {
+          cep: '01001-000',
+          items: [{ productId: product.id, quantity: 1, sizeIndex }],
+        });
+        assert.equal(r.status, 200, r.body?.error?.code);
+        const q = await ctx.db.shippingQuote.findUniqueOrThrow({
+          where: { id: r.body.data[0].quoteId },
+        });
+        return q.data.products[0];
+      };
+      assert.equal((await quoted(0)).weightGrams, 300);
+      const large = await quoted(1);
+      assert.equal(large.weightGrams, 900);
+      assert.equal(large.heightCm, 32);
+    } finally {
+      await ctx.db.product.update({ where: { id: product.id }, data: { data: row.data } });
+    }
+  });
+  await check('cookie de sessão expira junto com a sessão do servidor', async () => {
+    // Only the session cookie: the visitor cookie lives for a year on purpose.
+    const maxAge = (r) =>
+      Number(
+        /max-age=(\d+)/i.exec(
+          r.headers.getSetCookie().find((c) => c.startsWith('meo_session=')) || '',
+        )?.[1] || 0,
+      );
+    const staff = await new Client().call('auth/login', 'POST', {
+      email: env.BOOTSTRAP_ADMIN_EMAIL,
+      password: env.BOOTSTRAP_ADMIN_PASSWORD,
+      kind: 'staff',
+    });
+    assert.equal(staff.status, 200);
+    assert.ok(maxAge(staff) > 7 * 3600 && maxAge(staff) <= 8 * 3600, 'equipe: ' + maxAge(staff));
+    const shopper = await new Client().call('auth/login', 'POST', {
+      name: 'Cookie de teste',
+      email: 'cookie-' + runId + '@example.test',
+      password: 'IntegrationTeste!2026',
+      kind: 'customer',
+      register: true,
+    });
+    assert.ok(maxAge(shopper) > 6 * 86400, 'cliente: ' + maxAge(shopper));
+  });
   await check('custo congelado no item e exclusão segura de pedido e cliente', async () => {
     const buyer = new Client(),
       who = await register(buyer, 'excluir'),

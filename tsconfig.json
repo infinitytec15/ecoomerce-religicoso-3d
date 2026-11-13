@@ -23,7 +23,9 @@
     ".storybook/**/*.ts",
     ".storybook/**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-http/types/**/*.ts",
+    ".next-http/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "storybook-static", "legacy"]
 }

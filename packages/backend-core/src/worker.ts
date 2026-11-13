@@ -2,9 +2,11 @@ import { Queue, Worker, UnrecoverableError } from 'bullmq';
 import { Resend } from 'resend';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { transaction } from '@maos-em-oracao/database';
+import { transaction, lock } from '@maos-em-oracao/database';
 import { ProviderError } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
+import { settings } from './context';
+import { brasiliaDay, prayerForDay } from './daily-prayers';
 import { Notifications, type EmailEnvelope } from './notifications';
 import { PaymentsService } from './payments';
 import { SubscriptionsService } from './subscriptions';
@@ -13,7 +15,7 @@ import { ShippingService } from './shipping';
 import { MediaService } from './media';
 import { ReportsService } from './reports';
 import { unseal, recipientHash, normalizeEmail } from './security';
-import { data, requireValue, DomainError } from './shared';
+import { data, requireValue, DomainError, audit } from './shared';
 import { classifyEmailEvent, resendTag } from '@maos-em-oracao/emails/resend';
 export interface WorkItem {
   source: 'outbox' | 'webhook';
@@ -610,12 +612,66 @@ export class WorkerEngine {
       });
     });
   }
+  /**
+   * Once per Brasília day, at the configured hour, schedule the automatic daily prayer for
+   * confirmed subscribers. A campaign already scheduled (or cancelled) for that day by the
+   * team takes precedence, and the per-day lock keeps concurrent workers from duplicating.
+   */
+  async scheduleDailyPrayer(now = new Date()) {
+    const { workspace } = await settings(this.ctx.db);
+    if (workspace.dailyPrayerAuto === false) return null;
+    // "Horário preferido (Brasília)" from Configurações, e.g. "06:00".
+    const current = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(now);
+    if (
+      current <
+      (/^\d{2}:\d{2}$/.test(workspace.prayerSendHour) ? workspace.prayerSendHour : '06:00')
+    )
+      return null;
+    if (
+      !(await this.ctx.db.devotionalSubscriber.count({
+        where: { verifiedAt: { not: null }, unsubscribedAt: null },
+      }))
+    )
+      return null;
+    const day = brasiliaDay(now),
+      start = new Date(day + 'T00:00:00-03:00'),
+      end = new Date(day + 'T23:59:59.999-03:00');
+    return transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'daily-prayer/' + day);
+      if (
+        await tx.campaign.findFirst({
+          where: { audience: 'Inscritos em oração', scheduledAt: { gte: start, lte: end } },
+          select: { id: true },
+        })
+      )
+        return null;
+      const p = prayerForDay(day);
+      const c = await tx.campaign.create({
+        data: {
+          subject: p.title,
+          message: p.prayer,
+          previewText: p.reflection,
+          audience: 'Inscritos em oração',
+          state: 'Agendada',
+          scheduledAt: now,
+        },
+      });
+      await audit(tx, 'system', 'Oração diária automática agendada', c.id);
+      return c.id;
+    });
+  }
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
     try {
       const now = new Date(),
         mail = new Notifications(this.ctx);
+      await this.scheduleDailyPrayer(now).catch(() => null);
       const campaigns = await this.ctx.db.campaign.findMany({
         where: { state: 'Agendada', scheduledAt: { lte: now } },
         take: 20,

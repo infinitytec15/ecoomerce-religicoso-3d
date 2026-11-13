@@ -22,16 +22,22 @@ import { OrdersService } from '@maos-em-oracao/backend-core/orders';
 import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions';
 import { ContentService } from '@maos-em-oracao/backend-core/content';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
+import { sessionHash } from '@maos-em-oracao/backend-core/security';
 import { CONTEXT } from './context.module';
 import type { ApiRequest } from './request';
 const result = <T>(data: T) => ({ data });
-function sessionCookie(res: Response, ctx: Context, raw: string) {
+/** The cookie lives exactly as long as the server session (staff 8h, guest 1d, customer 7d). */
+async function sessionCookie(res: Response, ctx: Context, raw: string) {
+  const session = await ctx.db.session.findUnique({
+    where: { tokenHash: sessionHash(raw, ctx.config) },
+    select: { expiresAt: true },
+  });
   res.cookie(ctx.config.COOKIE_NAME, raw, {
     httpOnly: true,
     secure: ctx.config.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 7 * 86400000,
+    maxAge: Math.max(60000, (session?.expiresAt.getTime() ?? Date.now()) - Date.now()),
   });
 }
 @ApiTags('Identidade')
@@ -53,7 +59,7 @@ class IdentityController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const r = await this.service.login(body, req.clientKey);
-    sessionCookie(res, this.ctx, r.raw);
+    await sessionCookie(res, this.ctx, r.raw);
     return result(r.session);
   }
   @Post('logout') @HttpCode(204) async logout(
@@ -86,7 +92,7 @@ class IdentityController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const r = await this.service.guestOrder(body, req.actor);
-    if (r.raw) sessionCookie(res, this.ctx, r.raw);
+    if (r.raw) await sessionCookie(res, this.ctx, r.raw);
     return result({ orderId: r.orderId });
   }
 }
@@ -133,7 +139,7 @@ class OrdersController {
       body,
       req.get('idempotency-key'),
     );
-    if (r.raw) sessionCookie(res, this.ctx, r.raw);
+    if (r.raw) await sessionCookie(res, this.ctx, r.raw);
     return result(r.result);
   }
   @Post('orders/:id/payment') @HttpCode(200) async retryPayment(

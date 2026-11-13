@@ -38,12 +38,16 @@ export interface ProductModel {
   previewUrl?: string;
   stats?: ModelStats;
 }
-export interface ProductShipping {
+export interface ProductPackage {
   weightGrams: number;
   widthCm: number;
   heightCm: number;
   lengthCm: number;
+}
+export interface ProductShipping extends ProductPackage {
   leadTimeDays: number;
+  /** Packed measures per size index; a missing entry falls back to the base measures. */
+  bySize?: (ProductPackage | null)[];
 }
 export interface StockMovement {
   id: string;
@@ -106,6 +110,8 @@ export interface WorkspaceSettings {
   inventoryPolicy: 'on-demand' | 'stock';
   /** Buy and generate the Melhor Envio label when an order is ready to ship. */
   autoShippingLabel?: boolean;
+  /** Send an automatic prayer every day to confirmed subscribers. */
+  dailyPrayerAuto?: boolean;
   contactName: string;
   privacyEmail: string;
   returnInstructions: string;
@@ -185,6 +191,7 @@ export const defaultWorkspaceSettings: WorkspaceSettings = {
   freeShippingAboveCents: 0,
   inventoryPolicy: 'on-demand',
   autoShippingLabel: true,
+  dailyPrayerAuto: true,
   contactName: 'Equipe Mãos em Oração',
   privacyEmail: 'privacidade@maosemoracao.demo',
   returnInstructions: 'Entre em contato pelo atendimento antes de enviar sua peça.',

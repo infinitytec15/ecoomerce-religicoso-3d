@@ -46,12 +46,16 @@ export const productModelSchema = z.object({
   previewUrl: publishedAssetUrl.optional(),
   stats: modelStatsSchema.optional(),
 });
-export const productShippingSchema = z.object({
+const packageSchema = z.object({
   weightGrams: z.number().positive(),
   widthCm: z.number().positive(),
   heightCm: z.number().positive(),
   lengthCm: z.number().positive(),
+});
+export const productShippingSchema = packageSchema.extend({
   leadTimeDays: z.number().int().nonnegative(),
+  /** Packed measures per size index; a missing entry falls back to the base measures. */
+  bySize: z.array(packageSchema.nullable()).max(11).optional(),
 });
 export const editionSchema = z.object({
   id: z.string(),
@@ -115,6 +119,7 @@ export const workspaceSchema = z.object({
   freeShippingAboveCents: z.number().int().nonnegative(),
   inventoryPolicy: z.enum(['on-demand', 'stock']),
   autoShippingLabel: z.boolean().optional(),
+  dailyPrayerAuto: z.boolean().optional(),
   contactName: z.string().min(2),
   privacyEmail: z.email(),
   returnInstructions: z.string().min(10),

@@ -1688,3 +1688,11 @@ html[data-input='keyboard'] .admin-main > div > div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.packaging-table input {
+  width: 100%;
+  min-width: 72px;
+}
+.packaging-table th[scope='row'] {
+  white-space: nowrap;
+  font-weight: 600;
+}

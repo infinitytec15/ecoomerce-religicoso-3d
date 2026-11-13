@@ -5,6 +5,7 @@ import type { Collection, InventoryProduct, ProductMedia, ProductModel } from '@
 import { collections } from '@/lib/domain/types';
 import { useAdminAction } from './shared';
 import { ProductCostFields, readCostBreakdown } from './product-cost';
+import { ProductPackagingFields, readPackaging } from './product-packaging';
 import { Form, text, number } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
@@ -133,13 +134,13 @@ export function ProductEditor({
             ...readCostBreakdown(d),
             media,
             model,
-            shipping: {
-              weightGrams: number(d, 'weight'),
-              widthCm: number(d, 'width'),
-              heightCm: number(d, 'height'),
-              lengthCm: number(d, 'length'),
-              leadTimeDays: number(d, 'leadTime'),
-            },
+            shipping: readPackaging(
+              d,
+              text(d, 'sizes')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean).length,
+            ),
             seoTitle: text(d, 'seoTitle'),
             seoDescription: text(d, 'seoDescription'),
           },
@@ -414,28 +415,7 @@ export function ProductEditor({
               </label>
             </div>
             <ProductCostFields product={p} />
-            <h3>Embalagem para Melhor Envio</h3>
-            <p>Informe as medidas da peça embalada, incluindo proteção.</p>
-            <div className="form-grid">
-              {[
-                ['weight', 'Peso (g)', p?.shipping?.weightGrams || 300],
-                ['width', 'Largura (cm)', p?.shipping?.widthCm || 18],
-                ['height', 'Altura (cm)', p?.shipping?.heightCm || 25],
-                ['length', 'Comprimento (cm)', p?.shipping?.lengthCm || 18],
-                ['leadTime', 'Produção (dias úteis)', p?.shipping?.leadTimeDays ?? 5],
-              ].map(([name, label, value]) => (
-                <label key={name}>
-                  {label}
-                  <input
-                    name={String(name)}
-                    type="number"
-                    min={name === 'leadTime' ? 0 : 1}
-                    required
-                    defaultValue={value}
-                  />
-                </label>
-              ))}
-            </div>
+            <ProductPackagingFields product={p} />
           </div>
           <div data-editor-tab={4} hidden={tab !== 4} className="stack">
             <label>
