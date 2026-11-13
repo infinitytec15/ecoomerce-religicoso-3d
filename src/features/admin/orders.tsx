@@ -1,5 +1,6 @@
 'use client';
 import { DeleteRecordButton } from './delete-record';
+import { trackingUrl } from '@maos-em-oracao/contracts';
 import { useState } from 'react';
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/lib/domain/types';
@@ -479,6 +480,16 @@ export function AdminOrderDetail({ id }: { id: string }) {
               <Button variant="secondary" className="small" onClick={() => setDialog('label')}>
                 Ver etiqueta de endereçamento
               </Button>
+            )}
+            {order.tracking && !IS_DEMO && (
+              <a
+                className="btn secondary small"
+                href={trackingUrl(order.tracking)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Rastrear {order.tracking}
+              </a>
             )}
           </div>
           <h3 style={{ marginTop: 25 }}>Observações internas</h3>

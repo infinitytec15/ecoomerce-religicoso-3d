@@ -1,17 +1,79 @@
 import { z } from 'zod';
 import { transaction, lock } from '@maos-em-oracao/database';
-import type { Address, WorkspaceSettings } from '@maos-em-oracao/contracts';
+import { trackingUrl, type Address, type WorkspaceSettings } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
 import { Notifications } from './notifications';
 import { OrdersService } from './orders';
-import { data, json, permit, requireValue, DomainError, audit, type Actor } from './shared';
+import {
+  data,
+  json,
+  permit,
+  permissions,
+  requireValue,
+  DomainError,
+  audit,
+  type Actor,
+} from './shared';
 import { ShippingCredentials } from './credentials';
 import { orderInclude } from './projections';
+export const trackingLink = trackingUrl;
+/** Actor used by background automation; audited as "system". */
+const systemActor: Actor = {
+  id: 'system',
+  name: 'Automação de expedição',
+  email: 'sistema@maosemoracao.local',
+  role: 'admin',
+  permissions: [...permissions],
+  demo: false,
+  owner: true,
+};
+const orderNumber = (n: number) => 'MEO-' + String(n).padStart(6, '0');
 export class ShippingService {
   private mail: Notifications;
   constructor(private ctx: Context) {
     this.mail = new Notifications(ctx);
+  }
+  /**
+   * Runs when an order becomes "Pronto para envio": refresh the quote, attach the
+   * content declaration and buy/generate the Melhor Envio label. Failures alert the team
+   * and leave the order ready for the manual flow in Expedição.
+   */
+  async automate(orderId: string) {
+    const { workspace } = await settings(this.ctx.db);
+    if (workspace.autoShippingLabel === false) return;
+    const order = await this.ctx.db.order.findUnique({
+      where: { id: orderId },
+      include: { shipment: true, payment: true },
+    });
+    if (!order || order.status !== 'Pronto para envio' || order.payment?.status !== 'Pago') return;
+    if (order.shipment && !['prepared', 'cancelled'].includes(order.shipment.state)) return;
+    try {
+      await this.request(systemActor, orderId, 'prepare');
+      const s = requireValue(await this.ctx.db.shipment.findUnique({ where: { orderId } }));
+      if (!data<{ fiscal?: unknown }>(s.data).fiscal)
+        await this.fiscal(systemActor, orderId, { nonCommercial: true });
+      await this.request(systemActor, orderId, 'generate');
+    } catch (error) {
+      await this.alertFailure(orderId, order.number, error);
+      throw error;
+    }
+  }
+  /** Tells the shipping team why an automatic label could not be bought. */
+  async alertFailure(orderId: string, number: number, error: unknown) {
+    const reason =
+      error instanceof DomainError || error instanceof Error ? error.message : 'Erro desconhecido.';
+    await transaction(this.ctx.db, (tx) =>
+      this.mail.operation(
+        tx,
+        'shipping-auto-failed/' + orderId + '/' + new Date().toISOString().slice(0, 13),
+        orderId,
+        'shipping',
+        'Etiqueta automática não gerada',
+        `O pedido ${orderNumber(number)} está pronto para envio, mas a etiqueta não foi comprada: ${reason} Confira saldo e conexão do Melhor Envio e gere pela Expedição.`,
+        '/admin/expedicao',
+      ),
+    );
   }
   private async credential() {
     return new ShippingCredentials(this.ctx).access();
@@ -442,7 +504,7 @@ export class ShippingService {
         orderNumber: 'MEO-' + String(o.number).padStart(6, '0'),
         carrier,
         trackingCode: tracking,
-        trackingUrl: await this.mail.orderUrl(tx, id),
+        trackingUrl: trackingLink(tracking),
         actionUrl: await this.mail.orderUrl(tx, id),
       });
       await audit(tx, a.id, 'Postagem confirmada', id);
@@ -454,24 +516,42 @@ export class ShippingService {
     );
     if (!s.providerId) return;
     const r = await this.ctx.shipping.tracking(s.providerId, await this.credential());
-    if (['posted', 'in_transit', 'delivered'].includes(r.state))
-      await this.ctx.db.shipment.update({
+    if (!['posted', 'in_transit', 'delivered'].includes(r.state)) return;
+    const delivered = r.state === 'delivered',
+      tracking = r.tracking || s.tracking || '',
+      carrier = r.carrier || s.carrier || 'Transportadora';
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'shipment/' + s.orderId);
+      await tx.shipment.update({
         where: { id },
-        data: {
-          tracking: r.tracking || s.tracking,
-          carrier: r.carrier || s.carrier,
-          state: r.state === 'delivered' ? 'delivered' : 'posted',
-        },
+        data: { tracking, carrier, state: delivered ? 'delivered' : 'posted' },
       });
-    if (r.state === 'delivered')
-      await this.ctx.db.order.updateMany({
-        where: { id: s.orderId, status: { in: ['Enviado', 'Pronto para envio'] } },
-        data: { status: 'Entregue' },
+      const moved = await tx.order.updateMany({
+        where: delivered
+          ? { id: s.orderId, status: { in: ['Enviado', 'Pronto para envio'] } }
+          : { id: s.orderId, status: 'Pronto para envio' },
+        data: { status: delivered ? 'Entregue' : 'Enviado' },
       });
-    else if (['posted', 'in_transit'].includes(r.state))
-      await this.ctx.db.order.updateMany({
-        where: { id: s.orderId, status: 'Pronto para envio' },
-        data: { status: 'Enviado' },
-      });
+      if (!moved.count || !tracking) return;
+      // Customer e-mails are keyed by shipment, so repeated polls never send twice.
+      const a = data<Address>(s.order.address),
+        actionUrl = await this.mail.orderUrl(tx, s.orderId),
+        common = { name: a.name, orderNumber: orderNumber(s.order.number), carrier };
+      if (s.order.status === 'Pronto para envio')
+        await this.mail.email(tx, 'shipment-posted/' + s.id, s.orderId, a.email, {
+          kind: 'shipment-posted',
+          ...common,
+          trackingCode: tracking,
+          trackingUrl: trackingLink(tracking),
+          actionUrl,
+        });
+      if (delivered)
+        await this.mail.email(tx, 'order-delivered/' + s.id, s.orderId, a.email, {
+          kind: 'order-delivered',
+          ...common,
+          trackingCode: tracking,
+          actionUrl,
+        });
+    });
   }
 }

@@ -630,17 +630,23 @@ try {
       'Pronto para envio',
     );
   });
-  await check('etiqueta, postagem e entrega são etapas distintas', async () => {
-    await owner.command({ type: 'shipping.label', id: orderId, action: 'prepare' });
-    await owner.command({ type: 'shipping.label', id: orderId, action: 'generate' });
+  await check('etiqueta automática ao ficar pronto, rastreio e entrega', async () => {
+    // No manual prepare/generate: "Pronto para envio" queues the automatic label.
     await engine.dispatch();
     await until(
       async () => (await ctx.db.shipment.findUnique({ where: { orderId } }))?.state === 'ready',
-      'etiqueta pronta',
+      'etiqueta automática pronta',
     );
+    const shipment = await ctx.db.shipment.findUnique({ where: { orderId } });
+    assert.deepEqual(shipment.data.fiscal, { nonCommercial: true });
+    assert.ok(shipment.labelUrl, 'etiqueta sem PDF');
     assert.equal(
       (await ctx.db.order.findUnique({ where: { id: orderId } })).status,
       'Pronto para envio',
+    );
+    assert.equal(
+      (await ctx.db.auditEntry.count({ where: { actorId: 'system', entity: orderId } })) > 0,
+      true,
     );
     await owner.command({
       type: 'shipping.dispatch',
@@ -649,6 +655,13 @@ try {
       carrier: 'Homologação',
     });
     assert.equal((await ctx.db.order.findUnique({ where: { id: orderId } })).status, 'Enviado');
+    const posted = await mail(orderId, 'shipment-posted');
+    assert.equal(
+      posted.envelope.text.includes(
+        'https://www.melhorrastreio.com.br/rastreio/TESTE-SEM-ENVIO-1042',
+      ),
+      true,
+    );
     await owner.command({ type: 'shipping.deliver', id: orderId });
     assert.equal((await ctx.db.order.findUnique({ where: { id: orderId } })).status, 'Entregue');
   });

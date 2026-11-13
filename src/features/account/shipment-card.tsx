@@ -8,6 +8,7 @@ import { ProductImage } from '@/components/ui/product-image';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { trackingUrl } from '@maos-em-oracao/contracts';
 export function ShipmentCard({ order, details = true }: { order: Order; details?: boolean }) {
   const [open, setOpen] = useState(false),
     index =
@@ -48,11 +49,27 @@ export function ShipmentCard({ order, details = true }: { order: Order; details?
           </ol>
         )}
         <div className="row between wrap">
-          <small className="muted">
-            {order.tracking
-              ? 'Rastreio' + (IS_DEMO ? ' de demonstração' : '') + ': ' + order.tracking
-              : 'Código de rastreio disponível após a expedição.'}
-          </small>
+          {order.tracking ? (
+            <span className="shipment-tracking">
+              <small className="muted">
+                {order.carrier ? order.carrier + ' · ' : ''}
+                {'Rastreio' + (IS_DEMO ? ' de demonstração' : '') + ': '}
+                <strong>{order.tracking}</strong>
+              </small>
+              {!IS_DEMO && (
+                <a
+                  className="btn secondary small"
+                  href={trackingUrl(order.tracking)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Rastrear envio <Icon name="arrow" />
+                </a>
+              )}
+            </span>
+          ) : (
+            <small className="muted">Código de rastreio disponível após a expedição.</small>
+          )}
           {details && (
             <Button variant="text" onClick={() => setOpen(true)}>
               Detalhes do envio <Icon name="arrow" />

@@ -453,6 +453,10 @@ export class AdminService {
             if (c.status === 'Pronto para envio' && o.job?.stage !== 'Pronto')
               throw new DomainError('PRODUCTION_STAGE', 'Conclua a conferência da produção.');
             await tx.order.update({ where: { id: o.id }, data: { status: c.status } });
+            if (c.status === 'Pronto para envio')
+              await this.mail.event(tx, 'shipping-auto/' + o.id, 'shipping-auto', o.id, {
+                orderId: o.id,
+              });
           }
           await tx.order.update({
             where: { id: o.id },
@@ -968,6 +972,10 @@ export class AdminService {
                 : 'Em acabamento',
         },
       });
+      if (next === 'Pronto')
+        await this.mail.event(tx, 'shipping-auto/' + j.orderId, 'shipping-auto', j.orderId, {
+          orderId: j.orderId,
+        });
       if (next === 'Impressão') {
         const a = data<Address>(j.order.address);
         await this.mail.email(tx, 'production-started/' + j.id, j.orderId, a.email, {

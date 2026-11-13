@@ -57,6 +57,13 @@ export const emailMessageSchema = z.discriminatedUnion('kind', [
     trackingCode: line,
     trackingUrl: https,
   }),
+  z.strictObject({
+    kind: z.literal('order-delivered'),
+    ...base,
+    orderNumber: line,
+    carrier: line,
+    trackingCode: line,
+  }),
   z.strictObject({ kind: z.literal('club-welcome'), ...base, planName: line, totalCents: cents }),
   z.strictObject({ kind: z.literal('club-renewed'), ...base, edition: line, totalCents: cents }),
   z.strictObject({ kind: z.literal('payment-failed'), ...base, reference: line }),
@@ -115,6 +122,7 @@ export const emailLabels: Record<EmailKind, string> = {
   'payment-approved': 'Pagamento aprovado',
   'production-started': 'Produção iniciada',
   'shipment-posted': 'Pedido enviado',
+  'order-delivered': 'Pedido entregue',
   'club-welcome': 'Boas-vindas ao clube',
   'club-renewed': 'Renovação do clube',
   'payment-failed': 'Pagamento não aprovado',
@@ -230,6 +238,17 @@ function content(message: EmailMessage): Content {
           ['Transportadora', message.carrier],
           ['Código de rastreio', message.trackingCode],
         ],
+      };
+    case 'order-delivered':
+      return {
+        title: 'Seu pedido chegou.',
+        intro: `O pedido ${message.orderNumber} foi entregue. Que esta peça leve paz e significado ao seu lar.`,
+        cta: 'Ver meu pedido',
+        details: [
+          ['Transportadora', message.carrier],
+          ['Código de rastreio', message.trackingCode],
+        ],
+        note: 'Se algo não chegou como você esperava, responda este e-mail ou fale com nosso atendimento.',
       };
     case 'club-welcome':
       return {

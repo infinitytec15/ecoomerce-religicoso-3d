@@ -53,6 +53,13 @@ export const sampleEmails: EmailMessage[] = [
     trackingUrl: 'https://transportadora.example/rastreio/1042',
   },
   {
+    kind: 'order-delivered',
+    ...base,
+    orderNumber: order.orderNumber,
+    carrier: 'Transportadora de exemplo',
+    trackingCode: 'BR-EXEMPLO-1042',
+  },
+  {
     kind: 'club-welcome',
     ...base,
     planName: 'Cesta com Jesus · plano de exemplo',

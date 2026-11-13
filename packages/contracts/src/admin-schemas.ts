@@ -114,6 +114,7 @@ export const workspaceSchema = z.object({
   productionDays: z.number().int().nonnegative(),
   freeShippingAboveCents: z.number().int().nonnegative(),
   inventoryPolicy: z.enum(['on-demand', 'stock']),
+  autoShippingLabel: z.boolean().optional(),
   contactName: z.string().min(2),
   privacyEmail: z.email(),
   returnInstructions: z.string().min(10),

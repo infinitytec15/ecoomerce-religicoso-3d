@@ -104,6 +104,8 @@ export interface WorkspaceSettings {
   productionDays: number;
   freeShippingAboveCents: number;
   inventoryPolicy: 'on-demand' | 'stock';
+  /** Buy and generate the Melhor Envio label when an order is ready to ship. */
+  autoShippingLabel?: boolean;
   contactName: string;
   privacyEmail: string;
   returnInstructions: string;
@@ -182,6 +184,7 @@ export const defaultWorkspaceSettings: WorkspaceSettings = {
   productionDays: 5,
   freeShippingAboveCents: 0,
   inventoryPolicy: 'on-demand',
+  autoShippingLabel: true,
   contactName: 'Equipe Mãos em Oração',
   privacyEmail: 'privacidade@maosemoracao.demo',
   returnInstructions: 'Entre em contato pelo atendimento antes de enviar sua peça.',

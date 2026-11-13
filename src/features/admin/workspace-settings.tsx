@@ -109,6 +109,7 @@ export function WorkspaceSettingsPanel() {
               ] as const)
                 settings[key] = d.has(key);
               settings.freeShippingAboveCents = centsFromInput(text(d, 'freeShipping'));
+              settings.autoShippingLabel = d.has('autoShippingLabel');
               settings.inventoryPolicy = text(
                 d,
                 'inventoryPolicy',
@@ -242,6 +243,23 @@ export function WorkspaceSettingsPanel() {
                       <small>Zero mantém a cotação normal. Frete do clube já está incluído.</small>
                     </label>
                   </div>
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      name="autoShippingLabel"
+                      defaultChecked={w.autoShippingLabel !== false}
+                    />
+                    <span>
+                      <strong>Etiqueta automática</strong>
+                      <br />
+                      <small>
+                        Quando um pedido fica “Pronto para envio”, compramos e geramos a etiqueta no
+                        Melhor Envio com declaração de conteúdo, usando o saldo da carteira.
+                        Postagem e entrega são acompanhadas pelo rastreio e o cliente recebe os
+                        e-mails. Se faltar saldo ou conexão, a equipe é avisada por e-mail.
+                      </small>
+                    </span>
+                  </label>
                   <div className="notice">
                     A conexão OAuth e os tokens ficam no servidor. As cotações preservam serviço,
                     volumes, seguro e validade.

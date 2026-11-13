@@ -206,7 +206,26 @@ export class WorkerEngine {
           await new MediaService(this.ctx).processModel(String(payload.assetId));
           break;
         case 'shipping-label':
-          await new ShippingService(this.ctx).generate(String(payload.shipmentId));
+          try {
+            await new ShippingService(this.ctx).generate(String(payload.shipmentId));
+          } catch (error) {
+            // Purchase failures (no balance, expired quote, disconnected account) need a person.
+            if (
+              error instanceof DomainError ||
+              (error instanceof ProviderError && !error.unknown)
+            ) {
+              const s = await this.ctx.db.shipment.findUnique({
+                where: { id: String(payload.shipmentId) },
+                include: { order: true },
+              });
+              if (s)
+                await new ShippingService(this.ctx).alertFailure(s.orderId, s.order.number, error);
+            }
+            throw error;
+          }
+          break;
+        case 'shipping-auto':
+          await new ShippingService(this.ctx).automate(String(payload.orderId));
           break;
         case 'shipping-cancel':
           await new ShippingService(this.ctx).cancel(String(payload.shipmentId));
