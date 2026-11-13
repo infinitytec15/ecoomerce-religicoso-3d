@@ -75,8 +75,8 @@ export default defineRailway(() => {
       INTEGRATIONS_MODE: 'live',
       DATABASE_URL: Postgres.env.DATABASE_URL,
       REDIS_URL: Redis.env.REDIS_URL,
-      PUBLIC_WEB_URL: 'https://web-production-b7ece0dc.up.railway.app',
-      PUBLIC_API_URL: 'https://api-production-fe79744c.up.railway.app',
+      PUBLIC_WEB_URL: 'https://maosemoracao.com.br',
+      PUBLIC_API_URL: 'https://api.maosemoracao.com.br',
       SESSION_SECRET: preserve(),
       BFF_SHARED_SECRET: preserve(),
       TOKEN_ENCRYPTION_KEY: preserve(),
@@ -139,7 +139,7 @@ export default defineRailway(() => {
       API_BASE_URL: 'http://api.railway.internal:4000/api/v1',
       BFF_SHARED_SECRET: api.env.BFF_SHARED_SECRET,
       IMAGE_HOSTS:
-        'web-production-b7ece0dc.up.railway.app,maosemoracao.b-cdn.net,vz-0786fda1-07a.b-cdn.net',
+        'maosemoracao.com.br,web-production-b7ece0dc.up.railway.app,maosemoracao.b-cdn.net,vz-0786fda1-07a.b-cdn.net',
     },
   });
 

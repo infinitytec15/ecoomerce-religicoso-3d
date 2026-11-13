@@ -13,6 +13,23 @@ const config: NextConfig = {
       .map((hostname) => ({ protocol: 'https' as const, hostname })),
   },
   experimental: { optimizePackageImports: ['@radix-ui/react-dialog', '@tanstack/react-query'] },
+  async redirects() {
+    // Once the store has its own domain, send visitors of the generated Railway host to it:
+    // the BFF only accepts mutations from the canonical origin. Railway health checks use
+    // another host, so they keep reaching the service directly.
+    const site = process.env.NEXT_PUBLIC_SITE_URL
+      ? new URL(process.env.NEXT_PUBLIC_SITE_URL)
+      : null;
+    if (!site || site.protocol !== 'https:' || site.hostname.endsWith('.up.railway.app')) return [];
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host' as const, value: '.*\\.up\\.railway\\.app' }],
+        destination: site.origin + '/:path*',
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

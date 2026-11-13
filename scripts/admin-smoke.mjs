@@ -6,7 +6,7 @@ import { operationsSchema } from '../src/lib/api/response-schemas.ts';
 const input = [];
 for await (const chunk of process.stdin) input.push(chunk);
 const credentials = JSON.parse(Buffer.concat(input).toString('utf8'));
-const origin = 'https://web-production-b7ece0dc.up.railway.app';
+const origin = 'https://maosemoracao.com.br';
 const cookies = new Map();
 const checks = [];
 async function call(path, method = 'GET', body) {

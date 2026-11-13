@@ -138,16 +138,16 @@ Fontes: [Node LTS](https://nodejs.org/en/about/previous-releases), [Railway mono
 Cadastre os valores privados na aba Variables da **API**. A IaC replica as referências no worker; depois das alterações, redeploy de API e worker. A chave pública Mercado Pago chega ao web por referência e exige rebuild. Valores vazios significam integração não configurada.
 
 - Mercado Pago: MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY; habilite PAYMENTS_ENABLED=true. SPLIT_PAYMENT_ENABLED=true após homologar compensação.
-  - Webhook (Suas integrações → aplicação → Webhooks, modo produção): `https://api-production-fe79744c.up.railway.app/api/v1/webhooks/mercado-pago`, eventos **Pagamentos**, **Planos e assinaturas** (assinaturas e pagamentos recorrentes) e **Contestações**. Copie a "assinatura secreta" para MP_WEBHOOK_SECRET.
+  - Webhook (Suas integrações → aplicação → Webhooks, modo produção): `https://api.maosemoracao.com.br/api/v1/webhooks/mercado-pago`, eventos **Pagamentos**, **Planos e assinaturas** (assinaturas e pagamentos recorrentes) e **Contestações**. Copie a "assinatura secreta" para MP_WEBHOOK_SECRET.
   - Credenciais de conta de teste exigem e-mail de **comprador de teste** como pagador; credenciais de produção não ativadas respondem `401 Unauthorized use of live credentials`.
   - Homologação local antes do Melhor Envio: `SHIPPING_SIMULATED=true` com `INTEGRATIONS_MODE=live` usa o Mercado Pago real e frete simulado. A configuração recusa essa chave em produção. O Mercado Pago não aceita `notification_url` sem HTTPS; localmente os eventos não chegam e o status é obtido pela consulta do pagamento.
-- Melhor Envio: ME_CLIENT_ID, ME_CLIENT_SECRET, ME_REDIRECT_URI=https://api-production-fe79744c.up.railway.app/api/v1/integrations/melhor-envio/callback; conecte a conta em Configurações. ME_ACCESS_TOKEN é alternativa privada. ME_SANDBOX=false na produção.
+- Melhor Envio: ME_CLIENT_ID, ME_CLIENT_SECRET, ME_REDIRECT_URI=https://api.maosemoracao.com.br/api/v1/integrations/melhor-envio/callback; conecte a conta em Configurações. ME_ACCESS_TOKEN é alternativa privada. ME_SANDBOX=false na produção.
 - Bunny: zonas/passwords pública e privada, CDN, biblioteca/API key Stream, read key/CDN host. Acrescente o hostname CDN em IMAGE_HOSTS do web e faça rebuild.
 - Resend: RESEND_API_KEY, RESEND_WEBHOOK_SECRET, EMAIL_FROM de domínio verificado, EMAIL_REPLY_TO; habilite EMAIL_ENABLED=true. Configure domínio e webhook antes de testar cadastro/recuperação/convites/oração diária.
 - Admin: documento/endereço real do remetente, embalagem, estoque/preços e edição ativa com produtos por perfil do clube.
 
-Loja: https://web-production-b7ece0dc.up.railway.app
-Painel: https://web-production-b7ece0dc.up.railway.app/admin
-API saúde: https://api-production-fe79744c.up.railway.app/api/v1/health/ready
+Loja: https://maosemoracao.com.br
+Painel: https://maosemoracao.com.br/admin
+API saúde: https://api.maosemoracao.com.br/api/v1/health/ready
 
 O primeiro acesso usa BOOTSTRAP_ADMIN_EMAIL. A senha inicial está nas variáveis privadas da API; a cópia local de recuperação em var/deployment/production-private.clixml é criptografada com DPAPI e só o usuário Windows que a criou pode abri-la. Após o primeiro acesso, altere a senha e remova as variáveis de bootstrap. O predeploy ignora bootstrap se elas estiverem ausentes.

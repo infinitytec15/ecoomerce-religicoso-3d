@@ -4,7 +4,7 @@ import ts from 'typescript';
 
 // Production checks never send valid mutation payloads or vendor operations.
 // Positive business flows run separately against isolated PostgreSQL/Redis in CI.
-const web = new URL(process.argv[2] || 'https://web-production-b7ece0dc.up.railway.app');
+const web = new URL(process.argv[2] || 'https://maosemoracao.com.br');
 assert.equal(web.protocol, 'https:');
 const routes = [];
 const failures = [];
