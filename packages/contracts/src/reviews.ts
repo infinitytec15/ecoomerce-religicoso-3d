@@ -99,15 +99,25 @@ export const productReviewsSchema = z.object({
   reviews: z.array(publicReviewSchema),
 });
 
-export function summarizeRatings(ratings: number[]): RatingSummary {
+/** Average shown to customers: one decimal. */
+export function roundRating(average: number): number {
+  return Math.round(average * 10) / 10;
+}
+
+export function summarizeRatingCounts(groups: { rating: number; count: number }[]): RatingSummary {
   const histogram: RatingSummary['histogram'] = [0, 0, 0, 0, 0];
-  let sum = 0;
-  for (const r of ratings) {
-    histogram[Math.min(5, Math.max(1, Math.round(r))) - 1] += 1;
-    sum += r;
+  let sum = 0,
+    count = 0;
+  for (const g of groups) {
+    histogram[Math.min(5, Math.max(1, Math.round(g.rating))) - 1] += g.count;
+    sum += g.rating * g.count;
+    count += g.count;
   }
-  const count = ratings.length;
-  return { average: count ? Math.round((sum / count) * 10) / 10 : 0, count, histogram };
+  return { average: count ? roundRating(sum / count) : 0, count, histogram };
+}
+
+export function summarizeRatings(ratings: number[]): RatingSummary {
+  return summarizeRatingCounts(ratings.map((rating) => ({ rating, count: 1 })));
 }
 
 /** Reviews auto-publish only at/above the threshold and never when they carry photos. */

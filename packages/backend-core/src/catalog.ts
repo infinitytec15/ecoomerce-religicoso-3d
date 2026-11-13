@@ -8,6 +8,7 @@ import {
   type ProductMedia,
   type ProductModel,
   type CatalogQuery,
+  roundRating,
 } from '@maos-em-oracao/contracts';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
 import type { Context } from './context';
@@ -76,7 +77,7 @@ export class CatalogService {
     return new Map(
       rows.map((r) => [
         r.productId,
-        { average: Math.round((r._avg.rating ?? 0) * 10) / 10, count: r._count._all },
+        { average: roundRating(r._avg.rating ?? 0), count: r._count._all },
       ]),
     );
   }

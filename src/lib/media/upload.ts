@@ -9,6 +9,8 @@ export async function uploadMedia(
   base = 'admin/media',
 ): Promise<MediaAsset> {
   validateAsset(file, kind);
+  if (base === 'reviews' && file.size > 8 * 1024 * 1024)
+    throw new Error('Envie uma foto de até 8 MB.');
   const client = new HttpClient();
   const session = await client.request(base + '/uploads', uploadSessionSchema, {
     method: 'POST',

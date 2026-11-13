@@ -669,9 +669,9 @@ try {
       (await ctx.db.order.findUnique({ where: { id: orderId } })).deliveredAt instanceof Date,
     );
   });
-  const deliverNewOrder = async () => {
-    const q = await quote(customer, product),
-      bought = await buy(customer, checkout(product, q, first.email)),
+  const deliverNewOrder = async (client = customer, email = first.email) => {
+    const q = await quote(client, product),
+      bought = await buy(client, checkout(product, q, email)),
       secondOrder = bought.body.data.orderId;
     ops = await owner.data('admin/operations');
     await owner.command({
@@ -875,9 +875,9 @@ try {
       ).status,
       422,
     );
-    const fake = await upload(customer, 'falso.png', Buffer.from('isto não é uma imagem')),
-      fakeStatus = fake.put.status;
-    assert.ok(fakeStatus >= 400 && fakeStatus < 500, 'texto aceito como imagem: ' + fakeStatus);
+    const fake = await upload(customer, 'falso.png', Buffer.from('isto não é uma imagem'));
+    assert.equal(fake.put.status, 422);
+    assert.equal(fake.put.body.error.code, 'INVALID_IMAGE');
     assert.equal(
       (await customer.call(fake.path + '/complete', 'POST', {})).body.data.status,
       'failed',
@@ -901,7 +901,9 @@ try {
       thirdOrder = await deliverNewOrder(),
       account = accountSchema.parse(await customer.data('account')),
       item = itemOf(account, thirdOrder);
-    const stolen = await post(other, item, [ok.id]);
+    const otherOrder = await deliverNewOrder(other, second.email),
+      otherItem = itemOf(accountSchema.parse(await other.data('account')), otherOrder);
+    const stolen = await post(other, otherItem, [ok.id]);
     assert.equal(stolen.status, 422);
     assert.equal(stolen.body.error.code, 'INVALID_PHOTO');
     const unfinished = await upload(customer, 'pendente.png', png);

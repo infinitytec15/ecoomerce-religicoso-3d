@@ -7,6 +7,7 @@ import {
   reviewInputSchema,
   reviewStatusSchema,
   summarizeRatings,
+  summarizeRatingCounts,
   type MyReview,
   type ProductReviews,
   type ReviewStatus,
@@ -43,15 +44,12 @@ export class ReviewsService {
         take: 50,
       }),
     ]);
-    const summary = summarizeRatings([]);
-    let sum = 0;
-    for (const g of groups) {
-      summary.histogram[Math.min(5, Math.max(1, g.rating)) - 1] += g._count._all;
-      summary.count += g._count._all;
-      sum += g.rating * g._count._all;
-    }
-    summary.average = summary.count ? Math.round((sum / summary.count) * 10) / 10 : 0;
-    return { summary, reviews: rows.map((r) => reviewDto(r)) };
+    return {
+      summary: summarizeRatingCounts(
+        groups.map((g) => ({ rating: g.rating, count: g._count._all })),
+      ),
+      reviews: rows.map((r) => reviewDto(r)),
+    };
   }
   async create(actor: Actor | null, value: unknown): Promise<MyReview> {
     if (!actor?.customerId)

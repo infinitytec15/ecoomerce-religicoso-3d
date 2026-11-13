@@ -200,6 +200,16 @@ export async function bootstrap() {
         if (req.method === 'PUT' && /^\/api\/v1\/reviews\/uploads\/[^/]+\/content$/.test(path)) {
           if (!req.actor?.customerId)
             throw new DomainError('UNAUTHORIZED', 'Entre na conta para enviar fotos.', 401);
+          // Never buffer a body for an upload the customer does not own or that is closed.
+          const asset = await ctx.db.mediaAsset.findUnique({
+            where: { id: path.split('/')[5] },
+            select: { uploaderId: true, state: true },
+          });
+          if (
+            asset?.uploaderId !== 'customer/' + req.actor.customerId ||
+            !['reserved', 'uploading'].includes(asset.state)
+          )
+            throw new DomainError('NOT_FOUND', 'Upload não encontrado.', 404);
           return raw({ type: () => true, limit: '8mb' })(req, res, next);
         }
         return next();

@@ -4,6 +4,7 @@ import {
   initialReviewStatus,
   reviewAuthorName,
   reviewInputSchema,
+  summarizeRatingCounts,
   summarizeRatings,
 } from './reviews';
 
@@ -15,6 +16,16 @@ describe('reviews contracts', () => {
       histogram: [1, 0, 0, 2, 1],
     });
     expect(summarizeRatings([])).toEqual({ average: 0, count: 0, histogram: [0, 0, 0, 0, 0] });
+  });
+  it('summarizes grouped counts exactly like the flat list', () => {
+    const grouped = summarizeRatingCounts([
+      { rating: 5, count: 2 },
+      { rating: 4, count: 2 },
+      { rating: 1, count: 1 },
+    ]);
+    expect(grouped).toEqual({ average: 3.8, count: 5, histogram: [1, 0, 0, 2, 2] });
+    expect(grouped).toEqual(summarizeRatings([5, 5, 4, 4, 1]));
+    expect(summarizeRatingCounts([])).toEqual(summarizeRatings([]));
   });
   it('auto-publishes only at or above the threshold and never with photos', () => {
     const s = { ...defaultReviewSettings, autoPublishMinRating: 4 };

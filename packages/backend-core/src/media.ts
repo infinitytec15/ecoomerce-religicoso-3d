@@ -166,7 +166,10 @@ export class MediaService {
           .rotate()
           .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 85 })
-          .toBuffer();
+          .toBuffer()
+          .catch(() => {
+            throw new DomainError('INVALID_IMAGE', 'A imagem não pôde ser lida.');
+          });
         key = 'images/' + id + '.webp';
         mime = 'image/webp';
       } else if (asset.kind === 'model') {
