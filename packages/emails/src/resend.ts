@@ -31,6 +31,11 @@ export class EmailProviderError extends Error {
 }
 
 /** No PII or tokens in provider idempotency keys. The DB must persist this key beyond Resend's 24 h window. */
+/** Resend rejects (422) tag names/values outside ASCII letters, digits, _ and -. */
+export function resendTag(name: string, value: string) {
+  const clean = (v: string) => v.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 256);
+  return { name: clean(name), value: clean(value) };
+}
 export function emailIdempotencyKey(
   eventId: string,
   recipient: string,
@@ -67,10 +72,7 @@ export function createEmailProvider(client: EmailProviderClient, input: EmailPro
             html: rendered.html,
             text: rendered.text,
             headers: rendered.headers,
-            tags: [
-              { name: 'template', value: rendered.kind },
-              { name: 'version', value: rendered.version },
-            ],
+            tags: [resendTag('template', rendered.kind), resendTag('version', rendered.version)],
           },
           { idempotencyKey },
         );

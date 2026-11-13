@@ -8,6 +8,7 @@ import {
   classifyEmailEvent,
   createEmailProvider,
   emailIdempotencyKey,
+  resendTag,
 } from '@maos-em-oracao/emails/resend';
 
 const keyBytes = Buffer.from('local-test-signing-secret-32bytes');
@@ -118,6 +119,20 @@ describe('adaptador Resend sem envio real', () => {
     expect(
       emailIdempotencyKey('other-event', input.to, renderEmail(sample, sampleContext)),
     ).not.toBe(result.idempotencyKey);
+  });
+  it('envia tags no formato aceito pelo Resend (sem ponto da versão)', async () => {
+    const { send, provider, input } = setup();
+    await provider.send(input);
+    // Resend answers 422 for any tag outside ASCII letters, digits, _ and -.
+    for (const tag of send.mock.calls[0][0].tags || []) {
+      expect(tag.name).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(tag.value).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+    expect(renderEmail(sample, sampleContext).version).toContain('.');
+    expect(resendTag('version', '2026-11-10.1')).toEqual({
+      name: 'version',
+      value: '2026-11-10_1',
+    });
   });
   it('inclui cabeçalhos de descadastro no envio da oração', async () => {
     const { send, provider, input } = setup();

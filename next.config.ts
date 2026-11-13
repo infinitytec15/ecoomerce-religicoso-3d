@@ -28,6 +28,12 @@ const config: NextConfig = {
         destination: site.origin + '/:path*',
         permanent: true,
       },
+      {
+        source: '/:path*',
+        has: [{ type: 'host' as const, value: 'www.' + site.hostname }],
+        destination: site.origin + '/:path*',
+        permanent: true,
+      },
     ];
   },
   async headers() {

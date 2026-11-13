@@ -14,7 +14,7 @@ import { MediaService } from './media';
 import { ReportsService } from './reports';
 import { unseal, recipientHash, normalizeEmail } from './security';
 import { data, requireValue, DomainError } from './shared';
-import { classifyEmailEvent } from '@maos-em-oracao/emails/resend';
+import { classifyEmailEvent, resendTag } from '@maos-em-oracao/emails/resend';
 export interface WorkItem {
   source: 'outbox' | 'webhook';
   id: string;
@@ -359,9 +359,9 @@ export class WorkerEngine {
           text: envelope.text,
           headers: envelope.headers,
           tags: [
-            { name: 'template', value: envelope.kind },
-            { name: 'version', value: envelope.version },
-            { name: 'outbox', value: id },
+            resendTag('template', envelope.kind),
+            resendTag('version', envelope.version),
+            resendTag('outbox', id),
           ],
         },
         { idempotencyKey: envelope.idempotencyKey },
