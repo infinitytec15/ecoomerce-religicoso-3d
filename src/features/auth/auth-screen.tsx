@@ -11,6 +11,7 @@ import { useCommand } from '@/lib/api/query';
 import { IS_DEMO } from '@/lib/api/config';
 import { useNotify } from '@/components/ui/feedback';
 import { usePreference, writePreference } from '@/lib/store/preferences';
+import { DevCredit } from '@/components/layout/dev-credit';
 import type { LoginInput } from '@/lib/domain/schemas';
 export const STAFF_DEMO_EMAIL = 'gestao@maosemoracao.demo';
 export const STAFF_DEMO_PASSWORD = 'Essencia3D!';
@@ -365,6 +366,7 @@ export function AuthScreen({
               <span>Mãos em Oração · Essência</span>
               <Link href="/suporte/privacidade">Privacidade e dados</Link>
             </footer>
+            <DevCredit className="auth-credit" />
           </section>
         </main>
       </div>

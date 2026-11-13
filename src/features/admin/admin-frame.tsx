@@ -11,6 +11,7 @@ import { AuthScreen } from '@/features/auth/auth-screen';
 import { Logo } from '@/components/layout/logo';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { LoadingState, ErrorState } from '@/components/ui/states';
+import { DevCredit } from '@/components/layout/dev-credit';
 import { useNotify } from '@/components/ui/feedback';
 export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['', 'Visão geral', 'spark'],
@@ -140,6 +141,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
                 sem acesso a operações reais
               </p>
             )}
+            <DevCredit />
           </div>
         </aside>
         <div className="admin-workspace">

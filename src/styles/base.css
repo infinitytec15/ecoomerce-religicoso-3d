@@ -2544,3 +2544,46 @@ small {
   flex-wrap: wrap;
   gap: 10px 14px;
 }
+
+/* Agency credit (footer, login, sidebars) */
+.dev-credit {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.dev-credit a,
+.account-side .dev-credit a {
+  display: inline;
+  width: auto;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dev-credit a:hover {
+  color: var(--olive);
+}
+.footer-bottom {
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.account-side .dev-credit {
+  padding: 18px 14px 0;
+}
+.admin-sidebar-bottom .dev-credit {
+  margin-top: 18px;
+  color: #becab5;
+  font-size: 11px;
+}
+.admin-sidebar-bottom .dev-credit a:hover {
+  color: #f2eddf;
+}
+.auth-credit {
+  text-align: center;
+  font-size: 10px;
+  padding-top: 10px;
+}

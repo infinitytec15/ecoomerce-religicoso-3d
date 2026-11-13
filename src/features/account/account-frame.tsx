@@ -6,6 +6,7 @@ import { useEndSession, useSession } from '@/lib/api/query';
 import { errorMessage } from '@/lib/api/contracts';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { DevCredit } from '@/components/layout/dev-credit';
 import { AuthScreen } from '@/features/auth/auth-screen';
 const nav: [string, string, IconName][] = [
   ['/conta', 'Meu espaço', 'user'],
@@ -80,6 +81,7 @@ export function AccountFrame({ children }: { children: ReactNode }) {
             <Icon name="logout" />
             Sair
           </button>
+          <DevCredit />
         </aside>
         <section className="account-content">{children}</section>
       </div>

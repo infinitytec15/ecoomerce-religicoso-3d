@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Logo } from './logo';
 import { Icon } from '@/components/ui/icon';
 import { PrayerInvite } from './prayer-invite';
+import { DevCredit } from './dev-credit';
 export function Footer() {
   return (
     <footer className="footer">
@@ -47,6 +48,7 @@ export function Footer() {
             Pix <Icon name="pix" /> · Cartão <Icon name="card" /> · Pagamento combinado{' '}
             <Icon name="split" />
           </span>
+          <DevCredit />
         </div>
       </div>
     </footer>
