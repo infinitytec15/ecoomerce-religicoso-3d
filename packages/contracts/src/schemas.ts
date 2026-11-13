@@ -97,6 +97,7 @@ export const productSchema = z.object({
     ),
   badge: z.string(),
   sizes: z.array(z.string()).min(1),
+  sizePrices: z.array(z.number().int().positive()).max(11).optional(),
   colors: z.array(z.string()).min(1),
   active: z.boolean(),
   sku: z.string(),
@@ -122,6 +123,7 @@ export const costBreakdownTotal = (c: z.infer<typeof costBreakdownSchema>) =>
 export const inventoryProductSchema = productSchema.extend({
   costCents: z.number().int().nonnegative(),
   costBreakdown: costBreakdownSchema.optional(),
+  costBySize: z.array(costBreakdownSchema).max(11).optional(),
 });
 export const publicSettingsSchema = z.object({
   storeName: z.string(),
