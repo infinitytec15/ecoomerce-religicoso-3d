@@ -665,6 +665,9 @@ try {
     );
     await owner.command({ type: 'shipping.deliver', id: orderId });
     assert.equal((await ctx.db.order.findUnique({ where: { id: orderId } })).status, 'Entregue');
+    assert.ok(
+      (await ctx.db.order.findUnique({ where: { id: orderId } })).deliveredAt instanceof Date,
+    );
   });
   await check('suporte mantém nota interna fora da conta e do e-mail', async () => {
     assert.equal(

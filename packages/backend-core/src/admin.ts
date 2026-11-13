@@ -525,7 +525,10 @@ export class AdminService {
         const s = requireValue(await this.ctx.db.shipment.findUnique({ where: { orderId: c.id } }));
         if (this.ctx.config.INTEGRATIONS_MODE === 'mock') {
           await this.ctx.db.shipment.update({ where: { id: s.id }, data: { state: 'delivered' } });
-          await this.ctx.db.order.update({ where: { id: c.id }, data: { status: 'Entregue' } });
+          await this.ctx.db.order.update({
+            where: { id: c.id },
+            data: { status: 'Entregue', deliveredAt: new Date() },
+          });
         } else await this.shipping.reconcile(s.id);
         break;
       }

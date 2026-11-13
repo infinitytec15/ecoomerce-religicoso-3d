@@ -530,7 +530,7 @@ export class ShippingService {
         where: delivered
           ? { id: s.orderId, status: { in: ['Enviado', 'Pronto para envio'] } }
           : { id: s.orderId, status: 'Pronto para envio' },
-        data: { status: delivered ? 'Entregue' : 'Enviado' },
+        data: delivered ? { status: 'Entregue', deliveredAt: new Date() } : { status: 'Enviado' },
       });
       if (!moved.count || !tracking) return;
       // Customer e-mails are keyed by shipment, so repeated polls never send twice.

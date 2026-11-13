@@ -25,19 +25,22 @@ model User {
 }
 
 model Customer {
-  id            String         @id @default(uuid())
-  userId        String?        @unique
-  user          User?          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  email         String
-  name          String
-  active        Boolean        @default(true)
-  notes         String         @default("")
-  address       Json
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  orders        Order[]
-  subscriptions Subscription[]
-  tickets       Ticket[]
+  id                   String         @id @default(uuid())
+  userId               String?        @unique
+  user                 User?          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  email                String
+  name                 String
+  active               Boolean        @default(true)
+  notes                String         @default("")
+  address              Json
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  orders               Order[]
+  subscriptions        Subscription[]
+  tickets              Ticket[]
+  reviews              Review[]
+  /// Customer asked not to receive review-request e-mails.
+  reviewRequestsOptOut Boolean        @default(false)
 
   @@index([email])
 }
@@ -101,6 +104,7 @@ model Product {
   items        OrderItem[]
   movements    StockMovement[]
   reservations StockReservation[]
+  reviews      Review[]
 
   @@index([active, archived, category])
 }
@@ -156,38 +160,42 @@ model Coupon {
 }
 
 model Order {
-  id             String             @id @default(uuid())
-  number         Int                @unique @default(autoincrement())
-  customerId     String
-  customer       Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  subscriptionId String?
-  subscription   Subscription?      @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
-  couponId       String?
-  coupon         Coupon?            @relation(fields: [couponId], references: [id], onDelete: Restrict)
-  status         String             @default("Aguardando pagamento")
-  type           String             @default("Loja")
-  totalCents     Int
-  subtotalCents  Int
-  shippingCents  Int
-  discountCents  Int
-  address        Json
-  data           Json
-  due            DateTime
-  priority       String             @default("Normal")
-  notes          String             @default("")
-  version        Int                @default(1)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  items          OrderItem[]
-  payment        PaymentIntent?
-  job            ProductionJob?
-  shipment       Shipment?
-  sessions       Session[]
-  cycle          SubscriptionCycle?
-  reservations   StockReservation[]
+  id                String             @id @default(uuid())
+  number            Int                @unique @default(autoincrement())
+  customerId        String
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  subscriptionId    String?
+  subscription      Subscription?      @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  couponId          String?
+  coupon            Coupon?            @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  status            String             @default("Aguardando pagamento")
+  type              String             @default("Loja")
+  totalCents        Int
+  subtotalCents     Int
+  shippingCents     Int
+  discountCents     Int
+  address           Json
+  data              Json
+  due               DateTime
+  priority          String             @default("Normal")
+  notes             String             @default("")
+  version           Int                @default(1)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  items             OrderItem[]
+  payment           PaymentIntent?
+  job               ProductionJob?
+  shipment          Shipment?
+  sessions          Session[]
+  cycle             SubscriptionCycle?
+  reservations      StockReservation[]
+  reviews           Review[]
+  deliveredAt       DateTime?
+  reviewRequestedAt DateTime?
 
   @@index([customerId, createdAt])
   @@index([status, createdAt])
+  @@index([status, deliveredAt])
 }
 
 model OrderItem {
@@ -201,8 +209,35 @@ model OrderItem {
   /// Production cost of the whole line (unit cost x quantity) frozen at sale time.
   costCents Int     @default(0)
   data      Json
+  review    Review?
 
   @@index([orderId])
+}
+
+model Review {
+  id          String    @id @default(uuid())
+  orderItemId String    @unique
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rating      Int
+  title       String    @default("")
+  text        String
+  /// Array of { assetId, url }.
+  photos      Json
+  author      String
+  variant     String    @default("")
+  status      String    @default("Em análise")
+  reply       String    @default("")
+  repliedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([productId, status, createdAt])
 }
 
 model PaymentIntent {
