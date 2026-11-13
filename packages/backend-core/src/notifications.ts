@@ -171,6 +171,21 @@ export class Notifications {
       oneClickUnsubscribeUrl: base + '/api/email/unsubscribe?token=' + encodeURIComponent(t),
     };
   }
+  /** Human opt-out link for review requests; valid for a year, bound to the customer. */
+  reviewOptOutUrl(customerId: string) {
+    const t = signedToken(
+      {
+        purpose: 'review-optout',
+        id: customerId,
+        version: 1,
+        expiresAt: Date.now() + 366 * 86400000,
+      },
+      this.ctx.config,
+    );
+    return (
+      this.ctx.config.PUBLIC_WEB_URL + '/avaliacoes/descadastro?token=' + encodeURIComponent(t)
+    );
+  }
   verifyResend(raw: string, headers: { id: string; timestamp: string; signature: string }) {
     const secret = this.ctx.config.RESEND_WEBHOOK_SECRET;
     if (!secret) throw new Error('RESEND_WEBHOOK_SECRET ausente.');

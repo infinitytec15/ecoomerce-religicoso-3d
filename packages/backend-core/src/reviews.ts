@@ -14,6 +14,7 @@ import {
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings, rateLimit } from './context';
+import { readSignedToken } from './security';
 import { reviewDto } from './projections';
 import { type Actor, permit, requireValue, DomainError, data, audit } from './shared';
 export class ReviewsService {
@@ -102,6 +103,23 @@ export class ReviewsService {
         rating: review.rating,
         status: review.status as ReviewStatus,
       };
+    });
+  }
+  /** Customer-side opt-out from "Como ficou sua peça?" e-mails, via the signed link. */
+  async optOut(value: unknown) {
+    const input = z.object({ token: z.string().min(20).max(2048) }).parse(value);
+    let p: { id: string };
+    try {
+      p = readSignedToken(input.token, 'review-optout', this.ctx.config);
+    } catch {
+      throw new DomainError('INVALID_TOKEN', 'Link de descadastro inválido ou expirado.');
+    }
+    await transaction(this.ctx.db, async (tx) => {
+      await tx.customer.updateMany({
+        where: { id: p.id },
+        data: { reviewRequestsOptOut: true },
+      });
+      await audit(tx, 'customer', 'Descadastro de pedidos de avaliação', p.id);
     });
   }
   /** Photos must be the customer's own finished image uploads, each used by one review only. */

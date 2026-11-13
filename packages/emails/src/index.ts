@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EMAIL_TEMPLATE_VERSION = '2026-11-13.1';
+export const EMAIL_TEMPLATE_VERSION = '2026-11-13.2';
 const line = z
   .string()
   .trim()
@@ -64,6 +64,16 @@ export const emailMessageSchema = z.discriminatedUnion('kind', [
     carrier: line,
     trackingCode: line,
   }),
+  z.strictObject({
+    kind: z.literal('review-request'),
+    ...base,
+    orderNumber: line,
+    items: z
+      .array(z.strictObject({ name: line, variant: z.string().trim().max(240) }))
+      .min(1)
+      .max(100),
+    optOutUrl: https,
+  }),
   z.strictObject({ kind: z.literal('club-welcome'), ...base, planName: line, totalCents: cents }),
   z.strictObject({ kind: z.literal('club-renewed'), ...base, edition: line, totalCents: cents }),
   z.strictObject({ kind: z.literal('payment-failed'), ...base, reference: line }),
@@ -123,6 +133,7 @@ export const emailLabels: Record<EmailKind, string> = {
   'production-started': 'Produção iniciada',
   'shipment-posted': 'Pedido enviado',
   'order-delivered': 'Pedido entregue',
+  'review-request': 'Como ficou sua peça?',
   'club-welcome': 'Boas-vindas ao clube',
   'club-renewed': 'Renovação do clube',
   'payment-failed': 'Pagamento não aprovado',
@@ -250,6 +261,16 @@ function content(message: EmailMessage): Content {
         ],
         note: 'Se algo não chegou como você esperava, responda este e-mail ou fale com nosso atendimento.',
       };
+    case 'review-request':
+      return {
+        title: 'Como ficou sua peça?',
+        intro: `O pedido ${message.orderNumber} já chegou há alguns dias. Sua opinião ajuda outras famílias a escolher e nos mostra como cuidar melhor de cada peça.`,
+        cta: 'Avaliar minhas peças',
+        letter: message.items
+          .map((item) => (item.variant ? `${item.name} · ${item.variant}` : item.name))
+          .join('\n'),
+        note: 'Leva menos de um minuto. Se algo não saiu como esperado, responda este e-mail para falarmos com você.',
+      };
     case 'club-welcome':
       return {
         title: 'Bem-vindo ao nosso encontro mensal.',
@@ -349,7 +370,9 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
     message.actionUrl,
     ...(message.kind === 'daily-prayer'
       ? [message.unsubscribeUrl, message.oneClickUnsubscribeUrl]
-      : []),
+      : message.kind === 'review-request'
+        ? [message.optOutUrl]
+        : []),
   ];
   if (localLinks.some((value) => new URL(value).origin !== origin))
     throw new Error('Links de ação devem pertencer ao domínio público da loja.');
@@ -372,7 +395,9 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
   const unsubscribe =
     message.kind === 'daily-prayer'
       ? `<p style="margin:16px 0 0">Você recebe esta oração porque confirmou sua inscrição.<br><a href="${escape(message.unsubscribeUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Deixar de receber a oração diária</a></p>`
-      : '';
+      : message.kind === 'review-request'
+        ? `<p style="margin:16px 0 0">Não quer mais receber pedidos de avaliação?<br><a href="${escape(message.optOutUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Descadastre-se</a></p>`
+        : '';
   const tracking =
     message.kind === 'shipment-posted'
       ? `<p style="margin:20px 0"><a href="${escape(message.trackingUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Consultar no site da transportadora</a></p>`
@@ -399,7 +424,9 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
     `${new URL(context.webUrl).host} · Loja: ${origin}/produtos · Minha conta: ${origin}/conta`,
     message.kind === 'daily-prayer'
       ? `Você recebe esta oração porque confirmou sua inscrição.\nDeixar de receber: ${message.unsubscribeUrl}`
-      : undefined,
+      : message.kind === 'review-request'
+        ? `Não quer mais receber pedidos de avaliação? Descadastre-se: ${message.optOutUrl}`
+        : undefined,
   ]
     .filter(Boolean)
     .join('\n\n');

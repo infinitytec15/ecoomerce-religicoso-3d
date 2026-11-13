@@ -32,6 +32,12 @@ const copy = {
     button: 'Deixar de receber',
     success: 'Seu descadastro da oração diária foi confirmado.',
   },
+  reviewOptOut: {
+    title: 'Seu recebimento, sua escolha.',
+    intro: 'Confirme para deixar de receber pedidos de avaliação das suas compras.',
+    button: 'Deixar de receber',
+    success: 'Pronto: você não receberá mais pedidos de avaliação.',
+  },
   guest: {
     title: 'Seu pedido, com segurança.',
     intro: 'Confirme para abrir este pedido neste navegador.',
@@ -72,14 +78,18 @@ export function TokenAction({
                     ? staff
                       ? '/admin/login'
                       : '/login'
-                    : '/cantinho-da-fe'
+                    : mode === 'reviewOptOut'
+                      ? '/produtos'
+                      : '/cantinho-da-fe'
               }
             >
               {orderId
                 ? 'Ver meu pedido'
                 : mode === 'reset' || mode === 'verify'
                   ? 'Entrar na minha conta'
-                  : 'Visitar o Cantinho da Fé'}
+                  : mode === 'reviewOptOut'
+                    ? 'Voltar à loja'
+                    : 'Visitar o Cantinho da Fé'}
             </Link>
           </>
         ) : !valid ? (
@@ -113,7 +123,9 @@ export function TokenAction({
                           : 'auth/verify'
                         : mode === 'prayer'
                           ? 'newsletter/confirm'
-                          : 'newsletter/unsubscribe';
+                          : mode === 'reviewOptOut'
+                            ? 'reviews/opt-out'
+                            : 'newsletter/unsubscribe';
                   await api.request(path, z.unknown(), {
                     method: 'POST',
                     body: { token, ...(mode === 'reset' ? { password } : {}) },

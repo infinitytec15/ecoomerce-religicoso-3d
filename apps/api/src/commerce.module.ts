@@ -304,6 +304,9 @@ class ReviewsController {
   ) {
     return result(await this.media.customerComplete(req.actor, id));
   }
+  @Post('reviews/opt-out') @HttpCode(204) async optOut(@Body() body: unknown) {
+    await this.service.optOut(body);
+  }
   @Post('reviews') @HttpCode(201) async create(@Req() req: ApiRequest, @Body() body: unknown) {
     return result(await this.service.create(req.actor, body));
   }

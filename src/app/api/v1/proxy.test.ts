@@ -192,6 +192,16 @@ describe('same-origin backend proxy', () => {
     );
     expect(post.status).toBe(200);
     expect(fetcher.mock.calls[1][0]).toBe('https://api.example.com/api/v1/reviews');
+    const optOut = await POST(
+      new NextRequest('http://localhost/api/v1/reviews/opt-out', {
+        method: 'POST',
+        headers: { origin: 'http://localhost', 'Content-Type': 'application/json' },
+        body: '{"token":"x"}',
+      }),
+      context('reviews/opt-out'),
+    );
+    expect(optOut.status).toBe(200);
+    expect(fetcher.mock.calls[2][0]).toBe('https://api.example.com/api/v1/reviews/opt-out');
     const blocked = await GET(
       new NextRequest('http://localhost/api/v1/catalog/products/prod-1/reviews/extra'),
       context('catalog/products/prod-1/reviews/extra'),

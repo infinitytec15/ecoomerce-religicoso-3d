@@ -829,6 +829,75 @@ try {
       settings: { ...ops.workspace, reviews: undefined },
     });
   });
+  await check('pedido de avaliação após a entrega, uma vez e com descadastro', async () => {
+    const days = (n) => new Date(Date.now() - n * 86400000),
+      backdate = (id, n) => ctx.db.order.update({ where: { id }, data: { deliveredAt: days(n) } }),
+      keyCount = (id) =>
+        ctx.db.outboxEvent
+          .findMany({ where: { aggregateId: id, kind: 'email' } })
+          .then(
+            (rows) =>
+              rows.filter((r) => unseal(r.payloadEncrypted, ctx.config).kind === 'review-request')
+                .length,
+          ),
+      requestedAt = async (id) =>
+        (await ctx.db.order.findUniqueOrThrow({ where: { id } })).reviewRequestedAt;
+    const eligible = await deliverNewOrder(),
+      optOutOrder = await deliverNewOrder(other, second.email),
+      recent = await deliverNewOrder();
+    await backdate(eligible, 8);
+    await backdate(optOutOrder, 8);
+    await backdate(recent, 3);
+    await engine.tick();
+    const sent = await mail(eligible, 'review-request');
+    assert.equal(sent.envelope.subject, 'Como ficou sua peça? · Mãos em Oração');
+    assert.match(sent.envelope.html, /\/avaliacoes\/descadastro\?token=/);
+    assert.ok(await requestedAt(eligible));
+    assert.equal(await keyCount(recent), 0);
+    assert.equal(await requestedAt(recent), null);
+    await engine.tick();
+    assert.equal(await keyCount(eligible), 1);
+
+    // The recipient opts out with the signed token from the e-mail.
+    const opted = await mail(optOutOrder, 'review-request'),
+      link = /avaliacoes\/descadastro\?token=([^"&\s]+)/.exec(opted.envelope.html);
+    assert.ok(link);
+    const token = decodeURIComponent(link[1]);
+    assert.equal(
+      (await new Client().call('reviews/opt-out', 'POST', { token: 'x'.repeat(30) })).status,
+      422,
+    );
+    assert.equal((await new Client().call('reviews/opt-out', 'POST', { token })).status, 204);
+    assert.equal(
+      (await ctx.db.customer.findFirstOrThrow({ where: { email: second.email } }))
+        .reviewRequestsOptOut,
+      true,
+    );
+    const afterOptOut = await deliverNewOrder(other, second.email);
+    await backdate(afterOptOut, 8);
+    await engine.tick();
+    assert.equal(await keyCount(afterOptOut), 0);
+    assert.equal(await requestedAt(afterOptOut), null);
+
+    // With requests disabled nothing is sent and the order stays eligible for later.
+    ops = await owner.data('admin/operations');
+    await owner.command({
+      type: 'workspace.save',
+      settings: {
+        ...ops.workspace,
+        reviews: { requestEnabled: false, requestDelayDays: 7, autoPublishMinRating: null },
+      },
+    });
+    const whileDisabled = await deliverNewOrder();
+    await backdate(whileDisabled, 8);
+    await engine.tick();
+    assert.equal(await keyCount(whileDisabled), 0);
+    assert.equal(await requestedAt(whileDisabled), null);
+    await owner.command({
+      type: 'workspace.save',
+      settings: { ...ops.workspace, reviews: undefined },
+    });
+  });
   await check('fotos da avaliação: só imagem do próprio cliente', async () => {
     const png = await sharp({
         create: { width: 8, height: 8, channels: 3, background: '#3e4934' },

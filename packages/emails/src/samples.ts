@@ -60,6 +60,14 @@ export const sampleEmails: EmailMessage[] = [
     trackingCode: 'BR-EXEMPLO-1042',
   },
   {
+    kind: 'review-request',
+    ...base,
+    actionUrl: 'https://loja.example/conta/pedidos/amostra',
+    orderNumber: order.orderNumber,
+    items: [{ name: 'Escultura Sagrada Família', variant: 'Areia' }],
+    optOutUrl: 'https://loja.example/avaliacoes/descadastro?token=amostra',
+  },
+  {
     kind: 'club-welcome',
     ...base,
     planName: 'Cesta com Jesus · plano de exemplo',

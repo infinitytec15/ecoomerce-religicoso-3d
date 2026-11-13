@@ -68,6 +68,27 @@ describe('templates de e-mail', () => {
     expect(renderEmail(sample, sampleContext).headers).toEqual({});
     expect(() => renderEmail({ ...prayer, unsubscribeUrl: '' }, sampleContext)).toThrow();
   });
+  it('pedido de avaliação traz o descadastro humano e sem cabeçalho one-click', () => {
+    const review = sampleEmails.find((m) => m.kind === 'review-request')!;
+    const rendered = renderEmail(review, sampleContext);
+    expect(rendered.subject).toBe('Como ficou sua peça? · Mãos em Oração');
+    expect(rendered.category).toBe('transactional');
+    expect(rendered.headers).toEqual({});
+    expect(rendered.html).toContain('Avaliar minhas peças');
+    expect(rendered.html).toContain('Não quer mais receber pedidos de avaliação?');
+    expect(rendered.html).toContain(
+      'href="https://loja.example/avaliacoes/descadastro?token=amostra"',
+    );
+    expect(rendered.text).toContain(
+      'Descadastre-se: https://loja.example/avaliacoes/descadastro?token=amostra',
+    );
+    expect(() =>
+      renderEmail(
+        { ...review, optOutUrl: 'https://phishing.example/avaliacoes/descadastro' },
+        sampleContext,
+      ),
+    ).toThrow();
+  });
   it('não permite nota interna em resposta de atendimento', () => {
     const support = sampleEmails.find((m) => m.kind === 'support-reply')!;
     expect(() =>

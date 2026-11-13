@@ -7,6 +7,7 @@ import { ProviderError } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
 import { settings } from './context';
 import { brasiliaDay, prayerForDay } from './daily-prayers';
+import { defaultReviewSettings } from '@maos-em-oracao/contracts';
 import { Notifications, type EmailEnvelope } from './notifications';
 import { PaymentsService } from './payments';
 import { SubscriptionsService } from './subscriptions';
@@ -665,6 +666,64 @@ export class WorkerEngine {
       return c.id;
     });
   }
+  /**
+   * Asks delivered-order customers how the pieces turned out, once per order, after the
+   * configured delay. Orders delivered more than 60 days ago are never requested, customers
+   * who opted out are skipped, and orders whose items were all reviewed already get no e-mail.
+   */
+  async scheduleReviewRequests(now = new Date()) {
+    const config = (await settings(this.ctx.db)).workspace.reviews ?? defaultReviewSettings;
+    if (config.requestEnabled === false) return 0;
+    const mail = new Notifications(this.ctx),
+      day = 86400000,
+      orders = await this.ctx.db.order.findMany({
+        where: {
+          status: 'Entregue',
+          reviewRequestedAt: null,
+          deliveredAt: {
+            lte: new Date(now.getTime() - config.requestDelayDays * day),
+            gte: new Date(now.getTime() - 60 * day),
+          },
+          customer: { reviewRequestsOptOut: false },
+        },
+        orderBy: { deliveredAt: 'asc' },
+        select: { id: true },
+        take: 50,
+      });
+    let sent = 0;
+    for (const { id } of orders)
+      try {
+        sent += await transaction(this.ctx.db, async (tx) => {
+          const claimed = await tx.order.updateMany({
+            where: { id, reviewRequestedAt: null },
+            data: { reviewRequestedAt: now },
+          });
+          if (!claimed.count) return 0;
+          const order = await tx.order.findUniqueOrThrow({
+            where: { id },
+            include: { customer: true, items: { include: { review: { select: { id: true } } } } },
+          });
+          const pending = order.items.filter((item) => !item.review);
+          if (!pending.length) return 0;
+          await mail.email(tx, 'review-request/' + id, id, order.customer.email, {
+            kind: 'review-request',
+            name: order.customer.name,
+            orderNumber: 'MEO-' + String(order.number).padStart(6, '0'),
+            items: pending.map((item) => {
+              const d = data<{ name?: string; size?: string; color?: string }>(item.data);
+              return {
+                name: d.name || 'Peça',
+                variant: [d.size, d.color].filter(Boolean).join(' · '),
+              };
+            }),
+            actionUrl: await mail.orderUrl(tx, id),
+            optOutUrl: mail.reviewOptOutUrl(order.customerId),
+          });
+          return 1;
+        });
+      } catch {}
+    return sent;
+  }
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
@@ -672,6 +731,7 @@ export class WorkerEngine {
       const now = new Date(),
         mail = new Notifications(this.ctx);
       await this.scheduleDailyPrayer(now).catch(() => null);
+      await this.scheduleReviewRequests(now).catch(() => 0);
       const campaigns = await this.ctx.db.campaign.findMany({
         where: { state: 'Agendada', scheduledAt: { lte: now } },
         take: 20,
