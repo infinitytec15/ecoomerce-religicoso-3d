@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { httpsUrlSchema } from '@maos-em-oracao/contracts';
+import { adminReviewSchema, httpsUrlSchema, myReviewSchema } from '@maos-em-oracao/contracts';
 import {
   workspaceSchema,
   invitationSchema,
@@ -176,6 +176,7 @@ export const accountSchema = z.object({
   subscriptions: z.array(subscriptionResponseSchema),
   charges: z.array(chargeSchema),
   tickets: z.array(ticketSchema),
+  reviews: z.array(myReviewSchema),
 });
 export const operationsSchema = z.object({
   version: z.literal(2),
@@ -191,6 +192,7 @@ export const operationsSchema = z.object({
   editions: z.array(editionSchema),
   coupons: z.array(couponSchema),
   stockMovements: z.array(stockMovementSchema),
+  reviews: z.array(adminReviewSchema),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),

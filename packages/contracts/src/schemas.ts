@@ -108,6 +108,9 @@ export const productSchema = z.object({
   seoTitle: z.string().max(70).optional(),
   seoDescription: z.string().max(170).optional(),
   archived: z.boolean().optional(),
+  rating: z
+    .object({ average: z.number().min(0).max(5), count: z.number().int().positive() })
+    .optional(),
 });
 const costPart = z.number().int().nonnegative().max(10_000_000);
 /** Private production cost of one piece; costCents is always their sum. */

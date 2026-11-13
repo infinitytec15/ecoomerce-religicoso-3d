@@ -41,6 +41,7 @@ export class BrowserDemoStorage implements DemoStorage {
             editions: state.editions || createSeed().editions,
             coupons: state.coupons || [],
             stockMovements: state.stockMovements || [],
+            reviews: state.reviews || [],
           };
       }
       const previous = localStorage.getItem('amago-operations-v1');

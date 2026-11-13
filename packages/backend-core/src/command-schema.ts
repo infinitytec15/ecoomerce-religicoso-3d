@@ -144,6 +144,12 @@ export const commandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('prayer.moderate'), id }),
   z.object({
+    type: z.literal('review.moderate'),
+    id,
+    status: z.enum(['Publicado', 'Em análise', 'Oculto']),
+    reply: z.string().max(1000),
+  }),
+  z.object({
     type: z.literal('prayer.review'),
     id,
     status: z.enum(['Publicado', 'Em análise', 'Oculto']),

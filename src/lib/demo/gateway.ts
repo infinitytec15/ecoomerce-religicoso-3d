@@ -138,6 +138,7 @@ export class DemoGateway implements CommerceGateway {
       tickets: state.tickets
         .filter((t) => t.customerId === session.id)
         .map((t) => ({ ...t, messages: t.messages.filter((m) => !m.internal) })),
+      reviews: [],
     };
   }
   async updateProfile(input: { name: string; email: string; address?: Address }) {

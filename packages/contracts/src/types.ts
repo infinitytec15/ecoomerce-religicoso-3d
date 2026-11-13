@@ -9,6 +9,7 @@ import type {
   TeamInvitation,
   WorkspaceSettings,
 } from './admin-types';
+import type { AdminReview, MyReview, ReviewStatus } from './reviews';
 export type {
   MediaAsset,
   AssetKind,
@@ -99,6 +100,8 @@ export interface Product {
   seoTitle?: string;
   seoDescription?: string;
   archived?: boolean;
+  /** Published-review summary; absent when there are no reviews. */
+  rating?: { average: number; count: number };
 }
 /** Private production cost of one piece, in cents. costCents is their sum. */
 export interface CostBreakdown {
@@ -144,6 +147,8 @@ export interface CartItem {
   unitCents: number;
   quantity: number;
   dedication: string;
+  /** OrderItem id; only present on items of placed orders. */
+  itemId?: string;
 }
 export interface Order {
   id: string;
@@ -329,6 +334,7 @@ export interface Operations {
   editions: ClubEdition[];
   coupons: Coupon[];
   stockMovements: StockMovement[];
+  reviews: AdminReview[];
 }
 export interface AccountSnapshot {
   customer: Customer;
@@ -336,6 +342,7 @@ export interface AccountSnapshot {
   orders: Order[];
   charges: Charge[];
   tickets: Ticket[];
+  reviews: MyReview[];
 }
 export interface OrderItemInput {
   productId: string;
@@ -425,6 +432,7 @@ export type AdminCommand =
     }
   | { type: 'invite.revoke' | 'invite.resend'; id: string }
   | { type: 'workspace.save'; settings: WorkspaceSettings }
+  | { type: 'review.moderate'; id: string; status: ReviewStatus; reply: string }
   | {
       type: 'prayer.review';
       id: string;

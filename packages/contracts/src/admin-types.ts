@@ -1,5 +1,6 @@
 import type { FaithProfile, Permission, Role } from './types';
 import type { CalculatorSettings } from './print-cost';
+import type { ReviewSettings } from './reviews';
 
 export type AssetKind = 'image' | 'video' | 'model';
 export interface ModelStats {
@@ -133,6 +134,8 @@ export interface WorkspaceSettings {
   ticketReplies: string[];
   /** Cost calculator configuration; callers fall back to defaultCalculatorSettings when absent. */
   costCalculator?: CalculatorSettings;
+  /** Product review requests and moderation; callers fall back to defaultReviewSettings when absent. */
+  reviews?: ReviewSettings;
 }
 export interface IntegrationHealth {
   provider: 'mercado-pago' | 'melhor-envio' | 'bunny-storage' | 'bunny-stream' | 'email';

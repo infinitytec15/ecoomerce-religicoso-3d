@@ -634,6 +634,7 @@ export class OrdersService {
         charges: [chargeDto(o)].filter(Boolean),
         subscriptions: [],
         tickets: [],
+        reviews: [],
       };
     }
     const c = requireValue(
@@ -664,6 +665,7 @@ export class OrdersService {
       charges: orders.map(chargeDto).filter(Boolean),
       subscriptions: subscriptions.map(subscriptionDto),
       tickets: tickets.map((t) => ticketDto(t)),
+      reviews: [],
     };
   }
 }

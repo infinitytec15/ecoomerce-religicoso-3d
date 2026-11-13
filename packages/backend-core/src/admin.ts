@@ -52,6 +52,7 @@ const permissionMap: Record<string, Permission> = {
   coupon: 'catalog',
   ticket: 'support',
   prayer: 'community',
+  review: 'community',
   campaign: 'marketing',
   team: 'team',
   invite: 'team',
@@ -338,6 +339,7 @@ export class AdminService {
         date: instant(m.createdAt),
         actor: names.get(m.actorId) || 'Sistema',
       })),
+      reviews: [],
     };
   }
   async execute(actor: Actor | null, value: unknown) {
@@ -681,6 +683,9 @@ export class AdminService {
         return this.content.staffReply(a, c);
       case 'prayer.review':
         return this.content.moderate(a, c.id, c.status, c.note);
+      case 'review.moderate':
+        // Placeholder: Task 3 implements review moderation.
+        throw new DomainError('NOT_IMPLEMENTED', 'Moderação de avaliações indisponível.', 501);
       case 'prayer.moderate': {
         const p = requireValue(await this.ctx.db.prayer.findUnique({ where: { id: c.id } }));
         return this.content.moderate(

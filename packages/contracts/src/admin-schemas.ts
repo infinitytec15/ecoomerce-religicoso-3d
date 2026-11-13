@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { httpsUrlSchema } from './urls';
 import { calculatorSettingsSchema } from './print-cost';
+import { reviewSettingsSchema } from './reviews';
 const publishedAssetUrl = z.union([
   httpsUrlSchema,
   z.string().regex(/^\/api\/media\/public\/[a-zA-Z0-9_-]+\/(image\.webp|preview\.glb|video)$/),
@@ -140,6 +141,7 @@ export const workspaceSchema = z.object({
   lowStockEmails: z.string(),
   ticketReplies: z.array(z.string().min(3)).max(10),
   costCalculator: calculatorSettingsSchema.optional(),
+  reviews: reviewSettingsSchema.optional(),
 });
 export const stockMovementSchema = z.object({
   id: z.string(),
