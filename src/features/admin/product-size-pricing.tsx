@@ -7,7 +7,7 @@ import {
   unitPriceCents,
 } from '@maos-em-oracao/contracts';
 import type { CostBreakdown, InventoryProduct } from '@/lib/domain/types';
-import { money } from '@/lib/domain/format';
+import { centsFromInput, money } from '@/lib/domain/format';
 import { Modal } from '@/components/ui/modal';
 import { useAdminData } from './admin-frame';
 import { PrintCostForm } from './cost-calculator';
@@ -20,9 +20,10 @@ const sizesFrom = (value: string) =>
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-/** Money typed in pt-BR (comma accepted) to integer cents; empty or invalid input is 0. */
-const toCents = (value: string) => {
-  const n = Math.round(Number(String(value).trim().replace(',', '.')) * 100);
+/** Money typed in pt-BR to integer cents; unparseable input is NaN so callers can reject it. */
+const toCents = (value: string) => centsFromInput(value.trim());
+const safeCents = (value: string) => {
+  const n = toCents(value);
   return Number.isFinite(n) ? n : 0;
 };
 const toInput = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
@@ -30,21 +31,32 @@ const toInput = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
 type Row = { price: string; cost: Record<keyof CostBreakdown, string> };
 const costToInput = (c: CostBreakdown) =>
   Object.fromEntries(costFields.map(([key]) => [key, toInput(c[key])])) as Row['cost'];
-const rowTotal = (r: Row) => costFields.reduce((n, [key]) => n + toCents(r.cost[key]), 0);
+const rowTotal = (r: Row) => costFields.reduce((n, [key]) => n + safeCents(r.cost[key]), 0);
 
-/** Reads price and cost per size from the submitted form; row 0 is the base price and cost. */
-export function readSizePricing(d: FormData, sizes: number) {
+/**
+ * Reads price and cost per size from the submitted form; row 0 is the base price and cost.
+ * Throws a pt-BR message naming the size when a price is not positive or a cost is negative
+ * or unparseable, so bad input is never saved as 0.
+ */
+export function readSizePricing(d: FormData, sizes: number, labels: string[] = []) {
   const count = Math.max(1, sizes);
-  const sizePrices = Array.from({ length: count }, (_, i) =>
-    toCents(String(d.get(priceName(i)) || 0)),
-  );
-  const costBySize = Array.from(
-    { length: count },
-    (_, i) =>
-      Object.fromEntries(
-        costFields.map(([key]) => [key, toCents(String(d.get(costName(i, key)) || 0))]),
-      ) as unknown as CostBreakdown,
-  );
+  const at = (i: number) => labels[i] ?? `tamanho ${i + 1}`;
+  const sizePrices = Array.from({ length: count }, (_, i) => {
+    const cents = toCents(String(d.get(priceName(i)) ?? ''));
+    if (!Number.isFinite(cents) || cents <= 0)
+      throw new Error(`Informe um preço válido para ${at(i)}.`);
+    return cents;
+  });
+  const costBySize = Array.from({ length: count }, (_, i) => {
+    const out = {} as CostBreakdown;
+    for (const [key, label] of costFields) {
+      const cents = toCents(String(d.get(costName(i, key)) ?? ''));
+      if (!Number.isFinite(cents) || cents < 0)
+        throw new Error(`Informe um custo válido em ${label} para ${at(i)}.`);
+      out[key] = cents;
+    }
+    return out;
+  });
   const costBreakdown = costBySize[0];
   return {
     priceCents: sizePrices[0],
@@ -96,6 +108,7 @@ export function ProductSizePricing({ product }: { product?: InventoryProduct }) 
     read();
     form.addEventListener('input', read);
     return () => form.removeEventListener('input', read);
+    // Subscribe once: `base` only seeds the legacy price of rows added later and never changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const patch = (i: number, fn: (r: Row) => Row) =>
@@ -103,7 +116,7 @@ export function ProductSizePricing({ product }: { product?: InventoryProduct }) 
   const feePct = feeRatePct(settings);
   const visible = rows.slice(0, count);
   const figures = visible.map((r) => {
-    const price = toCents(r.price),
+    const price = safeCents(r.price),
       cost = rowTotal(r),
       profit = price - cost - settings.fixedPerOrderCents - Math.round((price * feePct) / 100);
     return { price, cost, profit, margin: price ? Math.round((profit / price) * 1000) / 10 : 0 };

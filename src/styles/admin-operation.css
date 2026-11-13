@@ -1654,40 +1654,6 @@ html[data-input='keyboard'] .admin-main > div > div {
     width: 100%;
   }
 }
-.product-cost label small {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-}
-.product-cost-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px;
-  border-radius: 12px;
-  background: #f3f4ed;
-}
-.product-cost-summary div {
-  display: grid;
-  gap: 4px;
-}
-.product-cost-summary small {
-  color: #65695f;
-  font-size: 12px;
-}
-.product-cost-summary strong {
-  font-size: 18px;
-  color: #2f402b;
-  font-variant-numeric: tabular-nums;
-}
-.product-cost-summary .negative strong {
-  color: #b1372d;
-}
-@media (max-width: 620px) {
-  .product-cost-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 .packaging-table input {
   width: 100%;
   min-width: 72px;

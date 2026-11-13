@@ -106,6 +106,17 @@ export function ProductEditor({
         if (busy) throw new Error('Aguarde o envio do arquivo.');
         if (text(d, 'active') === 'true' && !cover)
           throw new Error('Adicione uma imagem da peça antes de publicar.');
+        const sizeList = text(d, 'sizes')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let pricing: ReturnType<typeof readSizePricing>;
+        try {
+          pricing = readSizePricing(d, sizeList.length, sizeList);
+        } catch (e) {
+          setTab(1);
+          throw e;
+        }
         const category = text(d, 'category') as Collection;
         await action.run({
           type: 'product.save',
@@ -137,13 +148,7 @@ export function ProductEditor({
             archived: text(d, 'active') === 'true' ? false : p?.archived,
             sku: text(d, 'sku'),
             stock: number(d, 'stock'),
-            ...readSizePricing(
-              d,
-              text(d, 'sizes')
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean).length,
-            ),
+            ...pricing,
             media,
             model,
             shipping: readPackaging(
