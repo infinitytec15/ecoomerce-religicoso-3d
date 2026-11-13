@@ -30,7 +30,8 @@ export function ReviewForm({
     [title, setTitle] = useState(''),
     [body, setBody] = useState(''),
     [photos, setPhotos] = useState<Photo[]>([]),
-    attempt = useRef(''),
+    attempt = useRef({ key: '', fingerprint: '' }),
+    refresh = useCommand(async () => {}),
     picker = useRef<HTMLInputElement>(null),
     notify = useNotify(),
     send = useCommand(
@@ -87,17 +88,24 @@ export function ReviewForm({
         if (uploading) throw new Error('Aguarde o envio das fotos terminar.');
         if (photos.some((p) => p.error))
           throw new Error('Remova as fotos com problema antes de enviar.');
-        if (!attempt.current) attempt.current = crypto.randomUUID();
+        const payload = {
+          orderItemId: item.itemId,
+          rating,
+          title: title.trim(),
+          text: body.trim(),
+          photoIds: photos.flatMap((p) => (p.assetId ? [p.assetId] : [])),
+        };
+        // Same key only for a plain retry of the same payload after a network/5xx failure.
+        const fingerprint = JSON.stringify(payload);
+        if (!attempt.current.key || attempt.current.fingerprint !== fingerprint)
+          attempt.current = { key: crypto.randomUUID(), fingerprint };
         try {
-          await send.mutateAsync({
-            key: attempt.current,
-            orderItemId: item.itemId,
-            rating,
-            title: title.trim(),
-            text: body.trim(),
-            photoIds: photos.flatMap((p) => (p.assetId ? [p.assetId] : [])),
-          });
+          await send.mutateAsync({ key: attempt.current.key, ...payload });
         } catch (error) {
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500)
+            attempt.current = { key: '', fingerprint: '' };
+          if (error instanceof ApiError && error.code === 'ALREADY_REVIEWED')
+            await refresh.mutateAsync(undefined).catch(() => undefined);
           const known = error instanceof ApiError ? apiMessages[error.code] : undefined;
           throw known ? new Error(known) : error;
         }
@@ -170,7 +178,7 @@ export function ReviewForm({
             <small>Até {MAX_PHOTOS} fotos, de até 8 MB cada.</small>
             {photos.length > 0 && (
               <ul>
-                {photos.map((p, i) => (
+                {photos.map((p) => (
                   <li key={p.key}>
                     <span>{p.name}</span>
                     <small role={p.error ? 'alert' : undefined}>
@@ -179,7 +187,7 @@ export function ReviewForm({
                     <button
                       type="button"
                       className="text-btn"
-                      aria-label={`Remover foto ${i + 1}`}
+                      aria-label={`Remover foto ${p.name}`}
                       onClick={() => setPhotos((all) => all.filter((x) => x.key !== p.key))}
                     >
                       Remover

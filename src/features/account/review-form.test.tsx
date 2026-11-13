@@ -76,6 +76,99 @@ describe('ReviewForm', () => {
     expect(h.createReview.mock.calls[0][0].photoIds).toEqual(ids);
   });
 
+  async function fill(
+    user: ReturnType<typeof userEvent.setup>,
+    text = 'Ficou lindíssima na sala.',
+  ) {
+    await user.click(screen.getByRole('radio', { name: '5 estrelas' }));
+    await user.type(screen.getByLabelText('Conte como ficou a peça'), text);
+  }
+  const send = (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(screen.getByRole('button', { name: 'Enviar avaliação' }));
+  const jpg = (n: string) => new File(['x'], n, { type: 'image/jpeg' });
+
+  it('reuses the idempotency key on retry after a network error', async () => {
+    h.createReview.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await fill(user);
+    await send(user);
+    await screen.findByRole('alert');
+    await send(user);
+    await waitFor(() => expect(h.createReview).toHaveBeenCalledTimes(2));
+    expect(h.createReview.mock.calls[1][1]).toBe(h.createReview.mock.calls[0][1]);
+  });
+
+  it('rotates the key after a 4xx and an edited resubmit', async () => {
+    h.createReview.mockRejectedValueOnce(new ApiError('INVALID_PHOTO', 'x', 422));
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await fill(user);
+    await send(user);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível usar uma das fotos.',
+    );
+    await user.type(screen.getByLabelText('Conte como ficou a peça'), ' Obrigada!');
+    await send(user);
+    await waitFor(() => expect(h.createReview).toHaveBeenCalledTimes(2));
+    expect(h.createReview.mock.calls[1][1]).not.toBe(h.createReview.mock.calls[0][1]);
+  });
+
+  it('disables submit while an upload is in flight', async () => {
+    let finish!: (v: unknown) => void;
+    vi.mocked(uploadMedia).mockReturnValueOnce(new Promise((r) => (finish = r)) as never);
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await user.upload(screen.getByLabelText('Escolher fotos'), jpg('a.jpg'));
+    expect(await screen.findByText('Enviando 0%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar avaliação' })).toBeDisabled();
+    finish({ id: crypto.randomUUID() });
+    expect(await screen.findByText('Pronta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar avaliação' })).toBeEnabled();
+  });
+
+  it('leaves removed photos out of photoIds', async () => {
+    const keep = crypto.randomUUID();
+    vi.mocked(uploadMedia)
+      .mockResolvedValueOnce({ id: crypto.randomUUID() } as never)
+      .mockResolvedValueOnce({ id: keep } as never);
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await user.upload(screen.getByLabelText('Escolher fotos'), [jpg('a.jpg'), jpg('b.jpg')]);
+    await screen.findAllByText('Pronta');
+    await user.click(screen.getByRole('button', { name: 'Remover foto a.jpg' }));
+    await fill(user);
+    await send(user);
+    await waitFor(() => expect(h.createReview).toHaveBeenCalled());
+    expect(h.createReview.mock.calls[0][0].photoIds).toEqual([keep]);
+  });
+
+  it('removing a photo while it uploads unblocks submit', async () => {
+    vi.mocked(uploadMedia).mockReturnValueOnce(new Promise(() => {}) as never);
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await user.upload(screen.getByLabelText('Escolher fotos'), jpg('a.jpg'));
+    await user.click(await screen.findByRole('button', { name: 'Remover foto a.jpg' }));
+    expect(screen.getByRole('button', { name: 'Enviar avaliação' })).toBeEnabled();
+  });
+
+  it('shows upload errors in an alert and blocks submit until the photo is removed', async () => {
+    vi.mocked(uploadMedia).mockRejectedValueOnce(new Error('Envie uma foto de até 8 MB.'));
+    const user = userEvent.setup();
+    render(<ReviewForm item={ITEM} onDone={() => {}} />);
+    await user.upload(screen.getByLabelText('Escolher fotos'), jpg('a.jpg'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Envie uma foto de até 8 MB.');
+    await fill(user);
+    await send(user);
+    expect(
+      await screen.findByText('Remova as fotos com problema antes de enviar.'),
+    ).toBeInTheDocument();
+    expect(h.createReview).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Remover foto a.jpg' }));
+    await send(user);
+    await waitFor(() => expect(h.createReview).toHaveBeenCalled());
+  });
+
   it('shows the pt-BR message for ALREADY_REVIEWED', async () => {
     h.createReview.mockRejectedValue(new ApiError('ALREADY_REVIEWED', 'x', 409));
     const user = userEvent.setup();
