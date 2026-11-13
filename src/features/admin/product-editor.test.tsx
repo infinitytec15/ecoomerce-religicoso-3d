@@ -4,8 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { ProductEditor } from './product-editor';
 import { ProductGallery, videoReference } from '@/features/catalog/product-media';
 import { createSeed } from '@/lib/demo/seed';
+import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
 const { run } = vi.hoisted(() => ({ run: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./shared', () => ({ useAdminAction: () => ({ run }) }));
+vi.mock('./admin-frame', () => ({
+  useAdminData: () => ({ workspace: { ...defaultWorkspaceSettings } }),
+}));
 describe('product publishing and media controls', () => {
   it('requires an image before publishing and removes the previous cover when saved as a draft', async () => {
     const user = userEvent.setup();
@@ -30,6 +34,42 @@ describe('product publishing and media controls', () => {
         }),
       ),
     );
+  });
+  it('saves price and cost per size, aligned with the sizes list', async () => {
+    run.mockClear();
+    const user = userEvent.setup();
+    render(<ProductEditor product={createSeed().products[0]} onSuccess={() => {}} />);
+    const sizes = screen.getByLabelText('Tamanhos (separados por vírgula)');
+    await user.clear(sizes);
+    await user.type(sizes, '15 cm, 20 cm, 25 cm');
+    await user.click(screen.getByRole('button', { name: 'Preço e custo' }));
+    const price = screen.getByLabelText('Preço — 25 cm');
+    await user.clear(price);
+    await user.type(price, '159,90');
+    const material = screen.getByLabelText('Matéria-prima — 25 cm');
+    await user.clear(material);
+    await user.type(material, '26,00');
+    await user.click(screen.getByRole('button', { name: 'Salvar produto' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    const saved = run.mock.calls[0][0].product;
+    expect(saved.sizePrices[2]).toBe(15990);
+    expect(saved.costBySize[2].materialCents).toBe(2600);
+    expect(saved.priceCents).toBe(saved.sizePrices[0]);
+  });
+  it('drops extra rows when the sizes list shrinks', async () => {
+    run.mockClear();
+    const user = userEvent.setup();
+    render(<ProductEditor product={createSeed().products[0]} onSuccess={() => {}} />);
+    const sizes = screen.getByLabelText('Tamanhos (separados por vírgula)');
+    await user.clear(sizes);
+    await user.type(sizes, '15 cm, 20 cm');
+    await user.click(screen.getByRole('button', { name: 'Preço e custo' }));
+    expect(screen.getAllByLabelText(/^Preço — /)).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Salvar produto' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    const saved = run.mock.calls[0][0].product;
+    expect(saved.sizePrices).toHaveLength(2);
+    expect(saved.costBySize).toHaveLength(2);
   });
   it('shows the 3D action only when the product has an uploaded ready model', () => {
     const p = createSeed().products[0],

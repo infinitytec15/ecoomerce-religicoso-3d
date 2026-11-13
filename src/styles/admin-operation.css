@@ -1755,3 +1755,22 @@ html[data-input='keyboard'] .admin-main > div > div {
   color: #65695f;
   margin: 0;
 }
+.size-pricing-table {
+  min-width: 960px;
+}
+.size-pricing-table input {
+  width: 100%;
+  min-width: 76px;
+}
+.size-pricing-table th[scope='row'] {
+  white-space: nowrap;
+  font-weight: 600;
+}
+.size-pricing-table .num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.size-pricing-table .negative {
+  color: #b1372d;
+  font-weight: 600;
+}

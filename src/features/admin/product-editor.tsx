@@ -4,18 +4,25 @@ import dynamic from 'next/dynamic';
 import type { Collection, InventoryProduct, ProductMedia, ProductModel } from '@/lib/domain/types';
 import { collections } from '@/lib/domain/types';
 import { useAdminAction } from './shared';
-import { ProductCostFields, readCostBreakdown } from './product-cost';
+import { ProductSizePricing, readSizePricing } from './product-size-pricing';
 import { ProductPackagingFields, readPackaging } from './product-packaging';
 import { Form, text, number } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
-import { centsFromInput, uid } from '@/lib/domain/format';
+import { uid } from '@/lib/domain/format';
 import { saveAsset } from '@/lib/media/assets';
 import { IS_DEMO } from '@/lib/api/config';
 import { uploadMedia } from '@/lib/media/upload';
 import { MediaPlayer, videoReference } from '@/features/catalog/product-media';
 const Viewer = dynamic(() => import('@/features/viewer/product-viewer'), { ssr: false });
-const tabs = ['Produto', 'Mídia da vitrine', 'Arquivo 3D', 'Estoque e frete', 'Busca e SEO'];
+const tabs = [
+  'Produto',
+  'Preço e custo',
+  'Mídia da vitrine',
+  'Arquivo 3D',
+  'Estoque e frete',
+  'Busca e SEO',
+];
 export function ProductEditor({
   product: p,
   onSuccess,
@@ -115,7 +122,6 @@ export function ProductEditor({
                 ...(d.has('personalized') ? ['Personalizados' as const] : []),
               ]),
             ],
-            priceCents: centsFromInput(text(d, 'price')),
             image: coverSrc,
             imageIndex: p?.imageIndex || 0,
             badge: text(d, 'badge'),
@@ -131,7 +137,13 @@ export function ProductEditor({
             archived: text(d, 'active') === 'true' ? false : p?.archived,
             sku: text(d, 'sku'),
             stock: number(d, 'stock'),
-            ...readCostBreakdown(d),
+            ...readSizePricing(
+              d,
+              text(d, 'sizes')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean).length,
+            ),
             media,
             model,
             shipping: readPackaging(
@@ -162,17 +174,6 @@ export function ProductEditor({
               <label className="span2">
                 Nome da peça
                 <input name="name" required minLength={3} defaultValue={p?.name} />
-              </label>
-              <label>
-                Preço (R$)
-                <input
-                  name="price"
-                  type="number"
-                  min="0.01"
-                  step=".01"
-                  required
-                  defaultValue={(p?.priceCents || 8990) / 100}
-                />
               </label>
               <label>
                 SKU
@@ -234,6 +235,9 @@ export function ProductEditor({
             </label>
           </div>
           <div data-editor-tab={1} hidden={tab !== 1} className="stack">
+            <ProductSizePricing product={p} />
+          </div>
+          <div data-editor-tab={2} hidden={tab !== 2} className="stack">
             <div className="section-intro">
               <h3>Uma boa peça merece ser vista de perto.</h3>
               <p>
@@ -345,7 +349,7 @@ export function ProductEditor({
               ))}
             </div>
           </div>
-          <div data-editor-tab={2} hidden={tab !== 2} className="stack">
+          <div data-editor-tab={3} hidden={tab !== 3} className="stack">
             <div className="section-intro">
               <h3>O seu arquivo, em três dimensões.</h3>
               <p>
@@ -399,7 +403,7 @@ export function ProductEditor({
               </p>
             )}
           </div>
-          <div data-editor-tab={3} hidden={tab !== 3} className="stack">
+          <div data-editor-tab={4} hidden={tab !== 4} className="stack">
             <h3>Estoque</h3>
             <div className="form-grid">
               <label>
@@ -414,10 +418,9 @@ export function ProductEditor({
                 />
               </label>
             </div>
-            <ProductCostFields product={p} />
             <ProductPackagingFields product={p} />
           </div>
-          <div data-editor-tab={4} hidden={tab !== 4} className="stack">
+          <div data-editor-tab={5} hidden={tab !== 5} className="stack">
             <label>
               Título para busca
               <input name="seoTitle" maxLength={70} defaultValue={p?.seoTitle} />
