@@ -1696,3 +1696,62 @@ html[data-input='keyboard'] .admin-main > div > div {
   white-space: nowrap;
   font-weight: 600;
 }
+.calc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .calc-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.calc-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.calc-parts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.calc-parts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.calc-parts dt {
+  color: #65695f;
+}
+.calc-parts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.calc-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.calc-totals > div {
+  display: grid;
+  gap: 4px;
+  background: #f3f6ec;
+  border-radius: 10px;
+  padding: 14px;
+}
+.calc-totals span {
+  font-size: 11px;
+  color: #65695f;
+}
+.calc-totals strong {
+  font-size: 20px;
+  letter-spacing: -0.5px;
+}
+.calc-hint {
+  font-size: 13px;
+  color: #65695f;
+  margin: 0;
+}

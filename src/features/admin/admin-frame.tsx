@@ -20,6 +20,7 @@ export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['producao', 'Produção', 'box', 'production'],
   ['expedicao', 'Expedição', 'truck', 'shipping'],
   ['produtos', 'Produtos e estoque', 'box', 'catalog'],
+  ['calculadora', 'Calculadora de custos', 'split', 'catalog'],
   ['edicoes', 'Edições do clube', 'gift', 'subscriptions'],
   ['clientes', 'Clientes', 'user', 'customers'],
   ['financeiro', 'Financeiro', 'card', 'finance'],

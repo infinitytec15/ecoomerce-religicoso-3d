@@ -4,8 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { defaultCalculatorSettings } from '@maos-em-oracao/contracts';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
 import { CalculatorSettingsEditor } from './cost-calculator-settings';
+import { AdminCostCalculator, PrintCostForm } from './cost-calculator';
 const { run } = vi.hoisted(() => ({ run: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('./shared', () => ({ useAdminAction: () => ({ run }) }));
+vi.mock('./shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./shared')>()),
+  useAdminAction: () => ({ run }),
+}));
 vi.mock('./admin-frame', () => ({
   useAdminData: () => ({ workspace: { ...defaultWorkspaceSettings } }),
 }));
@@ -57,5 +61,65 @@ describe('calculator settings editor', () => {
     render(<CalculatorSettingsEditor value={defaultCalculatorSettings} />);
     await user.click(screen.getByRole('button', { name: 'Salvar configuração' }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+});
+
+describe('print cost form', () => {
+  it('computes cost, suggested price and monthly projection live', async () => {
+    const user = userEvent.setup();
+    render(<PrintCostForm settings={defaultCalculatorSettings} />);
+    const fill = async (label: string, value: string) => {
+      const input = screen.getByLabelText(label);
+      await user.clear(input);
+      await user.type(input, value);
+    };
+    await fill('Filamento (g)', '120');
+    await fill('Tempo de impressão (h)', '6');
+    await fill('Peças por mesa', '1');
+    await fill('Mão de obra (min)', '20');
+    await user.selectOptions(screen.getByLabelText('Embalagem'), 'Padrão');
+    expect(screen.getByTestId('total-cost')).toHaveTextContent('R$ 42,29');
+    expect(screen.getByTestId('suggested-price')).toHaveTextContent('R$ 68,87');
+    await fill('Preço praticado (R$)', '69,90');
+    await fill('Vendas por mês', '50');
+    expect(screen.getByTestId('monthly-profit')).toHaveTextContent('R$ 580,50');
+    expect(screen.getByTestId('break-even')).toHaveTextContent('24 vendas');
+  });
+
+  it('warns when margin and fees reach 100%', () => {
+    render(<PrintCostForm settings={{ ...defaultCalculatorSettings, targetMarginPct: 95 }} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Margem e taxas somam 100% ou mais');
+  });
+
+  it('switches amount label and offers apply only with onApply', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const { rerender } = render(<PrintCostForm settings={defaultCalculatorSettings} />);
+    expect(screen.queryByRole('button', { name: 'Usar este custo' })).not.toBeInTheDocument();
+    rerender(<PrintCostForm settings={defaultCalculatorSettings} onApply={onApply} />);
+    await user.selectOptions(screen.getByLabelText('Tecnologia'), 'resin');
+    expect(screen.getByLabelText('Resina (ml)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Usar este custo' }));
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply.mock.calls[0][0].totalCents).toBeGreaterThan(0);
+  });
+
+  it('shows a hint instead of crashing when no material exists for the technology', async () => {
+    const user = userEvent.setup();
+    const settings = { ...defaultCalculatorSettings, materials: defaultCalculatorSettings.materials.filter((m) => m.technology === 'fdm') };
+    render(<PrintCostForm settings={settings} />);
+    await user.selectOptions(screen.getByLabelText('Tecnologia'), 'resin');
+    expect(screen.getByText(/Cadastre um material e uma impressora/)).toBeInTheDocument();
+  });
+});
+
+describe('admin cost calculator page', () => {
+  it('falls back to the default settings when the workspace has none', async () => {
+    const user = userEvent.setup();
+    render(<AdminCostCalculator />);
+    expect(screen.getByRole('heading', { name: 'Calculadora de custos' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'PLA' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Configuração' }));
+    expect(screen.getAllByLabelText('Nome do material')[0]).toHaveValue('PLA');
   });
 });
