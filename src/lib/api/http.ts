@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  myReviewSchema,
+  productReviewsSchema,
+  reviewInputSchema,
+  type ReviewInput,
+} from '@maos-em-oracao/contracts';
 import { invitationSchema } from '@/lib/domain/admin-schemas';
 import { ApiError, type CommerceGateway } from './contracts';
 import {
@@ -104,6 +110,22 @@ export class HttpGateway implements CommerceGateway {
       'catalog/products/' + encodeURIComponent(id),
       productSchema.nullable(),
     );
+  }
+  productReviews(productId: string, rating?: number) {
+    return this.client.request(
+      'catalog/products/' +
+        encodeURIComponent(productId) +
+        '/reviews' +
+        (rating ? '?rating=' + rating : ''),
+      productReviewsSchema,
+    );
+  }
+  createReview(input: ReviewInput, idempotencyKey: string) {
+    return this.client.request('reviews', myReviewSchema, {
+      method: 'POST',
+      body: reviewInputSchema.parse(input),
+      idempotencyKey,
+    });
   }
   settings() {
     return this.client.request('store/settings', publicSettingsSchema);

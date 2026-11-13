@@ -173,6 +173,16 @@ export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Sessi
       p.moderationNote = c.note;
       return true;
     }
+    case 'review.moderate': {
+      const r = requireValue(s.reviews.find((r) => r.id === c.id));
+      const reply = c.reply.trim();
+      r.status = c.status;
+      if (reply !== (r.reply ?? '')) {
+        r.reply = reply || null;
+        r.repliedAt = reply ? new Date().toISOString() : null;
+      }
+      return true;
+    }
     case 'campaign.save': {
       if (c.campaign.subject.trim().length < 5 || c.campaign.message.trim().length < 10)
         throw new ApiError('INVALID_CAMPAIGN', 'Complete o assunto e a oração.');

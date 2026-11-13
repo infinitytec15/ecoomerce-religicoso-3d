@@ -148,3 +148,38 @@ describe('HTTP boundary', () => {
     await expect(g.payment('1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 });
+
+describe('HTTP reviews', () => {
+  const summary = { average: 4.7, count: 3, histogram: [0, 0, 0, 1, 2] };
+  it('lists product reviews with the rating filter and validates the schema', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({ data: { summary, reviews: [] } }));
+    const result = await new HttpGateway(new HttpClient('/api/v1', fetcher)).productReviews('x', 5);
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/catalog/products/x/reviews?rating=5');
+    expect(result.summary.count).toBe(3);
+    const bad = vi.fn<typeof fetch>().mockResolvedValue(response({ data: { summary: 1 } }));
+    await expect(
+      new HttpGateway(new HttpClient('/api/v1', bad)).productReviews('x'),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(bad.mock.calls[0][0]).toBe('/api/v1/catalog/products/x/reviews');
+  });
+  it('posts a review with an idempotency key', async () => {
+    const item = crypto.randomUUID();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response({ data: { orderItemId: item, rating: 5, status: 'Em análise' } }, 201),
+      );
+    const mine = await new HttpGateway(new HttpClient('/api/v1', fetcher)).createReview(
+      { orderItemId: item, rating: 5, title: '', text: 'Ficou linda na sala.', photoIds: [] },
+      'key-1',
+    );
+    expect(mine.status).toBe('Em análise');
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/reviews');
+    const init = fetcher.mock.calls[0][1];
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('key-1');
+    expect(JSON.parse(String(init?.body)).orderItemId).toBe(item);
+  });
+});

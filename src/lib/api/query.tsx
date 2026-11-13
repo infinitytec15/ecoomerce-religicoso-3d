@@ -57,6 +57,7 @@ export const queryKeys = {
   community: ['community'] as const,
   account: (id?: string) => ['account', id] as const,
   admin: (id?: string) => ['admin', id] as const,
+  reviews: (productId: string, rating?: number) => ['reviews', productId, rating ?? 'all'] as const,
 };
 export function useCatalog(initial?: Product[]) {
   const gateway = useGateway();
@@ -92,6 +93,13 @@ export function useAccount(poll = false) {
     refetchInterval: poll ? 5000 : false,
     queryFn: () => gateway.account(),
     enabled: session.data?.role === 'customer',
+  });
+}
+export function useProductReviews(productId: string, rating?: number) {
+  const gateway = useGateway();
+  return useQuery({
+    queryKey: queryKeys.reviews(productId, rating),
+    queryFn: () => gateway.productReviews(productId, rating),
   });
 }
 export function useOperations() {

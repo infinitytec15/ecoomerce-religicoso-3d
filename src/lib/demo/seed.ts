@@ -1,6 +1,7 @@
 import { productSchema } from '@/lib/domain/schemas';
 import source from '@/data/legacy-seed.json';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
+import type { AdminReview } from '@maos-em-oracao/contracts';
 import type {
   Charge,
   Collection,
@@ -126,6 +127,111 @@ export function createSeed(legacy = source.operations): Operations {
     cardCents: c.method === 'card' ? cents(c.amount) : 0,
     installments: 1,
   }));
+  // Demo customer ("Explorar com uma conta de teste") with a delivered order, so reviews can be tried.
+  const demoClient: Customer = {
+    ...clients[0],
+    id: 'CLI-DEMO',
+    name: 'Ana Ferreira',
+    email: 'ana@exemplo.com',
+    notes: '',
+  };
+  const demoProduct = products[0],
+    demoSize = demoProduct.sizes[Math.min(1, demoProduct.sizes.length - 1)],
+    demoColor = demoProduct.colors[0],
+    deliveredTemplate = orders.find((o) => o.status === 'Entregue') || orders[0],
+    chargeTemplate = charges.find((c) => c.id === deliveredTemplate.chargeId) || charges[0];
+  const demoUnit = demoProduct.priceCents;
+  clients.push(demoClient);
+  orders.push({
+    ...deliveredTemplate,
+    id: 'PED-4100',
+    number: 'PED-4100',
+    customerId: demoClient.id,
+    subscriptionId: undefined,
+    type: 'Loja',
+    edition: undefined,
+    items: [
+      {
+        key: [demoProduct.id, demoColor, demoSize].join('|'),
+        productId: demoProduct.id,
+        name: demoProduct.name,
+        image: demoProduct.image,
+        imageIndex: demoProduct.imageIndex,
+        color: demoColor,
+        size: demoSize,
+        sizeIndex: Math.max(0, demoProduct.sizes.indexOf(demoSize)),
+        unitCents: demoUnit,
+        quantity: 1,
+        dedication: '',
+      },
+    ],
+    subtotalCents: demoUnit,
+    discountCents: 0,
+    totalCents: demoUnit + deliveredTemplate.shippingCents,
+    status: 'Entregue',
+    created: '2026-10-20',
+    due: '2026-10-22',
+    address: { ...demoClient },
+    chargeId: 'COB-4100',
+    tracking: deliveredTemplate.tracking,
+  });
+  charges.push({
+    ...chargeTemplate,
+    id: 'COB-4100',
+    customerId: demoClient.id,
+    orderId: 'PED-4100',
+    subscriptionId: undefined,
+    amountCents: demoUnit + deliveredTemplate.shippingCents,
+    status: 'Pago',
+    paidAt: '2026-10-20',
+  });
+  const variant = (size: string) => `${size} · ${demoColor}`;
+  const seedReview = (
+    n: number,
+    r: Pick<AdminReview, 'rating' | 'title' | 'text' | 'author' | 'createdAt' | 'variant'> &
+      Partial<Pick<AdminReview, 'reply' | 'repliedAt'>>,
+  ): AdminReview => ({
+    photos: [],
+    reply: null,
+    repliedAt: null,
+    ...r,
+    id: `AV-DEMO-${n}`,
+    status: 'Publicado',
+    productId: demoProduct.id,
+    productName: demoProduct.name,
+    orderId: `PED-39${n}0`,
+    orderNumber: `PED-39${n}0`,
+    customerName: r.author,
+    customerEmail: `cliente${n}@exemplo.com`,
+  });
+  const reviews: AdminReview[] = [
+    seedReview(1, {
+      rating: 5,
+      title: 'Perfeita para o altar da sala',
+      text: 'Chegou muito bem embalada e o acabamento é lindo. Combinou com o cantinho de oração da nossa casa.',
+      author: 'Ana P.',
+      createdAt: '2026-11-02T14:20:00.000Z',
+      variant: variant(demoProduct.sizes[1] || demoSize),
+      reply: 'Que alegria saber que ela encontrou o lugar certo na sua casa. Obrigada, Ana!',
+      repliedAt: '2026-11-03T10:05:00.000Z',
+    }),
+    seedReview(2, {
+      rating: 5,
+      title: 'Presente que emocionou',
+      text: 'Dei de presente para minha mãe e ela ficou emocionada. Peça delicada e muito bem feita.',
+      author: 'Marcos T.',
+      createdAt: '2026-10-27T18:40:00.000Z',
+      variant: variant(demoProduct.sizes[0]),
+    }),
+    seedReview(3, {
+      rating: 4,
+      title: '',
+      text: 'Muito bonita e firme. A cor é um pouco mais clara do que nas fotos, mas gostamos do resultado.',
+      author: 'Lúcia R.',
+      createdAt: '2026-10-19T09:15:00.000Z',
+      variant: variant(demoProduct.sizes[0]),
+    }),
+  ];
   return {
     version: 2,
     workspace: { ...defaultWorkspaceSettings },
@@ -144,7 +250,7 @@ export function createSeed(legacy = source.operations): Operations {
     ],
     coupons: [],
     stockMovements: [],
-    reviews: [],
+    reviews,
     products,
     clients,
     orders,

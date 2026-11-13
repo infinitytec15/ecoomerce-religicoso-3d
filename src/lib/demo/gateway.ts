@@ -1,3 +1,12 @@
+import {
+  defaultReviewSettings,
+  initialReviewStatus,
+  publicReviewSchema,
+  reviewAuthorName,
+  summarizeRatings,
+  type AdminReview,
+  type ReviewInput,
+} from '@maos-em-oracao/contracts';
 import type { CommerceGateway } from '@/lib/api/contracts';
 import { ApiError, requireValue } from '@/lib/api/contracts';
 import type {
@@ -38,6 +47,22 @@ import { addMonth, monthLabel, today, uid } from '@/lib/domain/format';
 import { filterProducts } from '@/lib/domain/catalog';
 import { DEMO_EMAIL, DEMO_PASSWORD, normalizeAddress, STAFF_PERMISSIONS } from './seed';
 import { MemoryDemoStorage, type DemoStorage } from './storage';
+/** Demo reviews remember which order item they came from (the admin shape does not carry it). */
+type StoredReview = AdminReview & { orderItemId?: string };
+const itemIdOf = (order: { id: string }, index: number) => `${order.id}~${index}`;
+const withItemIds = <T extends { id: string; items: object[] }>(order: T): T => ({
+  ...order,
+  items: order.items.map((item, index) => ({ ...item, itemId: itemIdOf(order, index) })),
+});
+const published = (state: Operations) => state.reviews.filter((r) => r.status === 'Publicado');
+function withRating<T extends { id: string }>(state: Operations, product: T) {
+  const ratings = published(state)
+    .filter((r) => r.productId === product.id)
+    .map((r) => r.rating);
+  if (!ratings.length) return product;
+  const { average, count } = summarizeRatings(ratings);
+  return { ...product, rating: { average, count } };
+}
 import { applyAdminExtension } from './admin-commands';
 export class DemoGateway implements CommerceGateway {
   readonly mode = 'demo' as const;
@@ -64,11 +89,78 @@ export class DemoGateway implements CommerceGateway {
     return s;
   }
   async catalog(query = {}) {
-    return filterProducts(this.read().products, query).map((p) => productSchema.parse(p));
+    const state = this.read();
+    return filterProducts(state.products, query).map((p) =>
+      productSchema.parse(withRating(state, p)),
+    );
   }
   async product(id: string) {
-    const product = this.read().products.find((p) => p.id === id && p.active);
-    return product ? productSchema.parse(product) : null;
+    const state = this.read(),
+      product = state.products.find((p) => p.id === id && p.active);
+    return product ? productSchema.parse(withRating(state, product)) : null;
+  }
+  async productReviews(productId: string, rating?: number) {
+    const all = published(this.read()).filter((r) => r.productId === productId);
+    return {
+      summary: summarizeRatings(all.map((r) => r.rating)),
+      reviews: all
+        .filter((r) => !rating || r.rating === rating)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((r) => publicReviewSchema.parse(r)),
+    };
+  }
+  // The demo has no network retries, so the idempotency key is accepted but not needed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async createReview(input: ReviewInput, _idempotencyKey?: string) {
+    const session = this.customerSession();
+    return this.mutate((state) => {
+      const order = state.orders.find(
+        (o) =>
+          o.customerId === session.id &&
+          o.items.some((_, i) => itemIdOf(o, i) === input.orderItemId),
+      );
+      if (!order) throw new ApiError('NOT_FOUND', 'Não encontramos este item no seu pedido.', 404);
+      const index = order.items.findIndex((_, i) => itemIdOf(order, i) === input.orderItemId),
+        item = order.items[index];
+      if (order.status !== 'Entregue')
+        throw new ApiError(
+          'NOT_DELIVERED',
+          'Você poderá avaliar depois que o pedido for entregue.',
+          409,
+        );
+      if ((state.reviews as StoredReview[]).some((r) => r.orderItemId === input.orderItemId))
+        throw new ApiError('ALREADY_REVIEWED', 'Você já avaliou este item.', 409);
+      const customer = requireValue(state.clients.find((c) => c.id === session.id)),
+        photoIds = input.photoIds ?? [],
+        status = initialReviewStatus(
+          state.workspace.reviews ?? defaultReviewSettings,
+          input.rating,
+          photoIds.length,
+        );
+      const review: StoredReview = {
+        id: uid('AV'),
+        orderItemId: input.orderItemId,
+        rating: input.rating,
+        title: (input.title ?? '').trim(),
+        text: input.text.trim(),
+        author: reviewAuthorName(customer.name),
+        createdAt: new Date().toISOString(),
+        variant: `${item.size} · ${item.color}`,
+        photos: photoIds.map((id) => ({ url: `asset:${id}` })),
+        reply: null,
+        repliedAt: null,
+        status,
+        productId: item.productId,
+        productName: item.name,
+        orderId: order.id,
+        orderNumber: order.number,
+        customerName: customer.name,
+        customerEmail: customer.email,
+      };
+      state.reviews.unshift(review);
+      audit(state, 'Avaliação enviada', review.id, customer.name);
+      return { orderItemId: input.orderItemId, rating: input.rating, status };
+    });
   }
   async settings() {
     return this.read().settings;
@@ -129,16 +221,24 @@ export class DemoGateway implements CommerceGateway {
   }
   async account() {
     const session = this.customerSession(),
-      state = this.read();
+      state = this.read(),
+      client = requireValue(state.clients.find((c) => c.id === session.id)),
+      customerEmail = client.email;
     return {
-      customer: { ...requireValue(state.clients.find((c) => c.id === session.id)), notes: '' },
-      orders: state.orders.filter((o) => o.customerId === session.id),
+      customer: { ...client, notes: '' },
+      orders: state.orders.filter((o) => o.customerId === session.id).map(withItemIds),
       subscriptions: state.subscriptions.filter((s) => s.customerId === session.id),
       charges: state.charges.filter((c) => c.customerId === session.id),
       tickets: state.tickets
         .filter((t) => t.customerId === session.id)
         .map((t) => ({ ...t, messages: t.messages.filter((m) => !m.internal) })),
-      reviews: [],
+      reviews: (state.reviews as StoredReview[])
+        .filter((r) => r.orderItemId && r.customerEmail === customerEmail)
+        .map((r) => ({
+          orderItemId: r.orderItemId as string,
+          rating: r.rating,
+          status: r.status,
+        })),
     };
   }
   async updateProfile(input: { name: string; email: string; address?: Address }) {
@@ -517,6 +617,7 @@ export class DemoGateway implements CommerceGateway {
           coupon: 'catalog',
           ticket: 'support',
           prayer: 'community',
+          review: 'community',
           campaign: 'marketing',
           team: 'team',
           invite: 'team',

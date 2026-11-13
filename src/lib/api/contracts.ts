@@ -1,3 +1,4 @@
+import type { MyReview, ProductReviews, ReviewInput } from '@maos-em-oracao/contracts';
 import type { LoginInput, NewsletterInput, PrayerInput } from '@/lib/domain/schemas';
 import type {
   CartItem,
@@ -63,6 +64,8 @@ export interface CommerceGateway {
   reportPrayer(id: string, reason: string): Promise<void>;
   newsletter(input: NewsletterInput): Promise<{ message: string; token?: string }>;
   unsubscribeNewsletter(token?: string): Promise<void>;
+  productReviews(productId: string, rating?: number): Promise<ProductReviews>;
+  createReview(input: ReviewInput, idempotencyKey: string): Promise<MyReview>;
   admin(): Promise<Operations>;
   adminCommand(command: AdminCommand, idempotencyKey?: string): Promise<void>;
   invitation(token: string): Promise<import('@/lib/domain/types').TeamInvitation>;

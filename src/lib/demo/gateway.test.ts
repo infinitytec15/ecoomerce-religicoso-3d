@@ -163,3 +163,98 @@ describe('legacy storage migration', () => {
     expect(localStorage.getItem('amago-operations-v1')).toBe('{corrupt');
   });
 });
+
+describe('demo reviews', () => {
+  const demoCustomer = {
+    email: 'ana@exemplo.com',
+    password: 'demonstracao',
+    kind: 'customer' as const,
+  };
+  const reviewable = async (g: DemoGateway) => {
+    const account = await g.account();
+    const order = account.orders.find((o) => o.status === 'Entregue');
+    return requireDefined(order?.items[0]?.itemId);
+  };
+  const requireDefined = <T>(value: T | undefined): T => {
+    expect(value).toBeDefined();
+    return value as T;
+  };
+  it('seeds three published reviews on the first product with a 4.7 average', async () => {
+    const g = new DemoGateway();
+    const [first] = await g.catalog();
+    expect(first.rating).toEqual({ average: 4.7, count: 3 });
+    const { summary, reviews } = await g.productReviews(first.id);
+    expect(summary).toMatchObject({ average: 4.7, count: 3, histogram: [0, 0, 0, 1, 2] });
+    expect(reviews).toHaveLength(3);
+    expect(reviews.some((r) => r.reply)).toBe(true);
+    expect((await g.catalog()).slice(1).every((p) => p.rating === undefined)).toBe(true);
+  });
+  it('lets the demo customer review a delivered item once and queues it for moderation', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    await g.login(demoCustomer);
+    const orderItemId = await reviewable(g);
+    const input = {
+      orderItemId,
+      rating: 5,
+      title: 'Linda',
+      text: 'Ficou linda na sala.',
+      photoIds: [],
+    };
+    const mine = await g.createReview(input, 'k1');
+    expect(mine).toEqual({ orderItemId, rating: 5, status: 'Em análise' });
+    expect((await g.account()).reviews).toEqual([mine]);
+    await expect(g.createReview(input, 'k2')).rejects.toMatchObject({
+      code: 'ALREADY_REVIEWED',
+      status: 409,
+    });
+    const [first] = await g.catalog();
+    expect((await g.productReviews(first.id)).reviews).toHaveLength(3);
+    await g.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
+    const pending = (await g.admin()).reviews.find((r) => r.status === 'Em análise');
+    expect(pending).toMatchObject({ rating: 5, author: 'Ana F.', productId: first.id });
+    await g.adminCommand({
+      type: 'review.moderate',
+      id: requireDefined(pending).id,
+      status: 'Publicado',
+      reply: 'Obrigada!',
+    });
+    const published = await g.productReviews(first.id);
+    expect(published.summary.count).toBe(4);
+    expect(published.reviews[0]).toMatchObject({ reply: 'Obrigada!' });
+  });
+  it('rejects reviews for items that are not in the customer’s orders', async () => {
+    const g = new DemoGateway();
+    await g.login(demoCustomer);
+    await expect(
+      g.createReview(
+        {
+          orderItemId: 'PED-4001~0',
+          rating: 5,
+          title: '',
+          text: 'Texto longo o bastante.',
+          photoIds: [],
+        },
+        'k',
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+  });
+  it('filters the list by rating but keeps the full summary', async () => {
+    const g = new DemoGateway();
+    const [first] = await g.catalog();
+    const only4 = await g.productReviews(first.id, 4);
+    expect(only4.reviews.map((r) => r.rating)).toEqual([4]);
+    expect(only4.summary.count).toBe(3);
+  });
+  it('never lists hidden reviews', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    await g.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
+    const [first] = await g.catalog();
+    const target = (await g.admin()).reviews[0];
+    await g.adminCommand({ type: 'review.moderate', id: target.id, status: 'Oculto', reply: '' });
+    const after = await g.productReviews(first.id);
+    expect(after.reviews.some((r) => r.id === target.id)).toBe(false);
+    expect(after.summary.count).toBe(2);
+  });
+});
