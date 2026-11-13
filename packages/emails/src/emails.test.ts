@@ -28,7 +28,16 @@ describe('templates de e-mail', () => {
       expect(renderEmail(message, sampleContext)).toEqual(rendered);
       expect(rendered.html).toContain('lang="pt-BR"');
       expect(rendered.html).toContain('role="presentation"');
-      expect(rendered.html).not.toMatch(/<script|<iframe|<img|animation:/i);
+      expect(rendered.html).not.toMatch(/<script|<iframe|animation:/i);
+      // The only image is the small brand mark served by the store itself, with alt text.
+      const images = rendered.html.match(/<img\b[^>]*>/gi) || [];
+      expect(images).toHaveLength(1);
+      expect(images[0]).toContain(
+        `src="${new URL(sampleContext.webUrl).origin}/assets/email/logo-mark-128.png"`,
+      );
+      expect(images[0]).toContain('alt="Mãos em Oração"');
+      // Footer always links back to the store site.
+      expect(rendered.html).toContain(`>${new URL(sampleContext.webUrl).host}</a>`);
       expect(rendered.text).toContain(message.actionUrl);
       expect(rendered.subject).not.toMatch(/[\r\n]/);
       expect(Buffer.byteLength(rendered.html)).toBeLessThan(102_400);

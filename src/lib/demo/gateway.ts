@@ -555,6 +555,34 @@ export class DemoGateway implements CommerceGateway {
           c.status = c.status === 'Ativo' ? 'Inativo' : 'Ativo';
           break;
         }
+        case 'customer.delete': {
+          if (
+            s.orders.some((o) => o.customerId === command.id) ||
+            s.subscriptions.some((x) => x.customerId === command.id)
+          )
+            throw new ApiError(
+              'CUSTOMER_HAS_HISTORY',
+              'Este cliente tem pedidos ou assinatura. Exclua os pedidos de teste antes ou arquive o cliente.',
+              409,
+            );
+          s.tickets = s.tickets.filter((t) => t.customerId !== command.id);
+          s.clients = s.clients.filter((c) => c.id !== command.id);
+          break;
+        }
+        case 'order.delete': {
+          const o = requireValue(s.orders.find((o) => o.id === command.id));
+          const charge = s.charges.find((c) => c.id === o.chargeId);
+          if (charge && ['Pago', 'Estornado'].includes(charge.status))
+            throw new ApiError(
+              'ORDER_HAS_PAYMENT',
+              'Este pedido tem pagamento registrado. Cancele-o (com estorno) para manter o histórico financeiro.',
+              409,
+            );
+          s.orders = s.orders.filter((x) => x.id !== o.id);
+          s.charges = s.charges.filter((c) => c.id !== o.chargeId);
+          s.jobs = s.jobs.filter((j) => j.orderId !== o.id);
+          break;
+        }
         case 'product.save': {
           const product = inventoryProductSchema.parse(command.product),
             existing = s.products.find((p) => p.id === product.id);

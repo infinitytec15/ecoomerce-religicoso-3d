@@ -1,4 +1,5 @@
 'use client';
+import { DeleteRecordButton } from './delete-record';
 import { useState } from 'react';
 import Link from 'next/link';
 import type { Customer } from '@/lib/domain/types';
@@ -193,6 +194,12 @@ export function AdminCustomerDetail({ id }: { id: string }) {
             <Button className="small" onClick={() => setDialog('edit')}>
               Editar cadastro
             </Button>
+            <DeleteRecordButton
+              command={{ type: 'customer.delete', id: customer.id }}
+              label="Excluir cliente"
+              what={customer.name}
+              redirectTo="/admin/clientes"
+            />
           </>
         }
       />

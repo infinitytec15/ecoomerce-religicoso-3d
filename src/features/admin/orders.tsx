@@ -1,4 +1,5 @@
 'use client';
+import { DeleteRecordButton } from './delete-record';
 import { useState } from 'react';
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/lib/domain/types';
@@ -403,6 +404,12 @@ export function AdminOrderDetail({ id }: { id: string }) {
             <Button className="small" onClick={() => setDialog('edit')}>
               Atualizar pedido
             </Button>
+            <DeleteRecordButton
+              command={{ type: 'order.delete', id: order.id }}
+              label="Excluir pedido"
+              what={'o pedido ' + order.number}
+              redirectTo="/admin/pedidos"
+            />
           </>
         }
       />

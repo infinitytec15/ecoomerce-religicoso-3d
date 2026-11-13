@@ -37,6 +37,7 @@ export function productDto(
   if (privateData) return { ...value, costCents: p.costCents, stock: p.stock };
   const publicValue = { ...value };
   Reflect.deleteProperty(publicValue, 'costCents');
+  Reflect.deleteProperty(publicValue, 'costBreakdown');
   return publicValue;
 }
 export function customerDto(c: Prisma.CustomerGetPayload<object>, privateData = false): Customer {

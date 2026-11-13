@@ -401,6 +401,10 @@ export class AdminService {
       case 'customer.archive':
         await this.ctx.db.customer.update({ where: { id: c.id }, data: { active: false } });
         break;
+      case 'customer.delete':
+        return this.deleteCustomer(a, c.id);
+      case 'order.delete':
+        return this.deleteOrder(a, c.id);
       case 'order.create':
         return this.manualOrder(a, c);
       case 'orders.batch':
@@ -780,6 +784,103 @@ export class AdminService {
           'Uma peça da edição está indisponível.',
         );
   }
+  /**
+   * Hard delete is only for orders where no money or goods moved (tests, abandoned carts).
+   * Anything with a captured payment, ledger, label or started production must be cancelled
+   * or kept for accounting and tracking.
+   */
+  private async deleteOrder(a: Actor, id: string) {
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'order/' + id);
+      const o = requireValue(
+        await tx.order.findUnique({
+          where: { id },
+          include: {
+            payment: { include: { parts: { include: { refunds: true } }, ledger: true } },
+            shipment: true,
+            job: true,
+          },
+        }),
+        'Pedido não encontrado.',
+      );
+      const parts = o.payment?.parts || [];
+      const moneyMoved =
+        parts.some((p) => ['approved', 'refunded', 'charged_back', 'unknown'].includes(p.status)) ||
+        parts.some((p) => p.refunds.length > 0) ||
+        (o.payment?.ledger.length || 0) > 0;
+      if (moneyMoved)
+        throw new DomainError(
+          'ORDER_HAS_PAYMENT',
+          'Este pedido tem pagamento registrado. Cancele-o (com estorno) para manter o histórico financeiro.',
+          409,
+        );
+      if (o.shipment?.providerId || (o.job && o.job.startedAt))
+        throw new DomainError(
+          'ORDER_IN_FULFILLMENT',
+          'Este pedido já tem etiqueta ou produção iniciada. Cancele-o em vez de excluir.',
+          409,
+        );
+      // A Pix already issued at the provider could still be paid: cancel first.
+      if (
+        parts.some((p) => p.providerId && !['cancelled', 'rejected', 'expired'].includes(p.status))
+      )
+        throw new DomainError(
+          'CANCEL_FIRST',
+          'Cancele o pedido primeiro. A exclusão fica disponível quando a cobrança for encerrada no Mercado Pago.',
+          409,
+        );
+      if (o.status !== 'Cancelado') await this.orders.payments.release(tx, id);
+      await tx.outboxEvent.updateMany({
+        where: { aggregateId: id, state: { in: ['pending', 'enqueued'] } },
+        data: { state: 'cancelled', errorCode: 'ORDER_DELETED' },
+      });
+      await tx.subscriptionCycle.updateMany({ where: { orderId: id }, data: { orderId: null } });
+      await tx.session.deleteMany({ where: { guestOrderId: id } });
+      await tx.stockReservation.deleteMany({ where: { orderId: id } });
+      if (o.payment) {
+        await tx.paymentPart.deleteMany({ where: { intentId: o.payment.id } });
+        await tx.paymentIntent.delete({ where: { id: o.payment.id } });
+      }
+      await tx.productionJob.deleteMany({ where: { orderId: id } });
+      await tx.shipment.deleteMany({ where: { orderId: id } });
+      await tx.orderItem.deleteMany({ where: { orderId: id } });
+      await tx.order.delete({ where: { id } });
+      await audit(tx, a.id, 'Pedido excluído', id);
+    });
+  }
+  /** Only customers without orders or subscriptions; otherwise archive keeps history. */
+  private async deleteCustomer(a: Actor, id: string) {
+    await transaction(this.ctx.db, async (tx) => {
+      const c = requireValue(
+        await tx.customer.findUnique({
+          where: { id },
+          include: {
+            user: true,
+            _count: { select: { orders: true, subscriptions: true } },
+          },
+        }),
+        'Cliente não encontrado.',
+      );
+      if (c._count.orders || c._count.subscriptions)
+        throw new DomainError(
+          'CUSTOMER_HAS_HISTORY',
+          'Este cliente tem pedidos ou assinatura. Exclua os pedidos de teste antes ou arquive o cliente.',
+          409,
+        );
+      if (c.user?.owner || (c.user && c.user.role !== 'customer'))
+        throw new DomainError(
+          'PROTECTED_ACCOUNT',
+          'Contas da equipe não podem ser excluídas aqui.',
+          409,
+        );
+      const tickets = await tx.ticket.findMany({ where: { customerId: id }, select: { id: true } });
+      await tx.ticketMessage.deleteMany({ where: { ticketId: { in: tickets.map((t) => t.id) } } });
+      await tx.ticket.deleteMany({ where: { customerId: id } });
+      await tx.customer.delete({ where: { id } });
+      if (c.user) await tx.user.delete({ where: { id: c.user.id } });
+      await audit(tx, a.id, 'Cliente excluído', id);
+    });
+  }
   private async cancelOrder(tx: Transaction, a: Actor, id: string) {
     const o = requireValue(
       await tx.order.findUnique({
@@ -928,6 +1029,7 @@ export class AdminService {
               productId: p.id,
               quantity: c.quantity,
               unitCents: p.priceCents,
+              costCents: p.costCents * c.quantity,
               data: json(item),
             },
           },

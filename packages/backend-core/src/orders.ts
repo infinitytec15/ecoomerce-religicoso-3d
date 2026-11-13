@@ -24,6 +24,17 @@ import {
   subscriptionDto,
   ticketDto,
 } from './projections';
+/** Current production cost per product, frozen into each order line at sale time. */
+export async function productCosts(
+  tx: Transaction | Context['db'],
+  items: { productId: string }[],
+) {
+  const rows = await tx.product.findMany({
+    where: { id: { in: [...new Set(items.map((i) => i.productId))] } },
+    select: { id: true, costCents: true },
+  });
+  return new Map(rows.map((r) => [r.id, r.costCents]));
+}
 export class OrdersService {
   readonly payments: PaymentsService;
   readonly auth: AuthService;
@@ -360,6 +371,7 @@ export class OrdersService {
             409,
           );
       }
+      const unitCost = await productCosts(tx, items);
       const o = await tx.order.create({
         data: {
           customerId: customer.id,
@@ -381,6 +393,7 @@ export class OrdersService {
               productId: i.productId,
               quantity: i.quantity,
               unitCents: i.unitCents,
+              costCents: (unitCost.get(i.productId) || 0) * i.quantity,
               data: json(i),
             })),
           },

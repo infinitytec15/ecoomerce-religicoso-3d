@@ -52,6 +52,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('customer.save'), customer }),
   z.object({ type: z.literal('customer.archive'), id }),
+  z.object({ type: z.literal('customer.delete'), id }),
+  z.object({ type: z.literal('order.delete'), id }),
   z.object({ type: z.literal('order.update'), id, status, priority, due: date, notes: text }),
   z.object({
     type: z.literal('order.create'),

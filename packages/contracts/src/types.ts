@@ -96,8 +96,17 @@ export interface Product {
   seoDescription?: string;
   archived?: boolean;
 }
+/** Private production cost of one piece, in cents. costCents is their sum. */
+export interface CostBreakdown {
+  materialCents: number;
+  packagingCents: number;
+  energyCents: number;
+  laborCents: number;
+  otherCents: number;
+}
 export interface InventoryProduct extends Product {
   costCents: number;
+  costBreakdown?: CostBreakdown;
 }
 export interface Address {
   document?: string;
@@ -421,6 +430,8 @@ export type AdminCommand =
   | { type: 'campaign.action'; id: string; action: 'schedule' | 'cancel' | 'draft' }
   | { type: 'customer.save'; customer: Partial<Customer> & Pick<Customer, 'name' | 'email'> }
   | { type: 'customer.archive'; id: string }
+  | { type: 'customer.delete'; id: string }
+  | { type: 'order.delete'; id: string }
   | { type: 'product.save'; product: InventoryProduct }
   | {
       type: 'order.update';

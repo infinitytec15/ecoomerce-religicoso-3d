@@ -55,6 +55,12 @@ const querySchema = z.object({
   status: z.string().max(50).optional(),
   q: z.string().max(120).optional(),
 });
+/** Aggregates over the whole filtered period (not only the visible page). */
+export interface ReportSummary {
+  metrics: { label: string; cents?: number; value?: number }[];
+  breakdown: { label: string; count: number; cents?: number }[];
+}
+const unpaidStatuses = ['Aguardando pagamento', 'Cancelado'];
 export class ReportsService {
   constructor(private ctx: Context) {}
   private authorize(actor: Actor | null, resource: string) {
@@ -74,84 +80,223 @@ export class ReportsService {
       q = querySchema.parse(raw);
     if (q.from && q.to && q.from > q.to)
       throw new DomainError('INVALID_PERIOD', 'O início deve anteceder o fim.');
-    const opts = {
-        take: q.limit + 1,
-        orderBy: { id: 'asc' as const },
-        ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
-      },
-      dates = q.from || q.to ? { gte: q.from, lte: q.to } : undefined;
+    const dates = q.from || q.to ? { gte: q.from, lte: q.to } : undefined,
+      search = q.q?.trim();
+    // Newest first with a stable tie-breaker so cursor pagination never skips rows.
+    const opts = (field: string, dir: 'asc' | 'desc' = 'desc') => ({
+      take: q.limit + 1,
+      orderBy: [{ [field]: dir }, { id: dir }],
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+    });
     const page = async <T extends { id: string }>(
       rows: Promise<T[]>,
       count: Promise<number>,
       map: (row: T) => unknown,
+      summary?: Promise<ReportSummary>,
     ) => {
-      const [items, total] = await Promise.all([rows, count]);
+      const [items, total, totals] = await Promise.all([rows, count, summary]);
       const more = items.length > q.limit,
         visible = items.slice(0, q.limit);
-      return { items: visible.map(map), total, nextCursor: more ? visible.at(-1)!.id : null };
+      return {
+        items: visible.map(map),
+        total,
+        nextCursor: more ? visible.at(-1)!.id : null,
+        ...(totals ? { summary: totals } : {}),
+      };
     };
+    const byStatus = (
+      rows: { key: string | null; count: number; cents?: number | null }[],
+    ): ReportSummary['breakdown'] =>
+      rows
+        .map((r) => ({
+          label: r.key || 'Sem situação',
+          count: r.count,
+          cents: r.cents ?? undefined,
+        }))
+        .sort((x, y) => y.count - x.count);
     switch (resource) {
       case 'orders': {
-        const where: Prisma.OrderWhereInput = { createdAt: dates, status: q.status };
+        const number = search && /^\D*(\d{1,9})$/.exec(search)?.[1];
+        const where: Prisma.OrderWhereInput = {
+          createdAt: dates,
+          status: q.status,
+          ...(number ? { number: Number(number) } : {}),
+        };
         return page(
-          this.ctx.db.order.findMany({ ...opts, where, include: orderInclude }),
+          this.ctx.db.order.findMany({ ...opts('createdAt'), where, include: orderInclude }),
           this.ctx.db.order.count({ where }),
           (o) => orderDto(o, true),
+          Promise.all([
+            this.ctx.db.order.groupBy({
+              by: ['status'],
+              where,
+              _count: { _all: true },
+              _sum: {
+                totalCents: true,
+                subtotalCents: true,
+                shippingCents: true,
+                discountCents: true,
+              },
+            }),
+            this.ctx.db.orderItem.aggregate({
+              where: { order: { AND: [where, { status: { notIn: unpaidStatuses } }] } },
+              _sum: { costCents: true },
+            }),
+          ]).then(([groups, cost]) => {
+            const paid = groups.filter((g) => !unpaidStatuses.includes(g.status));
+            const sum = (
+              list: typeof groups,
+              f: 'totalCents' | 'subtotalCents' | 'shippingCents' | 'discountCents',
+            ) => list.reduce((n, g) => n + (g._sum[f] || 0), 0);
+            const paidCount = paid.reduce((n, g) => n + g._count._all, 0);
+            // Product revenue excludes shipping, which is passed through to the carrier.
+            const productRevenue = sum(paid, 'subtotalCents') - sum(paid, 'discountCents'),
+              costCents = cost._sum.costCents || 0,
+              profitCents = productRevenue - costCents;
+            return {
+              metrics: [
+                { label: 'Faturamento confirmado', cents: sum(paid, 'totalCents') },
+                {
+                  label: 'Ticket médio',
+                  cents: paidCount ? Math.round(sum(paid, 'totalCents') / paidCount) : 0,
+                },
+                { label: 'Custo de produção', cents: costCents },
+                { label: 'Lucro bruto', cents: profitCents },
+                {
+                  label: 'Margem bruta (%)',
+                  value: productRevenue
+                    ? Math.round((profitCents / productRevenue) * 1000) / 10
+                    : 0,
+                },
+                { label: 'Frete cobrado', cents: sum(paid, 'shippingCents') },
+                { label: 'Descontos concedidos', cents: sum(paid, 'discountCents') },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({
+                  key: g.status,
+                  count: g._count._all,
+                  cents: g._sum.totalCents,
+                })),
+              ),
+            };
+          }),
         );
       }
       case 'subscriptions': {
         const where: Prisma.SubscriptionWhereInput = { createdAt: dates, status: q.status };
         return page(
-          this.ctx.db.subscription.findMany({ ...opts, where }),
+          this.ctx.db.subscription.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.subscription.count({ where }),
           subscriptionDto,
+          this.ctx.db.subscription
+            .groupBy({ by: ['status'], where, _count: { _all: true }, _sum: { priceCents: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Receita recorrente (ativas)',
+                  cents: groups.find((g) => g.status === 'Ativa')?._sum.priceCents || 0,
+                },
+                {
+                  label: 'Assinaturas ativas',
+                  value: groups.find((g) => g.status === 'Ativa')?._count._all || 0,
+                },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({
+                  key: g.status,
+                  count: g._count._all,
+                  cents: g._sum.priceCents,
+                })),
+              ),
+            })),
         );
       }
       case 'customers': {
         const where: Prisma.CustomerWhereInput = {
           createdAt: dates,
-          ...(q.q
+          ...(search
             ? {
                 OR: [
-                  { name: { contains: q.q, mode: 'insensitive' } },
-                  { email: { contains: q.q, mode: 'insensitive' } },
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
                 ],
               }
             : {}),
         };
         return page(
-          this.ctx.db.customer.findMany({ ...opts, where }),
+          this.ctx.db.customer.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.customer.count({ where }),
           (c) => customerDto(c, true),
+          this.ctx.db.customer
+            .groupBy({ by: ['active'], where, _count: { _all: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Clientes ativos',
+                  value: groups.find((g) => g.active)?._count._all || 0,
+                },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({ key: g.active ? 'Ativo' : 'Inativo', count: g._count._all })),
+              ),
+            })),
         );
       }
       case 'products': {
-        const where: Prisma.ProductWhereInput = q.q
+        const where: Prisma.ProductWhereInput = search
           ? {
               OR: [
-                { name: { contains: q.q, mode: 'insensitive' } },
-                { sku: { contains: q.q, mode: 'insensitive' } },
+                { name: { contains: search, mode: 'insensitive' } },
+                { sku: { contains: search, mode: 'insensitive' } },
               ],
             }
           : {};
         return page(
-          this.ctx.db.product.findMany({ ...opts, where }),
+          this.ctx.db.product.findMany({ ...opts('name', 'asc'), where }),
           this.ctx.db.product.count({ where }),
           (p) => productDto(p, true),
+          this.ctx.db.product
+            .groupBy({ by: ['active'], where, _count: { _all: true }, _sum: { stock: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Unidades em estoque',
+                  value: groups.reduce((n, g) => n + (g._sum.stock || 0), 0),
+                },
+                { label: 'Publicados', value: groups.find((g) => g.active)?._count._all || 0 },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({
+                  key: g.active ? 'Publicado' : 'Oculto',
+                  count: g._count._all,
+                })),
+              ),
+            })),
         );
       }
       case 'production': {
         const where: Prisma.ProductionJobWhereInput = { due: dates, stage: q.status };
         return page(
-          this.ctx.db.productionJob.findMany({ ...opts, where, include: { printer: true } }),
+          this.ctx.db.productionJob.findMany({ ...opts('due'), where, include: { printer: true } }),
           this.ctx.db.productionJob.count({ where }),
           jobDto,
+          this.ctx.db.productionJob
+            .groupBy({ by: ['stage'], where, _count: { _all: true }, _sum: { hours: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Horas de impressão',
+                  value: Math.round(groups.reduce((n, g) => n + (g._sum.hours || 0), 0) * 10) / 10,
+                },
+              ],
+              breakdown: byStatus(groups.map((g) => ({ key: g.stage, count: g._count._all }))),
+            })),
         );
       }
       case 'shipping': {
         const where: Prisma.ShipmentWhereInput = { createdAt: dates, state: q.status };
         return page(
-          this.ctx.db.shipment.findMany({ ...opts, where }),
+          this.ctx.db.shipment.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.shipment.count({ where }),
           (s) => ({
             id: s.id,
@@ -162,12 +307,18 @@ export class ReportsService {
             tracking: s.tracking,
             createdAt: s.createdAt,
           }),
+          this.ctx.db.shipment
+            .groupBy({ by: ['state'], where, _count: { _all: true } })
+            .then((groups) => ({
+              metrics: [],
+              breakdown: byStatus(groups.map((g) => ({ key: g.state, count: g._count._all }))),
+            })),
         );
       }
       case 'finance': {
-        const where: Prisma.LedgerEntryWhereInput = { createdAt: dates };
+        const where: Prisma.LedgerEntryWhereInput = { createdAt: dates, kind: q.status };
         return page(
-          this.ctx.db.ledgerEntry.findMany({ ...opts, where }),
+          this.ctx.db.ledgerEntry.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.ledgerEntry.count({ where }),
           (r) => ({
             id: r.id,
@@ -177,44 +328,102 @@ export class ReportsService {
             eventKey: r.eventKey,
             createdAt: r.createdAt,
           }),
+          this.ctx.db.ledgerEntry
+            .groupBy({ by: ['kind'], where, _count: { _all: true }, _sum: { amountCents: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Saldo do período',
+                  cents: groups.reduce((n, g) => n + (g._sum.amountCents || 0), 0),
+                },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({
+                  key: g.kind,
+                  count: g._count._all,
+                  cents: g._sum.amountCents,
+                })),
+              ),
+            })),
         );
       }
       case 'expenses': {
-        const where: Prisma.ExpenseWhereInput = { date: dates, status: q.status };
+        const where: Prisma.ExpenseWhereInput = {
+          date: dates,
+          status: q.status,
+          ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        };
         return page(
-          this.ctx.db.expense.findMany({ ...opts, where }),
+          this.ctx.db.expense.findMany({ ...opts('date'), where }),
           this.ctx.db.expense.count({ where }),
           (r) => r,
+          this.ctx.db.expense
+            .groupBy({ by: ['status'], where, _count: { _all: true }, _sum: { amountCents: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'Total de despesas',
+                  cents: groups.reduce((n, g) => n + (g._sum.amountCents || 0), 0),
+                },
+              ],
+              breakdown: byStatus(
+                groups.map((g) => ({
+                  key: g.status,
+                  count: g._count._all,
+                  cents: g._sum.amountCents,
+                })),
+              ),
+            })),
         );
       }
       case 'support': {
-        const where: Prisma.TicketWhereInput = { createdAt: dates, status: q.status };
+        const where: Prisma.TicketWhereInput = {
+          createdAt: dates,
+          status: q.status,
+          ...(search ? { subject: { contains: search, mode: 'insensitive' } } : {}),
+        };
         return page(
           this.ctx.db.ticket.findMany({
-            ...opts,
+            ...opts('createdAt'),
             where,
             include: { messages: { orderBy: { createdAt: 'asc' } } },
           }),
           this.ctx.db.ticket.count({ where }),
           (r) => ticketDto(r, true),
+          this.ctx.db.ticket
+            .groupBy({ by: ['status'], where, _count: { _all: true } })
+            .then((groups) => ({
+              metrics: [],
+              breakdown: byStatus(groups.map((g) => ({ key: g.status, count: g._count._all }))),
+            })),
         );
       }
       case 'prayers': {
         const where: Prisma.PrayerWhereInput = { createdAt: dates, moderation: q.status };
         return page(
           this.ctx.db.prayer.findMany({
-            ...opts,
+            ...opts('createdAt'),
             where,
             include: { reactions: true, reports: true },
           }),
           this.ctx.db.prayer.count({ where }),
           (r) => prayerDto(r, 'user/' + a.id, true),
+          this.ctx.db.prayer
+            .groupBy({ by: ['moderation'], where, _count: { _all: true } })
+            .then((groups) => ({
+              metrics: [],
+              breakdown: byStatus(groups.map((g) => ({ key: g.moderation, count: g._count._all }))),
+            })),
         );
       }
       case 'campaigns': {
-        const where: Prisma.CampaignWhereInput = { createdAt: dates, state: q.status };
+        const where: Prisma.CampaignWhereInput = {
+          createdAt: dates,
+          state: q.status,
+          ...(search ? { subject: { contains: search, mode: 'insensitive' } } : {}),
+        };
         return page(
-          this.ctx.db.campaign.findMany({ ...opts, where }),
+          this.ctx.db.campaign.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.campaign.count({ where }),
           (r) => ({
             id: r.id,
@@ -224,12 +433,23 @@ export class ReportsService {
             recipients: r.recipients,
             audience: r.audience,
           }),
+          this.ctx.db.campaign
+            .groupBy({ by: ['state'], where, _count: { _all: true }, _sum: { recipients: true } })
+            .then((groups) => ({
+              metrics: [
+                {
+                  label: 'E-mails enviados',
+                  value: groups.reduce((n, g) => n + (g._sum.recipients || 0), 0),
+                },
+              ],
+              breakdown: byStatus(groups.map((g) => ({ key: g.state, count: g._count._all }))),
+            })),
         );
       }
       case 'team': {
         const where: Prisma.UserWhereInput = { role: { not: 'customer' } };
         return page(
-          this.ctx.db.user.findMany({ ...opts, where }),
+          this.ctx.db.user.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.user.count({ where }),
           (r) => ({
             id: r.id,
@@ -244,7 +464,7 @@ export class ReportsService {
       }
       case 'editions':
         return page(
-          this.ctx.db.clubEdition.findMany(opts),
+          this.ctx.db.clubEdition.findMany(opts('month')),
           this.ctx.db.clubEdition.count(),
           (r) => ({
             id: r.id,
@@ -256,17 +476,21 @@ export class ReportsService {
           }),
         );
       case 'coupons':
-        return page(this.ctx.db.coupon.findMany(opts), this.ctx.db.coupon.count(), (r) => ({
-          id: r.id,
-          code: r.code,
-          used: r.used,
-          limit: r.limit,
-          active: r.active,
-        }));
+        return page(
+          this.ctx.db.coupon.findMany(opts('code', 'asc')),
+          this.ctx.db.coupon.count(),
+          (r) => ({
+            id: r.id,
+            code: r.code,
+            used: r.used,
+            limit: r.limit,
+            active: r.active,
+          }),
+        );
       case 'inventory': {
         const where: Prisma.StockMovementWhereInput = { createdAt: dates };
         return page(
-          this.ctx.db.stockMovement.findMany({ ...opts, where }),
+          this.ctx.db.stockMovement.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.stockMovement.count({ where }),
           (r) => r,
         );
@@ -280,7 +504,7 @@ export class ReportsService {
           );
         const where: Prisma.AuditEntryWhereInput = { createdAt: dates };
         return page(
-          this.ctx.db.auditEntry.findMany({ ...opts, where }),
+          this.ctx.db.auditEntry.findMany({ ...opts('createdAt'), where }),
           this.ctx.db.auditEntry.count({ where }),
           (r) => r,
         );

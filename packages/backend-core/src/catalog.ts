@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   inventoryProductSchema,
+  costBreakdownTotal,
   workspaceSchema,
   publicSettingsSchema,
   type InventoryProduct,
@@ -92,7 +93,8 @@ export class CatalogService {
         name: p.name,
         category: p.category,
         priceCents: p.priceCents,
-        costCents: p.costCents,
+        // The breakdown is the source of truth when present.
+        costCents: p.costBreakdown ? costBreakdownTotal(p.costBreakdown) : p.costCents,
         stock: p.stock,
         active,
         archived: !!p.archived,

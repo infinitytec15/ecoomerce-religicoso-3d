@@ -11,7 +11,7 @@ import type { PaymentResult } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
 import { settings } from './context';
 import { Notifications } from './notifications';
-import { OrdersService } from './orders';
+import { OrdersService, productCosts } from './orders';
 import {
   requireActor,
   requireValue,
@@ -264,6 +264,7 @@ export class SubscriptionsService {
         if (p.stock - p.reserved < q)
           throw new DomainError('OUT_OF_STOCK', 'Não há saldo suficiente para esta edição.', 409);
       }
+    const unitCost = await productCosts(tx, items);
     const o = await tx.order.create({
       data: {
         customerId: sub.customerId,
@@ -285,6 +286,7 @@ export class SubscriptionsService {
             productId: i.productId,
             quantity: i.quantity,
             unitCents: i.unitCents,
+            costCents: (unitCost.get(i.productId) || 0) * i.quantity,
             data: json(i),
           })),
         },

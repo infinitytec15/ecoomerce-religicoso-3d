@@ -108,8 +108,20 @@ export const productSchema = z.object({
   seoDescription: z.string().max(170).optional(),
   archived: z.boolean().optional(),
 });
+const costPart = z.number().int().nonnegative().max(10_000_000);
+/** Private production cost of one piece; costCents is always their sum. */
+export const costBreakdownSchema = z.object({
+  materialCents: costPart,
+  packagingCents: costPart,
+  energyCents: costPart,
+  laborCents: costPart,
+  otherCents: costPart,
+});
+export const costBreakdownTotal = (c: z.infer<typeof costBreakdownSchema>) =>
+  c.materialCents + c.packagingCents + c.energyCents + c.laborCents + c.otherCents;
 export const inventoryProductSchema = productSchema.extend({
   costCents: z.number().int().nonnegative(),
+  costBreakdown: costBreakdownSchema.optional(),
 });
 export const publicSettingsSchema = z.object({
   storeName: z.string(),

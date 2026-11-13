@@ -1220,6 +1220,51 @@ try {
       }
     },
   );
+  await check('custo congelado no item e exclusão segura de pedido e cliente', async () => {
+    const buyer = new Client(),
+      who = await register(buyer, 'excluir'),
+      placed = await buy(buyer, checkout(product, await quote(buyer, product), who.email));
+    assert.equal(placed.status, 200, placed.body?.error?.code);
+    const orderId = placed.body.data.orderId,
+      line = await ctx.db.orderItem.findFirstOrThrow({ where: { orderId } }),
+      current = await ctx.db.product.findUniqueOrThrow({ where: { id: product.id } });
+    assert.equal(line.costCents, current.costCents * line.quantity);
+    const customerId = (await ctx.db.order.findUniqueOrThrow({ where: { id: orderId } }))
+      .customerId;
+    const del = (command) =>
+      owner.call('admin/commands', 'POST', command, {
+        headers: { 'idempotency-key': randomUUID() },
+      });
+    const blocked = await del({ type: 'customer.delete', id: customerId });
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.error.code, 'CUSTOMER_HAS_HISTORY');
+    await owner.command({
+      type: 'order.update',
+      id: orderId,
+      status: 'Cancelado',
+      priority: 'Normal',
+      due: new Date().toISOString(),
+      notes: '',
+    });
+    // The Pix issued at the provider must be closed before the order can disappear.
+    await until(async () => {
+      const r = await del({ type: 'order.delete', id: orderId });
+      if (r.status === 409) assert.equal(r.body.error.code, 'CANCEL_FIRST');
+      return r.status === 204;
+    }, 'pedido cancelado não pôde ser excluído');
+    assert.equal(await ctx.db.order.count({ where: { id: orderId } }), 0);
+    assert.equal(await ctx.db.paymentIntent.count({ where: { orderId } }), 0);
+    assert.equal((await del({ type: 'customer.delete', id: customerId })).status, 204);
+    assert.equal(await ctx.db.customer.count({ where: { id: customerId } }), 0);
+    const paid = await ctx.db.order.findFirst({
+      where: { payment: { parts: { some: { status: 'approved' } } } },
+    });
+    if (paid) {
+      const refused = await del({ type: 'order.delete', id: paid.id });
+      assert.equal(refused.status, 409);
+      assert.equal(refused.body.error.code, 'ORDER_HAS_PAYMENT');
+    }
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

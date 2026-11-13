@@ -1583,3 +1583,108 @@ html[data-input='keyboard'] .admin-main > div > div {
     gap: 9px 15px;
   }
 }
+
+/* Report viewer: KPIs over the whole period, status mix and a readable table */
+.report-viewer {
+  max-width: 1180px !important;
+  width: 96vw !important;
+  background: #fffef8 !important;
+  font-family: var(--font-dm-sans), sans-serif;
+}
+.report-viewer .op-dialog-body {
+  display: grid;
+  gap: 18px;
+  padding: 0 26px 24px;
+}
+.report-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.report-metric {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid #dfe4d7;
+  border-radius: 12px;
+  background: #fff;
+}
+.report-metric small {
+  color: #65695f;
+  font-size: 12px;
+}
+.report-metric strong {
+  font-size: 20px;
+  color: #2f402b;
+  font-variant-numeric: tabular-nums;
+}
+.report-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.report-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #dfe4d7;
+  border-radius: 999px;
+  background: #f7f8f2;
+  font-size: 13px;
+}
+.report-chip small {
+  color: #65695f;
+}
+.report-toolbar input {
+  min-width: 220px;
+}
+.report-viewer .admin-table td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .report-viewer {
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+  }
+  .report-toolbar input {
+    min-width: 0;
+    width: 100%;
+  }
+}
+.product-cost label small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.product-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f3f4ed;
+}
+.product-cost-summary div {
+  display: grid;
+  gap: 4px;
+}
+.product-cost-summary small {
+  color: #65695f;
+  font-size: 12px;
+}
+.product-cost-summary strong {
+  font-size: 18px;
+  color: #2f402b;
+  font-variant-numeric: tabular-nums;
+}
+.product-cost-summary .negative strong {
+  color: #b1372d;
+}
+@media (max-width: 620px) {
+  .product-cost-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

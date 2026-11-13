@@ -198,6 +198,8 @@ model OrderItem {
   product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity  Int
   unitCents Int
+  /// Production cost of the whole line (unit cost x quantity) frozen at sale time.
+  costCents Int     @default(0)
   data      Json
 
   @@index([orderId])
