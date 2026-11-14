@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { defaultCalculatorSettings } from './print-cost';
-import { kitAvailable, kitCostCents, kitMargin, kitPieces, kitSchema, kitSummary } from './kits';
+import {
+  kitAvailable,
+  kitComponentUsable,
+  kitCostCents,
+  kitMargin,
+  kitPieces,
+  kitSchema,
+  kitSummary,
+} from './kits';
 
 const A = {
   name: 'Cruz',
@@ -85,5 +93,19 @@ describe('kits', () => {
     });
     expect(kitMargin({ priceCents: 10000, costCents: 4000 }, s).belowMinimum).toBe(false);
     expect(kitMargin({ priceCents: 5000, costCents: 6000 }, s).loss).toBe(true);
+  });
+});
+
+describe('kitComponentUsable', () => {
+  const product = { sizes: ['P', 'M'], colors: ['Branco', 'Preto'] };
+  const c = { productId: 'a', sizeIndex: 1, color: 'Branco' as string | null, quantity: 1 };
+  it('accepts an existing size and colour, or any colour when null', () => {
+    expect(kitComponentUsable(c, product)).toBe(true);
+    expect(kitComponentUsable({ ...c, color: null }, product)).toBe(true);
+  });
+  it('refuses a removed size, a removed colour and a component that became a kit', () => {
+    expect(kitComponentUsable({ ...c, sizeIndex: 2 }, product)).toBe(false);
+    expect(kitComponentUsable({ ...c, color: 'Verde' }, product)).toBe(false);
+    expect(kitComponentUsable(c, { ...product, kit: { components: [] } })).toBe(false);
   });
 });

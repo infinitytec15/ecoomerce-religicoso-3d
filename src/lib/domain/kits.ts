@@ -1,11 +1,13 @@
-import { kitSummary, type Kit } from '@maos-em-oracao/contracts';
+import { kitComponentUsable, kitSummary, type Kit } from '@maos-em-oracao/contracts';
 import type { Product } from './types';
 
-/** A kit is sellable only while every component exists, is active and is not archived. */
+/** A kit is sellable only while every component exists, is active, is not archived and still offers the chosen size/colour. */
 export function kitComponentsAvailable(products: Product[], kit: Kit): boolean {
   return kit.components.every((c) => {
     const component = products.find((p) => p.id === c.productId);
-    return !!component && component.active && !component.archived && !component.kit;
+    return (
+      !!component && component.active && !component.archived && kitComponentUsable(c, component)
+    );
   });
 }
 

@@ -475,7 +475,10 @@ export class PaymentsService {
     });
   }
   async release(tx: Transaction, orderId: string) {
-    const rows = await tx.stockReservation.findMany({ where: { orderId, state: 'held' } });
+    const rows = await tx.stockReservation.findMany({
+      where: { orderId, state: 'held' },
+      orderBy: { productId: 'asc' },
+    });
     for (const r of rows) {
       await lock(tx, 'stock/' + r.productId);
       await tx.product.update({

@@ -32,10 +32,14 @@ export class BrowserDemoStorage implements DemoStorage {
       const current = localStorage.getItem(this.key);
       if (current) {
         const state = JSON.parse(current) as Operations;
-        if (state.version === 2 && Array.isArray(state.products) && Array.isArray(state.orders))
+        if (state.version === 2 && Array.isArray(state.products) && Array.isArray(state.orders)) {
+          const seed = createSeed();
+          // Seed products added after this state was stored (e.g. the demo kit) are appended.
+          const known = new Set(state.products.map((p) => p.id));
           return {
-            ...createSeed(),
+            ...seed,
             ...state,
+            products: [...state.products, ...seed.products.filter((p) => !known.has(p.id))],
             workspace: { ...createSeed().workspace, ...state.workspace },
             invitations: state.invitations || [],
             editions: state.editions || createSeed().editions,
@@ -43,6 +47,7 @@ export class BrowserDemoStorage implements DemoStorage {
             stockMovements: state.stockMovements || [],
             reviews: state.reviews || [],
           };
+        }
       }
       const previous = localStorage.getItem('amago-operations-v1');
       let state = createSeed();

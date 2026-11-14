@@ -1993,6 +1993,24 @@ try {
       await owner.command({ type: 'product.save', product: B });
     }
     assert.equal((await guest.call('catalog/products/' + kit.id)).body.data.id, kit.id);
+    // A component edited into an invalid state (size removed) hides the kit until restored.
+    await owner.command({
+      type: 'product.save',
+      product: { ...A, sizes: ['Pequeno'], sizePrices: [5000], costBySize: [part(1000)] },
+    });
+    try {
+      assert(!(await guest.data('catalog/products')).some((p) => p.id === kit.id));
+      const shrunk = await guest.call('catalog/products/' + kit.id);
+      assert(shrunk.status === 404 || shrunk.body.data === null, 'kit com tamanho removido');
+    } finally {
+      await owner.command({ type: 'product.save', product: A });
+    }
+    assert.equal((await guest.call('catalog/products/' + kit.id)).body.data.id, kit.id);
+    // A component of a live kit cannot itself become a kit.
+    const nested = await save(A, { kit: { components: [comp(B, 0, 2)] } });
+    assert.equal(nested.status, 422, JSON.stringify(nested.body));
+    assert.equal(nested.body.error.code, 'INVALID_KIT');
+    assert.match(nested.body.error.message, /faz parte de um kit/);
     // Kits are not allowed in club editions or manual orders.
     const edition = await owner.call(
       'admin/commands',
@@ -2172,6 +2190,25 @@ try {
         const gone = await buy(customer, body(fresh, [kitLine()], first.email));
         assert.equal(gone.status, 409, JSON.stringify(gone.body));
         assert.equal(gone.body.error.code, 'KIT_UNAVAILABLE');
+      } finally {
+        await owner.command({ type: 'product.save', product: { ...B, stock: 3 } });
+      }
+      // A component edited into an invalid state (size removed) makes the kit unavailable too.
+      const shrunkQuote = await quoteItems(customer, [kitLine()]);
+      await owner.command({
+        type: 'product.save',
+        product: {
+          ...B,
+          stock: 3,
+          sizes: ['Pequeno'],
+          sizePrices: [5000],
+          costBySize: [part(1000)],
+        },
+      });
+      try {
+        const bad = await buy(customer, body(shrunkQuote, [kitLine()], first.email));
+        assert.equal(bad.status, 409, JSON.stringify(bad.body));
+        assert.equal(bad.body.error.code, 'KIT_UNAVAILABLE');
       } finally {
         await owner.command({ type: 'product.save', product: { ...B, stock: 3 } });
       }

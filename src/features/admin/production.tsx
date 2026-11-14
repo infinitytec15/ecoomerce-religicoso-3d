@@ -22,6 +22,16 @@ import { DataTable } from '@/components/ui/data-table';
 import { dateLabel } from '@/lib/domain/format';
 import { IS_DEMO } from '@/lib/api/config';
 import { AddressLabel, DispatchForm } from './orders';
+type ModelItem = { productId: string; name: string; kit?: { items: ModelItem[] } };
+/** Pieces whose model file production needs: a kit contributes its components, not itself. */
+function modelFiles(items: ModelItem[]) {
+  const files = new Map<string, { productId: string; name: string }>();
+  for (const item of items)
+    for (const piece of item.kit ? item.kit.items : [item])
+      if (!files.has(piece.productId))
+        files.set(piece.productId, { productId: piece.productId, name: piece.name });
+  return [...files.values()];
+}
 export function AdminProduction() {
   const data = useAdminData(),
     action = useAdminAction(),
@@ -91,8 +101,8 @@ export function AdminProduction() {
                     </RecordButton>
                     {order?.items.map((i) => i.kit && <KitItems key={i.key} kit={i.kit} />)}
                     {!IS_DEMO &&
-                      order?.items.map((item) => {
-                        const assetId = data.products.find((p) => p.id === item.productId)?.model
+                      modelFiles(order?.items ?? []).map((file) => {
+                        const assetId = data.products.find((p) => p.id === file.productId)?.model
                           ?.assetId;
                         return assetId ? (
                           <a
@@ -100,9 +110,9 @@ export function AdminProduction() {
                             href={
                               '/api/v1/admin/media/' + encodeURIComponent(assetId) + '/original'
                             }
-                            key={item.productId}
+                            key={file.productId}
                           >
-                            Baixar arquivo de {item.name}
+                            Baixar arquivo de {file.name}
                           </a>
                         ) : null;
                       })}

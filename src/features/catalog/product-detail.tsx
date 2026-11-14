@@ -165,7 +165,7 @@ export function ProductDetail({
                   <li key={item.productId + index}>
                     <Link href={'/produto/' + item.productId}>
                       <span className="kit-thumb">
-                        <ProductImage src={item.image} alt={item.name} sizes="64px" />
+                        <ProductImage src={item.image} alt="" sizes="64px" />
                       </span>
                       <span>
                         <strong>

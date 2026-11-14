@@ -1,5 +1,13 @@
 'use client';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { calculatorSettingsSchema, type CalculatorSettings } from '@maos-em-oracao/contracts';
 import { useAdminData } from './admin-frame';
 import { useAdminAction } from './shared';
@@ -20,7 +28,8 @@ const fieldName = (label: string, owner?: string) => {
 };
 function useInvalidMark(label: string, owner?: string) {
   const mark = useContext(InvalidContext),
-    key = useRef(`${label}-${Math.random().toString(36).slice(2)}`).current;
+    id = useId(),
+    key = `${label}-${id}`;
   useEffect(() => () => mark(key, null), [mark, key]);
   return (invalid: boolean) => mark(key, invalid ? fieldName(label, owner) : null);
 }

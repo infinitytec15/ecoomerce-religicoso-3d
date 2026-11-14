@@ -3,6 +3,7 @@ import {
   inventoryProductSchema,
   unitCostCents,
   kitAvailable,
+  kitComponentUsable,
   kitCostCents,
   kitSummary,
   KIT_SIZE,
@@ -105,7 +106,15 @@ export class CatalogService {
     );
     for (const { p, kit } of kits) {
       const components = kit.components.map((c) => rows.get(c.productId));
-      if (components.some((r) => !r || !r.active || r.archived)) {
+      if (
+        components.some(
+          (r, i) =>
+            !r ||
+            !r.active ||
+            r.archived ||
+            !kitComponentUsable(kit.components[i], data<InventoryProduct>(r.data)),
+        )
+      ) {
         result.set(p.id, null);
         continue;
       }
@@ -189,6 +198,23 @@ export class CatalogService {
         where: { sku: p.sku.trim().toUpperCase(), id: { not: p.id } },
       });
       if (unique) throw new DomainError('SKU_EXISTS', 'Este SKU já está em uso.', 409);
+      if (p.kit) {
+        const parents = await tx.product.findMany({
+          where: {
+            id: { not: p.id },
+            archived: false,
+            data: { path: ['kit', 'components'], array_contains: [{ productId: p.id }] },
+          },
+          select: { id: true },
+          take: 1,
+        });
+        if (parents.length)
+          throw new DomainError(
+            'INVALID_KIT',
+            'Este produto faz parte de um kit e não pode virar kit.',
+            422,
+          );
+      }
       const components = p.kit ? await this.kitComponents(tx, p.id, p.kit) : null;
       const hydrated = await this.validateMedia(tx, p);
       const active = p.active && !p.archived;

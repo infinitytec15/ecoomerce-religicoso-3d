@@ -20,6 +20,19 @@ type CostSource = {
   costBySize?: CostBreakdown[];
 };
 
+/**
+ * A kit component is usable only while its variant still exists: the product is not itself a kit,
+ * the size index is in range and the colour (when fixed) is still offered.
+ */
+export function kitComponentUsable(
+  component: KitComponent,
+  product: { kit?: unknown; sizes: string[]; colors: string[] },
+): boolean {
+  if (product.kit) return false;
+  if (!product.sizes[component.sizeIndex]) return false;
+  return component.color === null || product.colors.includes(component.color);
+}
+
 export function kitPieces(kit: Kit): number {
   return kit.components.reduce((sum, c) => sum + c.quantity, 0);
 }

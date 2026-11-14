@@ -16,6 +16,7 @@ import {
   KIT_COLOR,
   KIT_SIZE,
   kitCostCents,
+  kitComponentUsable,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -136,7 +137,15 @@ export class OrdersService {
         kit = {
           items: p.kit.components.map((c) => {
             const row = rows.get(c.productId);
-            if (!row || !row.active || row.archived)
+            if (
+              !row ||
+              !row.active ||
+              row.archived ||
+              !kitComponentUsable(
+                c,
+                data<{ kit?: Kit; sizes: string[]; colors: string[] }>(row.data),
+              )
+            )
               throw new DomainError(
                 'KIT_UNAVAILABLE',
                 'Este kit está indisponível no momento.',
