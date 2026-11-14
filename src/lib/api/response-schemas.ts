@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import {
+  adminCrmSchema,
   adminGroupBuySchema,
   adminReviewSchema,
   adminStoryHighlightSchema,
+  defaultCrmSettings,
   httpsUrlSchema,
   myReviewSchema,
 } from '@maos-em-oracao/contracts';
@@ -217,6 +219,12 @@ export const operationsSchema = z.object({
   reviews: z.array(adminReviewSchema).default([]),
   groupBuys: z.array(adminGroupBuySchema).default([]),
   stories: z.array(adminStoryHighlightSchema).default([]),
+  crm: adminCrmSchema.default({
+    settings: defaultCrmSettings,
+    campaigns: [],
+    tags: [],
+    totals: { contacts: 0, eligible: 0, unsubscribed: 0 },
+  }),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),

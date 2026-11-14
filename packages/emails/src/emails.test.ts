@@ -31,14 +31,14 @@ describe('templates de e-mail', () => {
       expect(rendered.html).not.toMatch(/<script|<iframe|animation:/i);
       // The only image is the small brand mark served by the store itself, with alt text.
       const images = rendered.html.match(/<img\b[^>]*>/gi) || [];
-      expect(images).toHaveLength(1);
+      if (message.kind !== 'marketing') expect(images).toHaveLength(1);
       expect(images[0]).toContain(
         `src="${new URL(sampleContext.webUrl).origin}/assets/email/logo-mark-128.png"`,
       );
       expect(images[0]).toContain('alt="Mãos em Oração"');
       // Footer always links back to the store site.
       expect(rendered.html).toContain(`>${new URL(sampleContext.webUrl).host}</a>`);
-      expect(rendered.text).toContain(message.actionUrl);
+      if (message.kind !== 'marketing') expect(rendered.text).toContain(message.actionUrl);
       expect(rendered.subject).not.toMatch(/[\r\n]/);
       expect(Buffer.byteLength(rendered.html)).toBeLessThan(102_400);
     }
@@ -88,6 +88,57 @@ describe('templates de e-mail', () => {
         sampleContext,
       ),
     ).toThrow();
+  });
+  it('e-mail de marketing usa o assunto da campanha, descadastro e sem pixel', () => {
+    const marketing = sampleEmails.find((m) => m.kind === 'marketing')!;
+    if (marketing.kind !== 'marketing') throw new Error('amostra inválida');
+    const rendered = renderEmail(marketing, sampleContext);
+    expect(rendered.category).toBe('marketing');
+    expect(rendered.subject).toBe(marketing.subject);
+    expect(rendered.headers['List-Unsubscribe']).toBe(`<${marketing.oneClickUnsubscribeUrl}>`);
+    expect(rendered.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(rendered.html).toContain('NATAL10');
+    expect(rendered.html).toMatch(/R\$\s\d/);
+    expect(rendered.html).toContain('Ver peça');
+    expect(rendered.html).toContain('Descadastrar');
+    expect(rendered.html).toContain(marketing.footerText);
+    expect(rendered.html).toContain(marketing.previewText);
+    expect(rendered.html).not.toMatch(/<img[^>]*width="1"/i);
+    expect(rendered.text).toContain('NATAL10');
+    expect(rendered.text).toContain(`Descadastrar: ${marketing.unsubscribeUrl}`);
+    expect(emailLabels.marketing).toBe('Novidades');
+    const [first] = marketing.blocks;
+    expect(first?.type).toBe('text');
+    const withoutPreview = renderEmail({ ...marketing, previewText: '' }, sampleContext);
+    expect(withoutPreview.html).toContain(
+      'display:none;max-height:0;overflow:hidden;mso-hide:all">',
+    );
+  });
+  it('marketing exige links da loja para descadastro e produtos', () => {
+    const marketing = sampleEmails.find((m) => m.kind === 'marketing')!;
+    if (marketing.kind !== 'marketing') throw new Error('amostra inválida');
+    expect(() =>
+      renderEmail({ ...marketing, unsubscribeUrl: 'https://outro.example/d' }, sampleContext),
+    ).toThrow();
+    expect(() =>
+      renderEmail(
+        { ...marketing, oneClickUnsubscribeUrl: 'https://outro.example/d' },
+        sampleContext,
+      ),
+    ).toThrow();
+    const blocks = marketing.blocks.map((block) =>
+      block.type === 'products'
+        ? {
+            ...block,
+            items: block.items.map((item) => ({ ...item, url: 'https://outro.example/p' })),
+          }
+        : block,
+    );
+    expect(() => renderEmail({ ...marketing, blocks }, sampleContext)).toThrow();
+    const external = marketing.blocks.map((block) =>
+      block.type === 'button' ? { ...block, href: 'https://instagram.com/maos' } : block,
+    );
+    expect(() => renderEmail({ ...marketing, blocks: external }, sampleContext)).not.toThrow();
   });
   it('não permite nota interna em resposta de atendimento', () => {
     const support = sampleEmails.find((m) => m.kind === 'support-reply')!;

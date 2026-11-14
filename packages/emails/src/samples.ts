@@ -125,4 +125,47 @@ export const sampleEmails: EmailMessage[] = [
     refundedCents: 4000,
   },
   { kind: 'group-failed', ...order, groupTitle: 'Cruz Essencial em grupo' },
+  {
+    kind: 'marketing',
+    ...base,
+    actionUrl: 'https://loja.example',
+    subject: 'Novidades para o seu Natal',
+    previewText: 'Peças novas e um cupom especial para você.',
+    blocks: [
+      { type: 'text', style: 'heading', text: 'O Natal chegou à Mãos em Oração' },
+      {
+        type: 'text',
+        style: 'paragraph',
+        text: 'Preparamos peças especiais para presentear quem você ama.',
+      },
+      {
+        type: 'image',
+        src: 'https://cdn.loja.example/campanhas/natal.jpg',
+        alt: 'Presépio em impressão 3D',
+        href: 'https://loja.example/produtos',
+      },
+      {
+        type: 'products',
+        items: [
+          {
+            name: 'Cruz Essencial · Areia',
+            priceCents: 8900,
+            imageUrl: 'https://cdn.loja.example/produtos/cruz.jpg',
+            url: 'https://loja.example/produtos/cruz-essencial',
+          },
+          {
+            name: 'Escultura Sagrada Família',
+            priceCents: 12900,
+            imageUrl: 'https://cdn.loja.example/produtos/sagrada-familia.jpg',
+            url: 'https://loja.example/produtos/sagrada-familia',
+          },
+        ],
+      },
+      { type: 'button', label: 'Ver todas as novidades', href: 'https://loja.example/produtos' },
+      { type: 'coupon', code: 'NATAL10', text: 'Use o cupom na finalização da compra.' },
+    ],
+    footerText: 'Você recebe este e-mail porque autorizou novidades da Mãos em Oração.',
+    unsubscribeUrl: 'https://loja.example/descadastro?token=amostra',
+    oneClickUnsubscribeUrl: 'https://loja.example/api/email/marketing/unsubscribe?token=amostra',
+  },
 ];

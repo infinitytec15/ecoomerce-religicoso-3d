@@ -53,6 +53,7 @@ export const checkoutSchema = z.object({
   consent: z.literal(true, 'Confirme a simulação para continuar.'),
   idempotencyKey: z.string().uuid(),
   groupBuyId: z.string().min(1).max(64).optional(),
+  marketingOptIn: z.boolean().default(false),
 });
 export const subscriptionSchema = z.object({
   paymentToken: paymentTokenSchema.optional(),
@@ -82,6 +83,7 @@ export const loginSchema = z.object({
   kind: z.enum(['customer', 'staff']),
   name: z.string().max(100).optional(),
   register: z.boolean().optional(),
+  marketingOptIn: z.boolean().optional(),
 });
 export const collectionSchema = z.enum([
   'Católicos',

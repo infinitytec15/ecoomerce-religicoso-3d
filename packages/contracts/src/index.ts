@@ -4,6 +4,7 @@ export * from './size-pricing';
 export * from './kits';
 export * from './group-buys';
 export * from './stories';
+export * from './crm';
 export * from './admin-schemas';
 export { defaultWorkspaceSettings } from './admin-types';
 

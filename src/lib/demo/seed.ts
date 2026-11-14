@@ -4,6 +4,7 @@ import { publicStories } from '@/lib/domain/stories';
 import { groupBuyProductFields, withGroupBuy } from '@/lib/domain/group-buys';
 import { requireValue } from '@/lib/api/contracts';
 import {
+  defaultCrmSettings,
   KIT_COLOR,
   KIT_SIZE,
   kitCostCents,
@@ -358,6 +359,12 @@ export function createSeed(legacy = source.operations): Operations {
     reviews,
     groupBuys: [demoGroupBuy(products)],
     stories: demoStories(products),
+    crm: {
+      settings: defaultCrmSettings,
+      campaigns: [],
+      tags: [],
+      totals: { contacts: 0, eligible: 0, unsubscribed: 0 },
+    },
     products,
     clients,
     orders,

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
+import { defaultCrmSettings } from '@maos-em-oracao/contracts';
 import type { Operations, Permission, Address, Campaign } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -380,6 +381,12 @@ export class AdminService {
       reviews: reviews.map((r) => reviewDto(r, true)),
       groupBuys,
       stories,
+      crm: {
+        settings: defaultCrmSettings,
+        campaigns: [],
+        tags: [],
+        totals: { contacts: 0, eligible: 0, unsubscribed: 0 },
+      },
     };
   }
   async execute(actor: Actor | null, value: unknown) {

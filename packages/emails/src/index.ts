@@ -22,6 +22,32 @@ const https = z
       !/[\r\n]/.test(value)
     );
   }, 'Use uma URL HTTPS sem credenciais.');
+const lineUpTo = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .refine((v) => !/[\r\n]/.test(v));
+const renderedBlockSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('text'), style: z.enum(['heading', 'paragraph']), text: prose }),
+  z.strictObject({
+    type: z.literal('image'),
+    src: https,
+    alt: z.string().max(120),
+    href: https.optional(),
+  }),
+  z.strictObject({
+    type: z.literal('products'),
+    items: z
+      .array(z.strictObject({ name: line, priceCents: cents, imageUrl: https, url: https }))
+      .min(1)
+      .max(6),
+  }),
+  z.strictObject({ type: z.literal('button'), label: lineUpTo(60), href: https }),
+  z.strictObject({ type: z.literal('coupon'), code: line, text: z.string().max(240) }),
+]);
+export type RenderedBlock = z.infer<typeof renderedBlockSchema>;
 const base = { name: line, actionUrl: https };
 const order = { ...base, orderNumber: line, totalCents: cents };
 
@@ -118,6 +144,16 @@ export const emailMessageSchema = z.discriminatedUnion('kind', [
     refundedCents: cents,
   }),
   z.strictObject({ kind: z.literal('group-failed'), ...order, groupTitle: line }),
+  z.strictObject({
+    kind: z.literal('marketing'),
+    ...base,
+    subject: lineUpTo(120),
+    previewText: z.string().max(140),
+    blocks: z.array(renderedBlockSchema).min(1).max(20),
+    footerText: lineUpTo(300),
+    unsubscribeUrl: https,
+    oneClickUnsubscribeUrl: https,
+  }),
 ]);
 
 export type EmailMessage = z.infer<typeof emailMessageSchema>;
@@ -131,7 +167,7 @@ export type EmailContext = z.infer<typeof emailContextSchema>;
 export interface RenderedEmail {
   kind: EmailKind;
   version: string;
-  category: 'transactional' | 'devotional';
+  category: 'transactional' | 'devotional' | 'marketing';
   subject: string;
   html: string;
   text: string;
@@ -162,6 +198,7 @@ export const emailLabels: Record<EmailKind, string> = {
   'group-confirmed': 'O grupo fechou',
   'group-difference': 'Devolvemos a diferença',
   'group-failed': 'O grupo não fechou',
+  marketing: 'Novidades',
 };
 
 const escape = (value: string) =>
@@ -417,6 +454,8 @@ function content(message: EmailMessage): Content {
         ],
         note: 'O prazo para o valor aparecer depende do meio de pagamento e da instituição financeira.',
       };
+    case 'marketing':
+      return { title: message.subject, intro: '', cta: '' };
   }
 }
 
@@ -431,7 +470,15 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
       ? [message.unsubscribeUrl, message.oneClickUnsubscribeUrl]
       : message.kind === 'review-request'
         ? [message.optOutUrl]
-        : []),
+        : message.kind === 'marketing'
+          ? [
+              message.unsubscribeUrl,
+              message.oneClickUnsubscribeUrl,
+              ...message.blocks.flatMap((block) =>
+                block.type === 'products' ? block.items.map((item) => item.url) : [],
+              ),
+            ]
+          : []),
   ];
   if (localLinks.some((value) => new URL(value).origin !== origin))
     throw new Error('Links de ação devem pertencer ao domínio público da loja.');
@@ -448,7 +495,12 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
   )
     throw new Error('Estorno maior que o total do pedido.');
   const copy = content(message);
-  const preheader = copy.intro;
+  const firstText =
+    message.kind === 'marketing' ? message.blocks.find((b) => b.type === 'text') : undefined;
+  const preheader =
+    message.kind === 'marketing'
+      ? message.previewText || (firstText?.type === 'text' ? firstText.text : copy.title)
+      : copy.intro;
   const paragraph = (value: string) =>
     `<p style="margin:0 0 20px;line-height:1.7;white-space:pre-line">${escape(value)}</p>`;
   const details = copy.details?.length
@@ -459,16 +511,66 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
       ? `<p style="margin:16px 0 0">Você recebe esta oração porque confirmou sua inscrição.<br><a href="${escape(message.unsubscribeUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Deixar de receber a oração diária</a></p>`
       : message.kind === 'review-request'
         ? `<p style="margin:16px 0 0">Não quer mais receber pedidos de avaliação?<br><a href="${escape(message.optOutUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Descadastre-se</a></p>`
-        : '';
+        : message.kind === 'marketing'
+          ? `<p style="margin:16px 0 0">${escape(message.footerText)}<br><a href="${escape(message.unsubscribeUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Descadastrar</a></p>`
+          : '';
   const tracking =
     message.kind === 'shipment-posted'
       ? `<p style="margin:20px 0"><a href="${escape(message.trackingUrl)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">Consultar no site da transportadora</a></p>`
       : '';
-  const button = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0"><tr><td bgcolor="#3e4934" style="border-radius:8px;mso-padding-alt:16px 24px"><a href="${escape(message.actionUrl)}" style="display:inline-block;padding:16px 24px;border:1px solid #3e4934;border-radius:8px;color:#ffffff;background:#3e4934;text-decoration:none;font-weight:700;line-height:1.35;mso-padding-alt:0">${escape(copy.cta)}</a></td></tr></table>`;
+  const buttonFor = (href: string, label: string) =>
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0"><tr><td bgcolor="#3e4934" style="border-radius:8px;mso-padding-alt:16px 24px"><a href="${escape(href)}" style="display:inline-block;padding:16px 24px;border:1px solid #3e4934;border-radius:8px;color:#ffffff;background:#3e4934;text-decoration:none;font-weight:700;line-height:1.35;mso-padding-alt:0">${escape(label)}</a></td></tr></table>`;
+  const button = copy.cta ? buttonFor(message.actionUrl, copy.cta) : '';
+  function blockHtml(block: RenderedBlock): string {
+    switch (block.type) {
+      case 'text':
+        return block.style === 'heading'
+          ? `<h2 style="margin:30px 0 14px;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.25;font-weight:400;color:#282c25">${escape(block.text)}</h2>`
+          : paragraph(block.text);
+      case 'image': {
+        const img = `<img src="${escape(block.src)}" alt="${escape(block.alt)}" width="520" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:12px">`;
+        return `<div style="margin:24px 0">${block.href ? `<a href="${escape(block.href)}" style="text-decoration:none">${img}</a>` : img}</div>`;
+      }
+      case 'products': {
+        const cell = (item?: (typeof block.items)[number]) =>
+          item
+            ? `<td width="50%" valign="top" style="width:50%;padding:0 6px 16px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e7e3d8;border-radius:12px;border-collapse:separate;overflow:hidden"><tr><td><a href="${escape(item.url)}" style="text-decoration:none"><img src="${escape(item.imageUrl)}" alt="${escape(item.name)}" width="250" style="display:block;width:100%;height:auto;border:0"></a></td></tr><tr><td style="padding:12px 14px 16px"><p style="margin:0 0 4px;font-weight:700;line-height:1.35">${escape(item.name)}</p><p style="margin:0 0 8px;color:#65695f">${escape(money(item.priceCents))}</p><a href="${escape(item.url)}" style="color:#89422e;text-decoration:underline">Ver peça</a></td></tr></table></td>`
+            : '<td width="50%" style="width:50%"></td>';
+        const rows: string[] = [];
+        for (let i = 0; i < block.items.length; i += 2)
+          rows.push(`<tr>${cell(block.items[i])}${cell(block.items[i + 1])}</tr>`);
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">${rows.join('')}</table>`;
+      }
+      case 'button':
+        return buttonFor(block.href, block.label);
+      case 'coupon':
+        return `<div style="margin:26px 0;padding:22px 24px;border:2px dashed #aa5438;border-radius:12px;background:#fffef8;text-align:center"><p style="margin:0 0 10px;line-height:1.6">${escape(block.text)}</p><p style="margin:0;font-family:'Courier New',monospace;font-size:28px;font-weight:700;letter-spacing:.12em;color:#89422e">${escape(block.code)}</p></div>`;
+    }
+  }
+  const blockText = (block: RenderedBlock): string => {
+    switch (block.type) {
+      case 'text':
+        return block.text;
+      case 'image':
+        return [block.alt ? `[Imagem: ${block.alt}]` : '[Imagem]', block.href]
+          .filter(Boolean)
+          .join(' ');
+      case 'products':
+        return block.items
+          .map((item) => `- ${item.name} · ${money(item.priceCents)}: ${item.url}`)
+          .join('\n');
+      case 'button':
+        return `${block.label}: ${block.href}`;
+      case 'coupon':
+        return `Cupom: ${block.code}\n${block.text}`;
+    }
+  };
+  const blocksHtml =
+    message.kind === 'marketing' ? message.blocks.map((block) => blockHtml(block)).join('') : '';
   const site = new URL(origin).host;
   const link = (href: string, label: string) =>
     `<a href="${escape(href)}" style="display:inline-block;padding:6px 8px;color:#89422e;text-decoration:underline">${escape(label)}</a>`;
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escape(emailLabels[message.kind])} · Mãos em Oração</title><style>body{margin:0!important}a:focus-visible{outline:3px solid #aa5438;outline-offset:4px}::selection{background:#e9eddf;color:#282c25}@media(max-width:620px){.outer{padding:16px 10px!important}.body-cell{padding:30px 24px!important}.brand-cell{padding:30px 24px 20px!important}.foot-cell{padding:28px 24px!important}h1{font-size:30px!important}}</style></head><body style="margin:0;padding:0;background:#f4f1ea;color:#282c25;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6"><div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${escape(preheader)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f1ea"><tr><td class="outer" align="center" style="padding:36px 16px"><!--[if mso]><table role="presentation" width="600"><tr><td><![endif]--><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;border-collapse:separate;background:#fffef8;border:1px solid #e7e3d8;border-radius:18px;overflow:hidden"><tr><td class="brand-cell" align="center" style="padding:36px 40px 22px;background:#fffef8"><a href="${escape(origin)}" style="text-decoration:none;color:#3e4934"><img src="${escape(origin)}/assets/email/logo-mark-128.png" width="64" height="64" alt="Mãos em Oração" style="display:block;margin:0 auto 12px;border:0;outline:none;width:64px;height:64px;border-radius:50%"><span style="display:block;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.2;color:#3e4934">Mãos em Oração</span></a><span style="display:block;margin-top:8px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#aa5438">Fé para viver · Amor para compartilhar</span></td></tr><tr><td align="center" style="padding:0 40px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="56" height="3" bgcolor="#aa5438" style="width:56px;height:3px;line-height:3px;font-size:0;border-radius:3px">&nbsp;</td></tr></table></td></tr><tr><td class="body-cell" style="padding:34px 40px 40px;overflow-wrap:anywhere;word-break:break-word"><h1 style="margin:0 0 24px;font-family:Georgia,'Times New Roman',serif;font-size:36px;line-height:1.16;font-weight:400;letter-spacing:-.02em;color:#282c25">${escape(copy.title)}</h1>${paragraph(`Olá, ${message.name}.`)}${paragraph(copy.intro)}${copy.letter ? `<div style="margin:26px 0;padding:26px 24px;background:#e9eddf;border-radius:12px;line-height:1.85">${paragraph(copy.letter)}</div>` : ''}${copy.reflection ? paragraph(copy.reflection) : ''}${button}${details}${tracking}${copy.note ? `<p style="margin:24px 0 0;font-size:14px;color:#65695f;line-height:1.65">${escape(copy.note)}</p>` : ''}</td></tr><tr><td class="foot-cell" align="center" style="padding:30px 40px;background:#eeeee6;border-top:1px solid #e1ddd2;color:#65695f;font-size:13px;line-height:1.75"><a href="${escape(origin)}" style="display:inline-block;padding:4px 0;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#3e4934;text-decoration:none">${escape(site)}</a><p style="margin:6px 0 0">${link(origin + '/produtos', 'Loja')}<span aria-hidden="true">·</span>${link(origin + '/conta', 'Minha conta')}<span aria-hidden="true">·</span>${link(origin + '/suporte', 'Atendimento')}</p><p style="margin:10px 0 0">Precisa de ajuda? <a href="mailto:${escape(context.supportEmail)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">${escape(context.supportEmail)}</a></p>${unsubscribe}<p style="margin:14px 0 0;font-size:12px;color:#8a8d83">Mãos em Oração · Peças cristãs em impressão 3D, feitas com cuidado.</p></td></tr></table><!--[if mso]></td></tr></table><![endif]--></td></tr></table></body></html>`;
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escape(emailLabels[message.kind])} · Mãos em Oração</title><style>body{margin:0!important}a:focus-visible{outline:3px solid #aa5438;outline-offset:4px}::selection{background:#e9eddf;color:#282c25}@media(max-width:620px){.outer{padding:16px 10px!important}.body-cell{padding:30px 24px!important}.brand-cell{padding:30px 24px 20px!important}.foot-cell{padding:28px 24px!important}h1{font-size:30px!important}}</style></head><body style="margin:0;padding:0;background:#f4f1ea;color:#282c25;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6"><div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${escape(preheader)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f1ea"><tr><td class="outer" align="center" style="padding:36px 16px"><!--[if mso]><table role="presentation" width="600"><tr><td><![endif]--><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;border-collapse:separate;background:#fffef8;border:1px solid #e7e3d8;border-radius:18px;overflow:hidden"><tr><td class="brand-cell" align="center" style="padding:36px 40px 22px;background:#fffef8"><a href="${escape(origin)}" style="text-decoration:none;color:#3e4934"><img src="${escape(origin)}/assets/email/logo-mark-128.png" width="64" height="64" alt="Mãos em Oração" style="display:block;margin:0 auto 12px;border:0;outline:none;width:64px;height:64px;border-radius:50%"><span style="display:block;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.2;color:#3e4934">Mãos em Oração</span></a><span style="display:block;margin-top:8px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#aa5438">Fé para viver · Amor para compartilhar</span></td></tr><tr><td align="center" style="padding:0 40px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="56" height="3" bgcolor="#aa5438" style="width:56px;height:3px;line-height:3px;font-size:0;border-radius:3px">&nbsp;</td></tr></table></td></tr><tr><td class="body-cell" style="padding:34px 40px 40px;overflow-wrap:anywhere;word-break:break-word"><h1 style="margin:0 0 24px;font-family:Georgia,'Times New Roman',serif;font-size:36px;line-height:1.16;font-weight:400;letter-spacing:-.02em;color:#282c25">${escape(copy.title)}</h1>${paragraph(`Olá, ${message.name}.`)}${copy.intro ? paragraph(copy.intro) : ''}${copy.letter ? `<div style="margin:26px 0;padding:26px 24px;background:#e9eddf;border-radius:12px;line-height:1.85">${paragraph(copy.letter)}</div>` : ''}${copy.reflection ? paragraph(copy.reflection) : ''}${blocksHtml}${button}${details}${tracking}${copy.note ? `<p style="margin:24px 0 0;font-size:14px;color:#65695f;line-height:1.65">${escape(copy.note)}</p>` : ''}</td></tr><tr><td class="foot-cell" align="center" style="padding:30px 40px;background:#eeeee6;border-top:1px solid #e1ddd2;color:#65695f;font-size:13px;line-height:1.75"><a href="${escape(origin)}" style="display:inline-block;padding:4px 0;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#3e4934;text-decoration:none">${escape(site)}</a><p style="margin:6px 0 0">${link(origin + '/produtos', 'Loja')}<span aria-hidden="true">·</span>${link(origin + '/conta', 'Minha conta')}<span aria-hidden="true">·</span>${link(origin + '/suporte', 'Atendimento')}</p><p style="margin:10px 0 0">Precisa de ajuda? <a href="mailto:${escape(context.supportEmail)}" style="display:inline-block;padding:6px 0;color:#89422e;text-decoration:underline">${escape(context.supportEmail)}</a></p>${unsubscribe}<p style="margin:14px 0 0;font-size:12px;color:#8a8d83">Mãos em Oração · Peças cristãs em impressão 3D, feitas com cuidado.</p></td></tr></table><!--[if mso]></td></tr></table><![endif]--></td></tr></table></body></html>`;
   const text = [
     'Mãos em Oração',
     copy.title,
@@ -476,7 +578,8 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
     copy.intro,
     copy.letter,
     copy.reflection,
-    `${copy.cta}: ${message.actionUrl}`,
+    copy.cta ? `${copy.cta}: ${message.actionUrl}` : undefined,
+    message.kind === 'marketing' ? message.blocks.map(blockText).join('\n\n') : undefined,
     copy.details?.map(([label, value]) => `${label}: ${value}`).join('\n'),
     message.kind === 'shipment-posted'
       ? `Rastreio da transportadora: ${message.trackingUrl}`
@@ -488,19 +591,29 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
       ? `Você recebe esta oração porque confirmou sua inscrição.\nDeixar de receber: ${message.unsubscribeUrl}`
       : message.kind === 'review-request'
         ? `Não quer mais receber pedidos de avaliação? Descadastre-se: ${message.optOutUrl}`
-        : undefined,
+        : message.kind === 'marketing'
+          ? `${message.footerText}\nDescadastrar: ${message.unsubscribeUrl}`
+          : undefined,
   ]
     .filter(Boolean)
     .join('\n\n');
   return {
     kind: message.kind,
     version: EMAIL_TEMPLATE_VERSION,
-    category: message.kind === 'daily-prayer' ? 'devotional' : 'transactional',
-    subject: `${emailLabels[message.kind]} · Mãos em Oração`,
+    category:
+      message.kind === 'daily-prayer'
+        ? 'devotional'
+        : message.kind === 'marketing'
+          ? 'marketing'
+          : 'transactional',
+    subject:
+      message.kind === 'marketing'
+        ? message.subject
+        : `${emailLabels[message.kind]} · Mãos em Oração`,
     html,
     text,
     headers:
-      message.kind === 'daily-prayer'
+      message.kind === 'daily-prayer' || message.kind === 'marketing'
         ? {
             'List-Unsubscribe': `<${message.oneClickUnsubscribeUrl}>`,
             'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',

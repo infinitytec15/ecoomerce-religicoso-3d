@@ -12,6 +12,7 @@ import type {
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
 import type { AdminGroupBuy, GroupBuyInput, GroupBuySummary } from './group-buys';
 import type { AdminStoryHighlight, StoryHighlightInput, StoryVideoInput } from './stories';
+import type { AdminCrm, CrmSettings, MarketingCampaignInput } from './crm';
 import type { Kit, KitSummary } from './kits';
 export type {
   MediaAsset,
@@ -357,6 +358,7 @@ export interface Operations {
   reviews: AdminReview[];
   groupBuys: AdminGroupBuy[];
   stories: AdminStoryHighlight[];
+  crm: AdminCrm;
 }
 export interface AccountSnapshot {
   customer: Customer;
@@ -436,6 +438,14 @@ export type AdminCommand =
   | ({ type: 'story.video.save' } & StoryVideoInput)
   | { type: 'story.video.reorder'; highlightId: string; ids: string[] }
   | { type: 'story.video.delete'; id: string }
+  | { type: 'crm.settings'; settings: CrmSettings }
+  | { type: 'crm.campaign.save'; campaign: MarketingCampaignInput }
+  | { type: 'crm.campaign.schedule'; id: string; at: string | null }
+  | { type: 'crm.campaign.cancel'; id: string }
+  | { type: 'crm.campaign.delete'; id: string }
+  | { type: 'crm.campaign.test'; id: string; extra: string[] }
+  | { type: 'crm.contact.save'; email: string; name?: string; tags: string[] }
+  | { type: 'crm.contact.unsubscribe'; email: string }
   | { type: 'product.archive'; id: string }
   | { type: 'stock.adjust'; productId: string; delta: number; reason: string }
   | { type: 'orders.batch'; ids: string[]; action: 'priority' | 'cancel' | 'production' }
