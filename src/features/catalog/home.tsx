@@ -1,11 +1,13 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { storiesFor, type StoryHighlightPublic } from '@maos-em-oracao/contracts';
 import type { Product, StoreSettings } from '@/lib/domain/types';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { ButtonLink } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
 import { ProductGrid } from './product-grid';
 import { HomeClubBanner } from '@/features/club/home-club-banner';
+import { StoriesRow } from '@/features/stories/stories-row';
 export function Services() {
   return (
     <div className="service-strip">
@@ -25,9 +27,18 @@ export function Services() {
     </div>
   );
 }
-export function Home({ products, settings }: { products: Product[]; settings: StoreSettings }) {
+export function Home({
+  products,
+  settings,
+  stories = [],
+}: {
+  products: Product[];
+  settings: StoreSettings;
+  stories?: StoryHighlightPublic[];
+}) {
   return (
     <main id="main" className="faith-home">
+      <StoriesRow highlights={storiesFor(stories, { place: 'home' })} />
       <section className="faith-hero container">
         <div className="faith-hero-copy">
           <h1>

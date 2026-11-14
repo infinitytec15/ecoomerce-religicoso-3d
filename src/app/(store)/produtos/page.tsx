@@ -1,5 +1,5 @@
 import { CatalogView } from '@/features/catalog/catalog-view';
-import { getServerCatalog } from '@/lib/api/server';
+import { getServerCatalog, getServerStories } from '@/lib/api/server';
 export const metadata = { title: 'Peças de fé' };
 export default async function Page({
   searchParams,
@@ -8,10 +8,12 @@ export default async function Page({
 }) {
   const p = await searchParams,
     value = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : undefined),
-    max = Number(value('preco'));
+    max = Number(value('preco')),
+    [products, stories] = await Promise.all([getServerCatalog(), getServerStories()]);
   return (
     <CatalogView
-      initialProducts={await getServerCatalog()}
+      initialProducts={products}
+      stories={stories}
       query={{
         search: value('busca'),
         category: value('categoria'),

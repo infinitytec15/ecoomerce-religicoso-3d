@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
+import { storiesFor, type StoryHighlightPublic } from '@maos-em-oracao/contracts';
 import type { CatalogQuery, Product } from '@/lib/domain/types';
 import { collections } from '@/lib/domain/types';
 import { filterProducts, occasions } from '@/lib/domain/catalog';
@@ -13,6 +14,7 @@ import { Icon } from '@/components/ui/icon';
 import { ProductImage } from '@/components/ui/product-image';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { EmptyState, ErrorState } from '@/components/ui/states';
+import { StoriesRow } from '@/features/stories/stories-row';
 const categoryContent: Record<string, { title: string; description: string; image: string }> = {
   Católicos: {
     title: 'A devoção mora nos detalhes.',
@@ -47,10 +49,12 @@ export function CatalogView({
   initialProducts,
   query = {},
   favoritesOnly = false,
+  stories = [],
 }: {
   initialProducts: Product[];
   query?: CatalogQuery;
   favoritesOnly?: boolean;
+  stories?: StoryHighlightPublic[];
 }) {
   const result = useCatalog(initialProducts),
     products = result.data || initialProducts,
@@ -192,6 +196,12 @@ export function CatalogView({
           </aside>
         )}
         <div style={favoritesOnly ? { gridColumn: '1/-1' } : undefined}>
+          {!favoritesOnly && query.category && (
+            <StoriesRow
+              key={query.category}
+              highlights={storiesFor(stories, { place: 'category', category: query.category })}
+            />
+          )}
           <div className="catalog-toolbar">
             <span className="muted">
               {filtered.length} {filtered.length === 1 ? 'peça encontrada' : 'peças encontradas'}

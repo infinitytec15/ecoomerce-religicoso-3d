@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ProductDetail } from '@/features/catalog/product-detail';
-import { getServerProduct, getServerCatalog, getServerProductReviews } from '@/lib/api/server';
+import {
+  getServerProduct,
+  getServerCatalog,
+  getServerProductReviews,
+  getServerStories,
+} from '@/lib/api/server';
 import { jsonLdScript, productJsonLd } from '@/lib/seo/product-json-ld';
 export async function generateMetadata({
   params,
@@ -23,7 +28,11 @@ export async function generateMetadata({
 }
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params,
-    [p, products] = await Promise.all([getServerProduct(id), getServerCatalog()]);
+    [p, products, stories] = await Promise.all([
+      getServerProduct(id),
+      getServerCatalog(),
+      getServerStories(),
+    ]);
   if (!p || !p.active) notFound();
   const reviews = p.rating?.count ? await getServerProductReviews(id) : null;
   return (
@@ -34,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           __html: jsonLdScript(productJsonLd(p, reviews?.reviews)),
         }}
       />
-      <ProductDetail initialProduct={p} initialCatalog={products} />
+      <ProductDetail initialProduct={p} initialCatalog={products} stories={stories} />
     </>
   );
 }

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Product, ShippingQuote } from '@/lib/domain/types';
 import { colorHex, money } from '@/lib/domain/format';
 import { cartLine } from '@/lib/domain/commerce';
-import { unitPriceCents } from '@maos-em-oracao/contracts';
+import { storiesFor, unitPriceCents, type StoryHighlightPublic } from '@maos-em-oracao/contracts';
 import { useCatalog, useGateway } from '@/lib/api/query';
 import { useCartStore } from '@/lib/store/cart';
 import { IS_DEMO } from '@/lib/api/config';
@@ -21,13 +21,16 @@ import { RatingStars, reviewCountLabel } from './rating-stars';
 import { useNotify } from '@/components/ui/feedback';
 import { GroupBuyBlock } from '@/features/group-buys/group-buy-block';
 import { groupBuyUrl } from '@/lib/seo/site-url';
+import { StoriesRow } from '@/features/stories/stories-row';
 const ProductViewer = dynamic(() => import('@/features/viewer/product-viewer'), { ssr: false });
 export function ProductDetail({
   initialProduct,
   initialCatalog,
+  stories = [],
 }: {
   initialProduct: Product;
   initialCatalog: Product[];
+  stories?: StoryHighlightPublic[];
 }) {
   const { data = initialCatalog } = useCatalog(initialCatalog),
     p = data.find((p) => p.id === initialProduct.id) || initialProduct,
@@ -166,6 +169,10 @@ export function ProductDetail({
               Comprar agora <Icon name="arrow" />
             </Button>
           </div>
+          <StoriesRow
+            title="Veja em vídeo"
+            highlights={storiesFor(stories, { place: 'product', productId: p.id })}
+          />
           {kit && (
             <section className="kit-contents" aria-labelledby="kit-contents-title">
               <h2 id="kit-contents-title">O que vem no kit</h2>

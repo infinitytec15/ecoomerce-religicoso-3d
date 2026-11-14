@@ -2964,3 +2964,247 @@ small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Stories (destaques em vídeo) */
+.stories-row {
+  margin: 18px 0;
+}
+.stories-row h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.faith-home > .stories-row {
+  width: calc(100% - 36px);
+  margin: 16px auto 0;
+}
+.stories-list {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 2px 2px 6px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.stories-list::-webkit-scrollbar {
+  display: none;
+}
+.stories-list li {
+  scroll-snap-align: start;
+}
+.story-bubble {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 76px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.story-ring {
+  display: block;
+  width: 72px;
+  height: 72px;
+  padding: 2px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--terra), var(--olive));
+}
+.story-ring img,
+.story-cover-empty {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sand);
+  box-sizing: content-box;
+}
+.story-bubble:focus-visible {
+  outline: none;
+}
+.story-bubble:focus-visible .story-ring {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+}
+.story-bubble-title {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  justify-content: center;
+  background: #000;
+  color: var(--white);
+  animation: story-in 220ms var(--ease);
+}
+@keyframes story-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.story-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.story-stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+}
+.story-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.story-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  background: #000000b3;
+}
+.story-top {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: max(10px, env(safe-area-inset-top)) 12px 24px;
+  background: linear-gradient(#0000008c, transparent);
+  pointer-events: none;
+}
+.story-bars {
+  display: flex;
+  gap: 4px;
+}
+.story-bar {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #ffffff59;
+}
+.story-bar i {
+  display: block;
+  height: 100%;
+  background: var(--white);
+  transform-origin: left;
+  transition: transform 250ms linear;
+}
+.story-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.story-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-control {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #0000004d;
+  color: var(--white);
+  font-size: 0.8rem;
+  font-weight: 550;
+  pointer-events: auto;
+}
+.story-close {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.story-bottom {
+  position: absolute;
+  inset: auto 0 0;
+  display: grid;
+  gap: 10px;
+  padding: 32px 12px max(16px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, #000000b3);
+  pointer-events: none;
+}
+.story-bottom p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.story-products {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.story-product {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  pointer-events: auto;
+}
+.story-product .photo {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+}
+.story-product > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.story-product strong {
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-product small {
+  color: var(--muted);
+}
+@media (min-width: 761px) {
+  .faith-home > .stories-row {
+    width: calc(100% - 48px);
+  }
+  .story-frame {
+    width: min(100%, calc(100dvh * 9 / 16));
+  }
+}
+@media (min-width: 1101px) {
+  .faith-home > .stories-row {
+    width: min(1360px, calc(100% - 96px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-viewer {
+    animation: none;
+  }
+  .story-bar i {
+    transition: none;
+  }
+}
