@@ -803,11 +803,18 @@ export class AdminService {
   }
   private async validateEdition(profiles: Operations['settings']['profiles']) {
     for (const ids of Object.values(profiles))
-      for (const id of ids)
-        requireValue(
+      for (const id of ids) {
+        const p = requireValue(
           await this.ctx.db.product.findFirst({ where: { id, active: true, archived: false } }),
           'Uma peça da edição está indisponível.',
         );
+        if (data<{ kit?: unknown }>(p.data).kit)
+          throw new DomainError(
+            'KIT_NOT_ALLOWED',
+            'Kits não podem fazer parte de uma edição do Clube.',
+            422,
+          );
+      }
   }
   /**
    * Hard delete is only for orders where no money or goods moved (tests, abandoned carts).
@@ -1021,6 +1028,12 @@ export class AdminService {
         product = data<Operations['products'][number]>(p.data),
         total = p.priceCents * c.quantity + c.shippingCents;
       if (total <= 0) throw new DomainError('TOTAL_INVALID', 'Valor inválido.');
+      if (product.kit)
+        throw new DomainError(
+          'KIT_NOT_ALLOWED',
+          'Kits não podem ser usados em pedidos manuais.',
+          422,
+        );
       const item = {
         key: p.id,
         productId: p.id,

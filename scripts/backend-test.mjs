@@ -1860,6 +1860,152 @@ try {
       await owner.command({ type: 'product.save', product: base });
     }
   });
+  await check('kit: cadastro validado, catálogo com resumo e exclusões', async () => {
+    const ops2 = await owner.data('admin/operations'),
+      template = ops2.products.find((p) => p.id === product.id),
+      part = (n, packagingCents = 0) => ({
+        materialCents: n,
+        packagingCents,
+        energyCents: 0,
+        laborCents: 0,
+        otherCents: 0,
+      }),
+      base = {
+        ...template,
+        active: true,
+        archived: false,
+        stock: 10,
+        colors: ['Branco', 'Preto'],
+        sizes: ['Pequeno', 'Médio'],
+        sizePrices: [5000, 8000],
+        costBySize: [part(1000), part(1800)],
+      },
+      A = { ...base, id: randomUUID(), sku: 'KIT-A-' + runId, name: 'Componente A' },
+      B = { ...base, id: randomUUID(), sku: 'KIT-B-' + runId, name: 'Componente B' };
+    delete A.kit;
+    delete B.kit;
+    await owner.command({ type: 'product.save', product: A });
+    await owner.command({ type: 'product.save', product: B });
+    const save = (kit, extra = {}) =>
+        owner.call(
+          'admin/commands',
+          'POST',
+          { type: 'product.save', product: { ...kit, ...extra } },
+          { headers: { 'idempotency-key': randomUUID() } },
+        ),
+      comp = (p, sizeIndex, quantity, color = 'Branco') => ({
+        productId: p.id,
+        sizeIndex,
+        color,
+        quantity,
+      }),
+      kit = {
+        ...base,
+        id: randomUUID(),
+        sku: 'KIT-' + runId,
+        name: 'Kit de teste',
+        priceCents: 17990,
+        stock: 99,
+        sizes: ['Qualquer'],
+        colors: ['Qualquer'],
+        sizePrices: [1],
+        costBreakdown: part(0, 300),
+        costBySize: [part(7)],
+        kit: { components: [comp(A, 1, 2), comp(B, 0, 1, null)] },
+      };
+    const saved = await save(kit);
+    assert.equal(saved.status, 204, saved.body?.error?.code);
+    const row = await ctx.db.product.findUniqueOrThrow({ where: { id: kit.id } });
+    assert.equal(row.stock, 0);
+    assert.equal(row.costCents, 2 * 1800 + 1000 + 300);
+    assert.deepEqual(row.data.sizes, ['Kit completo']);
+    assert.deepEqual(row.data.colors, ['Padrão']);
+    assert(!('sizePrices' in row.data) && !('costBySize' in row.data));
+    assert(!('kitSummary' in row.data));
+    // A client-sent kitSummary is never persisted.
+    await save(kit, {
+      kitSummary: { pieces: 1, componentsTotalCents: 1, savingsCents: 1, items: [] },
+    });
+    assert(
+      !('kitSummary' in (await ctx.db.product.findUniqueOrThrow({ where: { id: kit.id } })).data),
+    );
+    const pub = await guest.data('catalog/products/' + kit.id);
+    assert.equal(pub.kitSummary.pieces, 3);
+    assert.equal(pub.kitSummary.componentsTotalCents, 2 * 8000 + 5000);
+    assert.equal(pub.kitSummary.savingsCents, 21000 - 17990);
+    assert.equal(pub.kitSummary.items.length, 2);
+    assert.equal(pub.stock, 5);
+    assert.deepEqual(pub.sizes, ['Kit completo']);
+    assert(!('costCents' in pub) && !('costBreakdown' in pub));
+    assert((await guest.data('catalog/products')).some((p) => p.id === kit.id));
+    for (const [bad, code] of [
+      [{ components: [comp({ id: randomUUID() }, 0, 2)] }, 'INVALID_KIT'],
+      [{ components: [comp(A, 5, 2)] }, 'INVALID_KIT'],
+      [{ components: [comp(A, 0, 2, 'Verde')] }, 'INVALID_KIT'],
+      [{ components: [comp(A, 0, 1), comp(kit, 0, 1)] }, 'INVALID_KIT'],
+    ]) {
+      const r = await save(
+        { ...kit, id: randomUUID(), sku: 'KIT-X-' + randomUUID() },
+        { kit: bad },
+      );
+      assert.equal(r.status, 422, JSON.stringify(r.body));
+      assert.equal(r.body.error.code, code);
+    }
+    const self = await save(kit, { kit: { components: [comp(kit, 0, 2)] } });
+    assert.equal(self.status, 422);
+    assert.equal(self.body.error.code, 'INVALID_KIT');
+    // Hidden while any component is archived; the public detail behaves like an inactive product.
+    await owner.command({ type: 'product.save', product: { ...B, archived: true } });
+    try {
+      assert(!(await guest.data('catalog/products')).some((p) => p.id === kit.id));
+      const hidden = await guest.call('catalog/products/' + kit.id);
+      assert(
+        hidden.status === 404 || hidden.body.data === null,
+        'kit com componente arquivado deve sumir',
+      );
+    } finally {
+      await owner.command({ type: 'product.save', product: B });
+    }
+    assert.equal((await guest.call('catalog/products/' + kit.id)).body.data.id, kit.id);
+    // Kits are not allowed in club editions or manual orders.
+    const edition = await owner.call(
+      'admin/commands',
+      'POST',
+      {
+        type: 'edition.save',
+        edition: {
+          id: randomUUID(),
+          name: 'Edição com kit',
+          month: '2031-01',
+          dispatchDay: 10,
+          status: 'Rascunho',
+          profiles: { Católica: [kit.id], Evangélica: [kit.id], Cristã: [kit.id] },
+          message: '',
+          notes: '',
+        },
+      },
+      { headers: { 'idempotency-key': randomUUID() } },
+    );
+    assert.equal(edition.status, 422, JSON.stringify(edition.body));
+    assert.equal(edition.body.error.code, 'KIT_NOT_ALLOWED');
+    const customerRow = await ctx.db.customer.findFirstOrThrow(),
+      manual = await owner.call(
+        'admin/commands',
+        'POST',
+        {
+          type: 'order.create',
+          customerId: customerRow.id,
+          productId: kit.id,
+          quantity: 1,
+          shippingCents: 1000,
+          paid: false,
+          due: '2031-01-10',
+        },
+        { headers: { 'idempotency-key': randomUUID() } },
+      );
+    assert.equal(manual.status, 422, JSON.stringify(manual.body));
+    assert.equal(manual.body.error.code, 'KIT_NOT_ALLOWED');
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

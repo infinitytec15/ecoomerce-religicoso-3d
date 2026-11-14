@@ -1,6 +1,7 @@
 import type {
   Address,
   InventoryProduct,
+  KitSummary,
   Product,
   Order,
   Charge,
@@ -24,6 +25,8 @@ export function productDto(
   p: Prisma.ProductGetPayload<object>,
   privateData = false,
   rating?: Product['rating'],
+  /** Derived kit data: the summary and the stock allowed by the components. */
+  kitExtras?: { kitSummary: KitSummary; stock: number },
 ): Product | InventoryProduct {
   const d = data<InventoryProduct>(p.data),
     value = {
@@ -33,10 +36,11 @@ export function productDto(
       name: p.name,
       category: p.category as Product['category'],
       priceCents: p.priceCents,
-      stock: Math.max(0, p.stock - p.reserved),
+      stock: kitExtras?.stock ?? Math.max(0, p.stock - p.reserved),
       active: p.active,
       archived: p.archived,
       ...(rating ? { rating } : {}),
+      ...(kitExtras ? { kitSummary: kitExtras.kitSummary } : {}),
     };
   if (privateData) return { ...value, costCents: p.costCents, stock: p.stock };
   const publicValue = { ...value };

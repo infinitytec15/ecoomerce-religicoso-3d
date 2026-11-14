@@ -226,13 +226,23 @@ export class SubscriptionsService {
         await tx.product.findFirst({ where: { id: ids[i], active: true, archived: false } }),
         'Uma peça da edição não está disponível.',
       );
-      const d = data<{ colors: string[]; sizes: string[]; image: string; imageIndex: number }>(
-          p.data,
-        ),
+      const d = data<{
+          colors: string[];
+          sizes: string[];
+          image: string;
+          imageIndex: number;
+          kit?: unknown;
+        }>(p.data),
         unit =
           i === ids.length - 1
             ? sub.priceCents - assigned
             : Math.floor(sub.priceCents / ids.length);
+      if (d.kit)
+        throw new DomainError(
+          'KIT_NOT_ALLOWED',
+          'Kits não podem fazer parte de uma edição do Clube.',
+          422,
+        );
       assigned += unit;
       const color =
         sub.finish === 'Surpresa'

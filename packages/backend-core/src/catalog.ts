@@ -2,15 +2,23 @@ import { z } from 'zod';
 import {
   inventoryProductSchema,
   unitCostCents,
+  kitAvailable,
+  kitCostCents,
+  kitSummary,
+  KIT_SIZE,
+  KIT_COLOR,
   workspaceSchema,
   publicSettingsSchema,
   type InventoryProduct,
+  type Kit,
+  type KitSummary,
   type ProductMedia,
   type ProductModel,
   type CatalogQuery,
   roundRating,
 } from '@maos-em-oracao/contracts';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
+import type { Prisma } from '@maos-em-oracao/database';
 import type { Context } from './context';
 import { settings } from './context';
 import { productDto } from './projections';
@@ -58,13 +66,77 @@ export class CatalogService {
       take: 200,
     });
     const ratings = await this.ratings(products.map((p) => p.id));
+    const kits = await this.kitExtras(products);
     return products
-      .map((p) => productDto(p, false, ratings.get(p.id)))
+      .filter((p) => !kits.has(p.id) || kits.get(p.id))
+      .map((p) => productDto(p, false, ratings.get(p.id), kits.get(p.id) || undefined))
       .filter((p) => !query.color || query.color === 'Todos' || p.colors.includes(query.color));
   }
   async product(id: string) {
     const p = await this.ctx.db.product.findFirst({ where: { id, active: true, archived: false } });
-    return p ? productDto(p, false, (await this.ratings([p.id])).get(p.id)) : null;
+    if (!p) return null;
+    const kits = await this.kitExtras([p]);
+    // A kit with an unavailable component behaves like an inactive product.
+    if (kits.has(p.id) && !kits.get(p.id)) return null;
+    return productDto(
+      p,
+      false,
+      (await this.ratings([p.id])).get(p.id),
+      kits.get(p.id) || undefined,
+    );
+  }
+  /**
+   * Derived data of the kits among `products`, from one batched read of their components.
+   * A kit maps to null when any component is missing, inactive or archived (it must be hidden).
+   */
+  private async kitExtras(
+    products: Prisma.ProductGetPayload<object>[],
+  ): Promise<Map<string, { kitSummary: KitSummary; stock: number } | null>> {
+    const kits = products.flatMap((p) => {
+      const kit = data<{ kit?: Kit }>(p.data).kit;
+      return kit ? [{ p, kit }] : [];
+    });
+    const result = new Map<string, { kitSummary: KitSummary; stock: number } | null>();
+    if (!kits.length) return result;
+    const ids = [...new Set(kits.flatMap(({ kit }) => kit.components.map((c) => c.productId)))];
+    const rows = new Map(
+      (await this.ctx.db.product.findMany({ where: { id: { in: ids } } })).map((r) => [r.id, r]),
+    );
+    for (const { p, kit } of kits) {
+      const components = kit.components.map((c) => rows.get(c.productId));
+      if (components.some((r) => !r || !r.active || r.archived)) {
+        result.set(p.id, null);
+        continue;
+      }
+      const available = new Map<string, number>(),
+        info = new Map<
+          string,
+          {
+            name: string;
+            image: string;
+            sizes: string[];
+            priceCents: number;
+            sizePrices?: number[];
+          }
+        >();
+      for (const r of components) {
+        if (!r) continue;
+        const d = data<InventoryProduct>(r.data);
+        available.set(r.id, Math.max(0, r.stock - r.reserved));
+        info.set(r.id, {
+          name: r.name,
+          image: d.image,
+          sizes: d.sizes,
+          priceCents: r.priceCents,
+          sizePrices: d.sizePrices,
+        });
+      }
+      result.set(p.id, {
+        kitSummary: kitSummary(p, kit, info),
+        stock: kitAvailable(kit, available),
+      });
+    }
+    return result;
   }
   /** Average and count of published reviews; products without any are absent from the map. */
   private async ratings(productIds: string[]) {
@@ -83,7 +155,18 @@ export class CatalogService {
   }
   async save(actor: Actor | null, value: unknown) {
     const a = permit(actor, 'catalog'),
-      p = inventoryProductSchema.parse(value);
+      parsed = inventoryProductSchema.parse(value);
+    // kitSummary is derived on read and never persisted; kits are a fixed single-size product
+    // whose availability comes from the components, so their own stock is always 0.
+    const p: InventoryProduct = { ...parsed };
+    Reflect.deleteProperty(p, 'kitSummary');
+    if (p.kit) {
+      p.sizes = [KIT_SIZE];
+      p.colors = [KIT_COLOR];
+      p.stock = 0;
+      Reflect.deleteProperty(p, 'sizePrices');
+      Reflect.deleteProperty(p, 'costBySize');
+    } else Reflect.deleteProperty(p, 'kit');
     if (!p.sku.trim()) throw new DomainError('SKU_REQUIRED', 'Informe um SKU único.');
     return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'product/' + p.id);
@@ -98,6 +181,7 @@ export class CatalogService {
         where: { sku: p.sku.trim().toUpperCase(), id: { not: p.id } },
       });
       if (unique) throw new DomainError('SKU_EXISTS', 'Este SKU já está em uso.', 409);
+      const components = p.kit ? await this.kitComponents(tx, p.id, p.kit) : null;
       const hydrated = await this.validateMedia(tx, p);
       const active = p.active && !p.archived;
       if (active && !(hydrated.media || []).some((m) => m.kind === 'image' && m.status === 'ready'))
@@ -118,7 +202,10 @@ export class CatalogService {
           category: p.category,
           priceCents,
           // Columns mirror the first size; the per-size values live in `data`.
-          costCents: unitCostCents(p, 0),
+          costCents:
+            p.kit && components
+              ? kitCostCents(p.kit, components, p.costBreakdown?.packagingCents ?? 0)
+              : unitCostCents(p, 0),
           stock: p.stock,
           active,
           archived: !!p.archived,
@@ -130,7 +217,7 @@ export class CatalogService {
         create: { id: p.id, ...v },
         update: { ...v, version: { increment: 1 } },
       });
-      if (!current || current.stock !== p.stock)
+      if (!p.kit && (!current || current.stock !== p.stock))
         await tx.stockMovement.create({
           data: {
             productId: p.id,
@@ -143,6 +230,31 @@ export class CatalogService {
         });
       await audit(tx, a.id, 'Produto salvo', p.id);
     });
+  }
+  /** Validates the components of a kit and returns them as cost sources by product id. */
+  private async kitComponents(tx: Transaction, kitId: string, kit: Kit) {
+    const invalid = (message: string) => new DomainError('INVALID_KIT', message, 422);
+    const rows = new Map(
+      (
+        await tx.product.findMany({
+          where: { id: { in: [...new Set(kit.components.map((c) => c.productId))] } },
+        })
+      ).map((r) => [r.id, r]),
+    );
+    const sources = new Map<string, Omit<InventoryProduct, 'costCents'> & { costCents: number }>();
+    for (const c of kit.components) {
+      const row = rows.get(c.productId);
+      if (!row || row.archived) throw invalid('Um componente do kit não existe ou foi arquivado.');
+      if (c.productId === kitId) throw invalid('Um kit não pode conter a si mesmo.');
+      const d = data<InventoryProduct>(row.data);
+      if (d.kit) throw invalid('Um kit não pode conter outro kit: ' + row.name + '.');
+      if (c.sizeIndex >= d.sizes.length)
+        throw invalid('Tamanho inválido para o componente ' + row.name + '.');
+      if (c.color !== null && !d.colors.includes(c.color))
+        throw invalid('A cor ' + c.color + ' não existe no componente ' + row.name + '.');
+      sources.set(row.id, { ...d, costCents: row.costCents });
+    }
+    return sources;
   }
   private async validateMedia(tx: Transaction, p: InventoryProduct): Promise<InventoryProduct> {
     const media: ProductMedia[] = [];

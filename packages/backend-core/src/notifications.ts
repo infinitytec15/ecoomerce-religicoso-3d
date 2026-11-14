@@ -80,7 +80,7 @@ export class Notifications {
       return;
     const products = await this.ctx.db.$queryRaw<
       { id: string; name: string; stock: number; reserved: number }[]
-    >`SELECT id,name,stock,reserved FROM "Product" WHERE active=true AND archived=false AND stock-reserved<=${config.store.lowStock} ORDER BY id LIMIT 1000`;
+    >`SELECT id,name,stock,reserved FROM "Product" WHERE active=true AND archived=false AND stock-reserved<=${config.store.lowStock} AND (data->'kit') IS NULL ORDER BY id LIMIT 1000`;
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(
       new Date(),
     );
