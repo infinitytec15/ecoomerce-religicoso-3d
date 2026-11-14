@@ -177,7 +177,7 @@ export const accountSchema = z.object({
   subscriptions: z.array(subscriptionResponseSchema),
   charges: z.array(chargeSchema),
   tickets: z.array(ticketSchema),
-  reviews: z.array(myReviewSchema),
+  reviews: z.array(myReviewSchema).default([]),
 });
 export const operationsSchema = z.object({
   version: z.literal(2),
@@ -193,7 +193,7 @@ export const operationsSchema = z.object({
   editions: z.array(editionSchema),
   coupons: z.array(couponSchema),
   stockMovements: z.array(stockMovementSchema),
-  reviews: z.array(adminReviewSchema),
+  reviews: z.array(adminReviewSchema).default([]),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),

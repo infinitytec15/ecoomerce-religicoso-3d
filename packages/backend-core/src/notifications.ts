@@ -26,7 +26,7 @@ export interface EmailEnvelope {
   adminToken?: string;
 }
 export class Notifications {
-  async orderUrl(tx: Transaction, orderId: string) {
+  async orderUrl(tx: Transaction, orderId: string, ttlDays = 7) {
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
       include: { customer: true },
@@ -38,7 +38,7 @@ export class Notifications {
         tokenHash: digest(raw),
         purpose: 'guest-order',
         data: { orderId: order.id },
-        expiresAt: new Date(Date.now() + 7 * 86400000),
+        expiresAt: new Date(Date.now() + ttlDays * 86400000),
       },
     });
     return this.ctx.config.PUBLIC_WEB_URL + '/pedido/acesso?token=' + raw;

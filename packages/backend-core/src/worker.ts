@@ -693,12 +693,28 @@ export class WorkerEngine {
     let sent = 0;
     for (const { id } of orders)
       try {
-        sent += await transaction(this.ctx.db, async (tx) => {
-          const claimed = await tx.order.updateMany({
+        // Claiming first (own transaction) keeps "once per order" and stops an order that
+        // fails to render from being retried, and from starving newer ones, every tick.
+        const claimed = await transaction(this.ctx.db, async (tx) => {
+          const won = await tx.order.updateMany({
             where: { id, reviewRequestedAt: null },
             data: { reviewRequestedAt: now },
           });
-          if (!claimed.count) return 0;
+          if (!won.count) return false;
+          const { customer } = await tx.order.findUniqueOrThrow({
+            where: { id },
+            select: { customer: { select: { email: true } } },
+          });
+          // Guest checkouts make a Customer row per order: the opt-out is per e-mail.
+          return !(await tx.customer.count({
+            where: {
+              email: { equals: customer.email, mode: 'insensitive' },
+              reviewRequestsOptOut: true,
+            },
+          }));
+        });
+        if (!claimed) continue;
+        sent += await transaction(this.ctx.db, async (tx) => {
           const order = await tx.order.findUniqueOrThrow({
             where: { id },
             include: { customer: true, items: { include: { review: { select: { id: true } } } } },
@@ -716,12 +732,18 @@ export class WorkerEngine {
                 variant: [d.size, d.color].filter(Boolean).join(' · '),
               };
             }),
-            actionUrl: await mail.orderUrl(tx, id),
+            actionUrl: await mail.orderUrl(tx, id, 30),
             optOutUrl: mail.reviewOptOutUrl(order.customerId),
           });
           return 1;
         });
-      } catch {}
+      } catch (error) {
+        console.error(
+          'Pedido de avaliação falhou:',
+          id,
+          (error as { code?: string } | null)?.code ?? (error as Error | null)?.name ?? 'erro',
+        );
+      }
     return sent;
   }
   async tick() {

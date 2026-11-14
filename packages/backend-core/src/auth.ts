@@ -305,8 +305,22 @@ export class AuthService {
               where: { customerId: guest.id },
               data: { customerId: verified.customer.id },
             });
+            await tx.review.updateMany({
+              where: { customerId: guest.id },
+              data: { customerId: verified.customer.id },
+            });
             await tx.customer.update({ where: { id: guest.id }, data: { active: false } });
           }
+          if (
+            !verified.customer.reviewRequestsOptOut &&
+            (await tx.customer.count({
+              where: { id: { in: guests.map((g) => g.id) }, reviewRequestsOptOut: true },
+            }))
+          )
+            await tx.customer.update({
+              where: { id: verified.customer.id },
+              data: { reviewRequestsOptOut: true },
+            });
         }
       }
       await tx.emailToken.update({ where: { id: t.id }, data: { usedAt: new Date() } });

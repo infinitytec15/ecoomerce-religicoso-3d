@@ -672,7 +672,7 @@ export class OrdersService {
   private async myReviews(customerId: string, orderId?: string) {
     return (
       await this.ctx.db.review.findMany({
-        where: { customerId, ...(orderId ? { orderId } : {}) },
+        where: { order: { customerId }, ...(orderId ? { orderId } : {}) },
         select: { orderItemId: true, rating: true, status: true },
         orderBy: { createdAt: 'desc' },
         take: 500,

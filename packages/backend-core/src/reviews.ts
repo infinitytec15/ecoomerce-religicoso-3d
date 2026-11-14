@@ -115,8 +115,14 @@ export class ReviewsService {
       throw new DomainError('INVALID_TOKEN', 'Link de descadastro inválido ou expirado.');
     }
     await transaction(this.ctx.db, async (tx) => {
-      await tx.customer.updateMany({
+      const customer = await tx.customer.findUnique({
         where: { id: p.id },
+        select: { email: true },
+      });
+      if (!customer) return;
+      // Guest checkouts create a new Customer row per order, so the opt-out follows the e-mail.
+      await tx.customer.updateMany({
+        where: { email: { equals: customer.email, mode: 'insensitive' } },
         data: { reviewRequestsOptOut: true },
       });
       await audit(tx, 'customer', 'Descadastro de pedidos de avaliação', p.id);

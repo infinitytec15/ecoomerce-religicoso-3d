@@ -879,6 +879,40 @@ try {
     assert.equal(await keyCount(afterOptOut), 0);
     assert.equal(await requestedAt(afterOptOut), null);
 
+    // Guest checkouts create a Customer per order: the opt-out must hold for the e-mail.
+    const guestEmail = 'descadastro-' + runId + '@example.test',
+      guestA = await deliverNewOrder(new Client(), guestEmail);
+    await backdate(guestA, 8);
+    await engine.tick();
+    const guestMail = await mail(guestA, 'review-request'),
+      guestToken = decodeURIComponent(
+        /avaliacoes\/descadastro\?token=([^"&\s]+)/.exec(guestMail.envelope.html)[1],
+      );
+    // A newsletter unsubscribe token cannot be replayed as a review opt-out.
+    const { Notifications: Links } = await import('@maos-em-oracao/backend-core/notifications'),
+      newsletterToken = new URL(
+        new Links(ctx).unsubscribeLinks('subscriber', 1).oneClickUnsubscribeUrl,
+      ).searchParams.get('token');
+    assert.equal(
+      (await new Client().call('reviews/opt-out', 'POST', { token: newsletterToken })).status,
+      422,
+    );
+    assert.equal(
+      await ctx.db.customer.count({
+        where: { email: guestEmail, reviewRequestsOptOut: true },
+      }),
+      0,
+    );
+    assert.equal(
+      (await new Client().call('reviews/opt-out', 'POST', { token: guestToken })).status,
+      204,
+    );
+    const guestB = await deliverNewOrder(new Client(), guestEmail.toUpperCase());
+    await backdate(guestB, 8);
+    await engine.tick();
+    assert.equal(await keyCount(guestB), 0);
+    assert.ok(await requestedAt(guestB), 'claimed so it is not re-evaluated forever');
+
     // With requests disabled nothing is sent and the order stays eligible for later.
     ops = await owner.data('admin/operations');
     await owner.command({
@@ -1276,6 +1310,19 @@ try {
         fresh = new Client();
       assert.equal((await fresh.call('auth/guest-order', 'POST', { token: t })).status, 200);
       assert.equal((await fresh.data('account')).orders[0].id, id);
+      // The guest reviews the delivered piece before the account exists.
+      await ctx.db.order.update({
+        where: { id },
+        data: { status: 'Entregue', deliveredAt: new Date() },
+      });
+      const guestItem = (await fresh.data('account')).orders[0].items[0].itemId,
+        guestReview = {
+          orderItemId: guestItem,
+          rating: 5,
+          title: 'Linda peça',
+          text: 'Chegou bem embalada e o acabamento é muito bonito.',
+        };
+      assert.equal((await fresh.call('reviews', 'POST', guestReview)).status, 201);
       assert.equal((await fresh.call('auth/guest-order', 'POST', { token: t })).status, 422);
       const account = new Client(),
         register = await account.call('auth/login', 'POST', {
@@ -1291,11 +1338,22 @@ try {
         ).searchParams.get('token');
       assert.equal((await account.call('auth/verify', 'POST', { token })).status, 204);
       assert((await account.data('account')).orders.some((o) => o.id === id));
+      // After the merge the review follows the order: no "Avaliar" again, no duplicate.
+      assert.deepEqual(
+        (await account.data('account')).reviews.map((r) => r.orderItemId),
+        [guestItem],
+      );
+      const dup = await account.call('reviews', 'POST', guestReview);
+      assert.equal(dup.status, 409);
+      assert.equal(dup.body.error.code, 'ALREADY_REVIEWED');
       const guestAccount = await fresh.data('account');
       assert.equal(guestAccount.orders.length, 1);
       assert.equal(guestAccount.tickets.length, 0);
       assert.equal(guestAccount.subscriptions.length, 0);
-      assert.deepEqual(guestAccount.reviews, []);
+      assert.deepEqual(
+        guestAccount.reviews.map((r) => r.orderItemId),
+        [guestItem],
+      );
       assert.equal(
         (await fresh.call('account/profile', 'PATCH', { name: 'Ataque', email })).status,
         403,
