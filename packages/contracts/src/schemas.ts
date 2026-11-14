@@ -83,7 +83,13 @@ export const loginSchema = z.object({
   name: z.string().max(100).optional(),
   register: z.boolean().optional(),
 });
-export const collectionSchema = z.enum(['Católicos', 'Evangélicos', 'Cristãos', 'Presentes', 'Personalizados']);
+export const collectionSchema = z.enum([
+  'Católicos',
+  'Evangélicos',
+  'Cristãos',
+  'Presentes',
+  'Personalizados',
+]);
 export const productSchema = z.object({
   id: z.string(),
   name: z.string().min(3),

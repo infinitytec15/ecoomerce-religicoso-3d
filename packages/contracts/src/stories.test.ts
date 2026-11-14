@@ -13,33 +13,43 @@ const hl = { title: 'Novidades', coverAssetId: uuid, active: true, placements: [
 
 describe('story input schemas', () => {
   it('rejects a 41-character title and empty placements', () => {
-    expect(storyHighlightInputSchema.safeParse({ ...hl, title: 'a'.repeat(41) }).success).toBe(false);
+    expect(storyHighlightInputSchema.safeParse({ ...hl, title: 'a'.repeat(41) }).success).toBe(
+      false,
+    );
     expect(storyHighlightInputSchema.safeParse({ ...hl, placements: [] }).success).toBe(false);
   });
   it('defaults missing categories to []', () => {
     expect(storyHighlightInputSchema.parse(hl).categories).toEqual([]);
   });
   it('rejects repeated placements', () => {
-    expect(storyHighlightInputSchema.safeParse({ ...hl, placements: ['home', 'home'] }).success).toBe(
-      false,
-    );
+    expect(
+      storyHighlightInputSchema.safeParse({ ...hl, placements: ['home', 'home'] }).success,
+    ).toBe(false);
   });
   it('rejects more than 3 products on a video', () => {
     const base = { highlightId: uuid, assetId: uuid, active: true };
     const ids = [1, 2, 3, 4].map((n) => `${n}1111111-1111-4111-8111-111111111111`);
     expect(storyVideoInputSchema.safeParse({ ...base, productIds: ids }).success).toBe(false);
-    expect(storyVideoInputSchema.safeParse({ ...base, productIds: ids.slice(0, 3) }).success).toBe(true);
+    expect(storyVideoInputSchema.safeParse({ ...base, productIds: ids.slice(0, 3) }).success).toBe(
+      true,
+    );
     expect(storyVideoInputSchema.parse(base)).toMatchObject({ caption: '', productIds: [] });
   });
 });
 
 describe('storySourceSchema', () => {
   it('rejects unsafe sources', () => {
-    expect(storySourceSchema.safeParse({ type: 'file', src: 'javascript:alert(1)' }).success).toBe(false);
-    expect(storySourceSchema.safeParse({ type: 'hls', src: 'http://x/p.m3u8' }).success).toBe(false);
+    expect(storySourceSchema.safeParse({ type: 'file', src: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+    expect(storySourceSchema.safeParse({ type: 'hls', src: 'http://x/p.m3u8' }).success).toBe(
+      false,
+    );
   });
   it('accepts valid sources', () => {
-    expect(storySourceSchema.safeParse({ type: 'hls', src: 'https://cdn.x/p.m3u8' }).success).toBe(true);
+    expect(storySourceSchema.safeParse({ type: 'hls', src: 'https://cdn.x/p.m3u8' }).success).toBe(
+      true,
+    );
     expect(storySourceSchema.safeParse({ type: 'file', src: '/demo/a.mp4' }).success).toBe(true);
   });
 });

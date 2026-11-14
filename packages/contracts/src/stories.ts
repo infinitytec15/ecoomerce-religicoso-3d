@@ -137,7 +137,10 @@ export type StoryWhere =
   | { place: 'product'; productId: string };
 
 /** Highlights shown in a place, keeping the received order. Product place keeps only that product's videos. */
-export function storiesFor(list: StoryHighlightPublic[], where: StoryWhere): StoryHighlightPublic[] {
+export function storiesFor(
+  list: StoryHighlightPublic[],
+  where: StoryWhere,
+): StoryHighlightPublic[] {
   const placed = list.filter((h) => h.placements.includes(where.place));
   if (where.place === 'home') return placed;
   if (where.place === 'category') {
@@ -146,7 +149,10 @@ export function storiesFor(list: StoryHighlightPublic[], where: StoryWhere): Sto
   }
   const { productId } = where;
   return placed
-    .map((h) => ({ ...h, videos: h.videos.filter((v) => v.products.some((p) => p.id === productId)) }))
+    .map((h) => ({
+      ...h,
+      videos: h.videos.filter((v) => v.products.some((p) => p.id === productId)),
+    }))
     .filter((h) => h.videos.length > 0);
 }
 
