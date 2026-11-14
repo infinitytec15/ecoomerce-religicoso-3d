@@ -166,7 +166,7 @@ export function EditionsManager() {
                     <legend>Cesta {profile.toLowerCase()}</legend>
                     <div>
                       {data.products
-                        .filter((p) => p.active && !p.archived)
+                        .filter((p) => p.active && !p.archived && !p.kit)
                         .map((p) => (
                           <label key={p.id}>
                             <input

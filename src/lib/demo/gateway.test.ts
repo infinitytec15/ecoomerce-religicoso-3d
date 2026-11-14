@@ -291,4 +291,19 @@ describe('demo reviews', () => {
       save({ components: [{ productId: base.id, sizeIndex: 0, color: null, quantity: 2 }] }),
     ).rejects.toMatchObject({ code: 'INVALID_KIT' });
   });
+  it('rejects a kit in a manual order', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    await g.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
+    const state = storage.load();
+    await expect(
+      g.adminCommand({
+        type: 'order.create',
+        customerId: state.clients[0].id,
+        productId: state.products.find((p) => p.kit)!.id,
+        quantity: 1,
+        shippingCents: 0,
+      } as never),
+    ).rejects.toMatchObject({ code: 'KIT_NOT_ALLOWED' });
+  });
 });

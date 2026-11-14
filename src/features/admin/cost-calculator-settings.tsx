@@ -220,7 +220,7 @@ export function CalculatorSettingsEditor({
     const parsed = calculatorSettingsSchema.safeParse(s);
     if (!parsed.success) {
       setError(
-        'Revise a configuração: preencha todos os nomes, use valores positivos e mantenha as porcentagens entre 0 e 100 (taxa de falha até 90).',
+        'Revise a configuração: preencha todos os nomes, use valores positivos e mantenha as porcentagens entre 0 e 100 (taxa de falha e margem mínima até 90).',
       );
       return;
     }
@@ -548,6 +548,11 @@ export function CalculatorSettingsEditor({
                 label="Margem-alvo (%)"
                 value={s.targetMarginPct}
                 onChange={(targetMarginPct) => patch({ targetMarginPct })}
+              />
+              <NumberField
+                label="Margem mínima (%)"
+                value={s.minMarginPct ?? 20}
+                onChange={(minMarginPct) => patch({ minMarginPct })}
               />
             </div>
           </section>

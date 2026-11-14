@@ -749,8 +749,14 @@ export class DemoGateway implements CommerceGateway {
         }
         case 'order.create': {
           const customer = requireValue(s.clients.find((c) => c.id === command.customerId)),
-            product = requireValue(s.products.find((p) => p.id === command.productId)),
-            item = cartLine(forSale(s.products, product), command.quantity),
+            product = requireValue(s.products.find((p) => p.id === command.productId));
+          if (product.kit)
+            throw new ApiError(
+              'KIT_NOT_ALLOWED',
+              'Kits não podem ser usados em pedidos manuais.',
+              422,
+            );
+          const item = cartLine(forSale(s.products, product), command.quantity),
             id = uid('PED'),
             cid = uid('COB'),
             totals = {

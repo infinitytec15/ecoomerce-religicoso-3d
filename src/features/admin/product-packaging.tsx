@@ -34,12 +34,21 @@ export function readPackaging(d: FormData, sizes: number): ProductShipping {
  * Packed measures per size for Melhor Envio quotes. Sizes follow the "Tamanhos" field of
  * the same form live, so a 25 cm piece is quoted in its own box, not the 15 cm one.
  */
-export function ProductPackagingFields({ product }: { product?: InventoryProduct }) {
+export function ProductPackagingFields({
+  product,
+  single,
+}: {
+  product?: InventoryProduct;
+  /** A kit ships as one fixed option: a single box, regardless of the product's old sizes. */
+  single?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const [sizes, setSizes] = useState<string[]>(product?.sizes || ['15 cm', '20 cm', '25 cm']);
+  const [sizes, setSizes] = useState<string[]>(
+    single ? [single] : product?.sizes || ['15 cm', '20 cm', '25 cm'],
+  );
   useEffect(() => {
     const form = ref.current?.closest('form');
-    if (!form) return;
+    if (!form || single) return;
     const read = () => {
       const input = form.elements.namedItem('sizes');
       if (input instanceof HTMLInputElement) setSizes(sizesFrom(input.value));
@@ -47,6 +56,7 @@ export function ProductPackagingFields({ product }: { product?: InventoryProduct
     read();
     form.addEventListener('input', read);
     return () => form.removeEventListener('input', read);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const saved = (i: number): ProductPackage => {
     const s = product?.shipping;

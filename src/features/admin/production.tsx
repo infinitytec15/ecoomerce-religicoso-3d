@@ -12,6 +12,7 @@ import {
   useAdminAction,
   useAdminFilter,
 } from './shared';
+import { KitItems } from '@/components/commerce/kit-items';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -88,6 +89,7 @@ export function AdminProduction() {
                     >
                       {order?.items[0]?.name || 'Cesta do clube'}
                     </RecordButton>
+                    {order?.items.map((i) => i.kit && <KitItems key={i.key} kit={i.kit} />)}
                     {!IS_DEMO &&
                       order?.items.map((item) => {
                         const assetId = data.products.find((p) => p.id === item.productId)?.model
@@ -151,7 +153,18 @@ export function AdminProduction() {
               label: 'Cliente',
               render: (o) => data.clients.find((c) => c.id === o.customerId)?.name,
             },
-            { key: 'items', label: 'Itens', render: (o) => o.items.map((i) => i.name).join(', ') },
+            {
+              key: 'items',
+              label: 'Itens',
+              render: (o) =>
+                o.items
+                  .map((i) =>
+                    i.kit
+                      ? `${i.name} (${i.kit.items.map((k) => `${k.quantity}× ${k.name}`).join(', ')})`
+                      : i.name,
+                  )
+                  .join(', '),
+            },
             {
               key: 'action',
               label: '',

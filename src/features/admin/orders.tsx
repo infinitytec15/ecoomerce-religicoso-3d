@@ -67,7 +67,7 @@ export function NewOrderForm({ onSuccess }: { onSuccess: () => void }) {
             Produto
             <select name="productId" required>
               {data.products
-                .filter((p) => p.active)
+                .filter((p) => p.active && !p.kit)
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {money(p.priceCents)}

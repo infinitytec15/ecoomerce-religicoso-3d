@@ -15,6 +15,7 @@ import { Form, text } from '@/components/ui/form';
 import { ProductImage } from '@/components/ui/product-image';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { DataTable } from '@/components/ui/data-table';
+import { kitAvailable } from '@maos-em-oracao/contracts';
 import { money, uid } from '@/lib/domain/format';
 import { IS_DEMO } from '@/lib/api/config';
 export function AdminProducts() {
@@ -58,7 +59,10 @@ export function AdminProducts() {
               <div className="admin-product-cell">
                 <ProductImage src={p.image} alt={p.name} sizes="45px" />
                 <span>
-                  <strong>{p.name}</strong>
+                  <strong>
+                    {p.name}
+                    {p.kit && <span className="badge kit-badge"> Kit</span>}
+                  </strong>
                   <small>{p.sku}</small>
                 </span>
               </div>
@@ -79,18 +83,29 @@ export function AdminProducts() {
           {
             key: 'stock',
             label: 'Estoque',
-            render: (p) => (
-              <span className={p.stock <= data.settings.lowStock ? 'danger-text' : ''}>
-                {p.stock} un.
-              </span>
-            ),
+            render: (p) =>
+              p.kit ? (
+                <span>
+                  {data.workspace.inventoryPolicy === 'on-demand'
+                    ? 'Sob demanda'
+                    : `Disponível: ${kitAvailable(p.kit, new Map(data.products.map((c) => [c.id, c.stock])))} kits`}
+                </span>
+              ) : (
+                <span className={p.stock <= data.settings.lowStock ? 'danger-text' : ''}>
+                  {p.stock} un.
+                </span>
+              ),
           },
           {
             key: 'active',
             label: 'Disponibilidade',
             render: (p) => <StatusBadge status={p.active ? 'Ativo' : 'Inativo'} />,
           },
-          { key: 'stockActions', label: 'Estoque', render: (p) => <StockControl product={p} /> },
+          {
+            key: 'stockActions',
+            label: 'Estoque',
+            render: (p) => (p.kit ? null : <StockControl product={p} />),
+          },
           {
             key: 'edit',
             label: '',

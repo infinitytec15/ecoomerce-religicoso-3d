@@ -3,9 +3,12 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Collection, InventoryProduct, ProductMedia, ProductModel } from '@/lib/domain/types';
 import { collections } from '@/lib/domain/types';
+import { KIT_COLOR, KIT_SIZE, defaultCalculatorSettings } from '@maos-em-oracao/contracts';
 import { useAdminAction } from './shared';
 import { ProductSizePricing, readSizePricing } from './product-size-pricing';
 import { ProductPackagingFields, readPackaging } from './product-packaging';
+import { ProductKitFields, readKit } from './product-kit';
+import { useAdminData } from './admin-frame';
 import { Form, text, number } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
@@ -32,6 +35,9 @@ export function ProductEditor({
 }) {
   const [sku] = useState(() => p?.sku || 'MEO-' + Date.now().toString().slice(-6));
   const action = useAdminAction(),
+    { products = [], workspace } = useAdminData(),
+    [kind, setKind] = useState<'piece' | 'kit'>(p?.kit ? 'kit' : 'piece'),
+    isKit = kind === 'kit',
     [tab, setTab] = useState(0),
     [media, setMedia] = useState<ProductMedia[]>(
       p?.media ||
@@ -106,13 +112,15 @@ export function ProductEditor({
         if (busy) throw new Error('Aguarde o envio do arquivo.');
         if (text(d, 'active') === 'true' && !cover)
           throw new Error('Adicione uma imagem da peça antes de publicar.');
-        const sizeList = text(d, 'sizes')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        let pricing: ReturnType<typeof readSizePricing>;
+        const sizeList = isKit
+          ? [KIT_SIZE]
+          : text(d, 'sizes')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+        let pricing: ReturnType<typeof readSizePricing> | ReturnType<typeof readKit>;
         try {
-          pricing = readSizePricing(d, sizeList.length, sizeList);
+          pricing = isKit ? readKit(d) : readSizePricing(d, sizeList.length, sizeList);
         } catch (e) {
           setTab(1);
           throw e;
@@ -136,28 +144,25 @@ export function ProductEditor({
             image: coverSrc,
             imageIndex: p?.imageIndex || 0,
             badge: text(d, 'badge'),
-            sizes: text(d, 'sizes')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            colors: text(d, 'colors')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
+            sizes: sizeList,
+            colors: isKit
+              ? [KIT_COLOR]
+              : text(d, 'colors')
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
             active: text(d, 'active') === 'true',
             archived: text(d, 'active') === 'true' ? false : p?.archived,
             sku: text(d, 'sku'),
-            stock: number(d, 'stock'),
+            stock: isKit ? 0 : number(d, 'stock'),
+            // A piece never keeps kit data; a kit never keeps per-size prices or costs.
+            kit: undefined,
+            kitSummary: undefined,
+            ...(isKit ? { sizePrices: undefined, costBySize: undefined } : {}),
             ...pricing,
             media,
             model,
-            shipping: readPackaging(
-              d,
-              text(d, 'sizes')
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean).length,
-            ),
+            shipping: readPackaging(d, sizeList.length),
             seoTitle: text(d, 'seoTitle'),
             seoDescription: text(d, 'seoDescription'),
           },
@@ -200,21 +205,36 @@ export function ProductEditor({
                 </select>
               </label>
               <label>
-                Tamanhos (separados por vírgula)
-                <input
-                  name="sizes"
-                  required
-                  defaultValue={p?.sizes.join(', ') || '15 cm, 20 cm, 25 cm'}
-                />
+                Tipo
+                <select
+                  name="kind"
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value as 'piece' | 'kit')}
+                >
+                  <option value="piece">Peça</option>
+                  <option value="kit">Kit</option>
+                </select>
               </label>
-              <label>
-                Cores (separadas por vírgula)
-                <input
-                  name="colors"
-                  required
-                  defaultValue={p?.colors.join(', ') || 'Marfim, Terracota'}
-                />
-              </label>
+              {!isKit && (
+                <>
+                  <label>
+                    Tamanhos (separados por vírgula)
+                    <input
+                      name="sizes"
+                      required
+                      defaultValue={(!p?.kit && p?.sizes.join(', ')) || '15 cm, 20 cm, 25 cm'}
+                    />
+                  </label>
+                  <label>
+                    Cores (separadas por vírgula)
+                    <input
+                      name="colors"
+                      required
+                      defaultValue={(!p?.kit && p?.colors.join(', ')) || 'Marfim, Terracota'}
+                    />
+                  </label>
+                </>
+              )}
               <label className="span2">
                 Selo da vitrine
                 <input name="badge" maxLength={35} defaultValue={p?.badge || 'Nova peça'} />
@@ -240,7 +260,15 @@ export function ProductEditor({
             </label>
           </div>
           <div data-editor-tab={1} hidden={tab !== 1} className="stack">
-            <ProductSizePricing product={p} />
+            {isKit ? (
+              <ProductKitFields
+                product={p}
+                products={products}
+                settings={workspace.costCalculator ?? defaultCalculatorSettings}
+              />
+            ) : (
+              <ProductSizePricing product={p} />
+            )}
           </div>
           <div data-editor-tab={2} hidden={tab !== 2} className="stack">
             <div className="section-intro">
@@ -410,20 +438,24 @@ export function ProductEditor({
           </div>
           <div data-editor-tab={4} hidden={tab !== 4} className="stack">
             <h3>Estoque</h3>
-            <div className="form-grid">
-              <label>
-                Unidades disponíveis
-                <input
-                  name="stock"
-                  type="number"
-                  min={0}
-                  step={1}
-                  required
-                  defaultValue={p?.stock ?? 0}
-                />
-              </label>
-            </div>
-            <ProductPackagingFields product={p} />
+            {isKit ? (
+              <p className="muted">O estoque do kit vem das peças.</p>
+            ) : (
+              <div className="form-grid">
+                <label>
+                  Unidades disponíveis
+                  <input
+                    name="stock"
+                    type="number"
+                    min={0}
+                    step={1}
+                    required
+                    defaultValue={p?.stock ?? 0}
+                  />
+                </label>
+              </div>
+            )}
+            <ProductPackagingFields product={p} single={isKit ? KIT_SIZE : undefined} key={kind} />
           </div>
           <div data-editor-tab={5} hidden={tab !== 5} className="stack">
             <label>

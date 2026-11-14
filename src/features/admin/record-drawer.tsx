@@ -254,7 +254,7 @@ function RecordContent({ record: r }: { record: RecordReference }) {
               <span>
                 {i.quantity} × {i.name}
               </span>
-              <span>{i.kit ? <KitItems kit={i.kit} /> : i.size}</span>
+              {i.kit ? <KitItems kit={i.kit} /> : <span>{i.size}</span>}
             </div>
           ))}
           <p>
