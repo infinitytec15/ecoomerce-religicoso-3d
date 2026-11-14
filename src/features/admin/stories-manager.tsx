@@ -476,7 +476,7 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
     <div className="stack">
       <p className="notice">
         Vídeos novos ficam alguns minutos em processamento no Bunny e só aparecem na loja quando
-        ficam prontos.
+        ficam prontos. Mudanças podem levar até 1 minuto para aparecer na loja.
       </p>
       {guarded.error && (
         <p className="form-error" role="alert">
@@ -705,6 +705,7 @@ function VideoForm({
                   onChange={() => setProductIds((old) => toggle(old, p.id))}
                 />
                 {p.name}
+                {p.archived ? ' (arquivada)' : ''}
               </label>
             ))}
             <small>Até {STORY_LIMITS.productsPerVideo} peças por vídeo.</small>

@@ -147,10 +147,13 @@ export class StoriesService {
       const asset = await tx.mediaAsset.findUnique({ where: { id: input.assetId } });
       if (!asset || asset.kind !== 'video' || asset.state === 'failed')
         throw new DomainError('INVALID_VIDEO', 'Envie um vídeo válido.', 422);
+      // Products already linked to this video stay valid even if archived since.
+      const kept = new Set(existing?.productIds ?? []),
+        added = input.productIds.filter((id) => !kept.has(id));
       if (
-        input.productIds.length &&
-        (await tx.product.count({ where: { id: { in: input.productIds }, archived: false } })) !==
-          input.productIds.length
+        added.length &&
+        (await tx.product.count({ where: { id: { in: added }, archived: false } })) !==
+          new Set(added).size
       )
         throw new DomainError('INVALID_PRODUCT', 'Escolha peças existentes e não arquivadas.', 422);
       const fields = {

@@ -185,7 +185,7 @@ export class AdminService {
       groupBuys,
       stories,
     ] = await Promise.all([
-      can('catalog') || can('production')
+      can('catalog') || can('production') || can('marketing')
         ? this.ctx.db.product.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 })
         : [],
       ['customers', 'orders', 'shipping', 'finance', 'support', 'subscriptions'].some((p) =>

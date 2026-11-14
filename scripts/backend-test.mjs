@@ -3182,6 +3182,34 @@ try {
       );
       const denied = await send(customer, { type: 'story.delete', id: highlightId });
       assert.equal(denied.status, 403);
+      // 10b. Marketing-only snapshot lists products, without cost.
+      const scopedProducts = operationsSchema.parse(
+        await marketing.data('admin/operations'),
+      ).products;
+      assert(
+        scopedProducts.some((p) => p.id === product.id),
+        'marketing sees the product list',
+      );
+      assert(
+        scopedProducts.every((p) => p.costCents === 0),
+        'marketing sees no cost',
+      );
+      // 10c. A linked product archived later (p1, step 7) does not block editing the video.
+      const linked = await ctx.db.storyVideo.findUniqueOrThrow({ where: { id: storyVideoId } });
+      assert.deepEqual(linked.productIds, [p1.id]);
+      const recaption = await send(owner, { ...video, id: linked.id, caption: 'Legenda nova' });
+      assert.equal(recaption.status, 204, recaption.body?.error?.code);
+      const edited = await ctx.db.storyVideo.findUniqueOrThrow({ where: { id: linked.id } });
+      assert.equal(edited.caption, 'Legenda nova');
+      assert.deepEqual(edited.productIds, [p1.id]);
+      await owner.command({ type: 'product.archive', id: p2.id });
+      const addArchived = await send(owner, {
+        ...video,
+        id: linked.id,
+        productIds: [p1.id, p2.id],
+      });
+      assert.equal(addArchived.status, 422);
+      assert.equal(addArchived.body.error.code, 'INVALID_PRODUCT');
       // 11. Deleting a highlight removes its videos.
       await owner.command({ type: 'story.delete', id: highlightId });
       assert(!(await stories()).some((h) => h.id === highlightId));

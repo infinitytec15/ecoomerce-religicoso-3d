@@ -140,7 +140,25 @@ describe('stories manager', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Processando')).toBeInTheDocument();
     expect(within(dialog).getByText('12,5%')).toBeInTheDocument();
-    expect(within(dialog).getByText(/ficam alguns minutos em processamento/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'Vídeos novos ficam alguns minutos em processamento no Bunny e só aparecem na loja quando ficam prontos. Mudanças podem levar até 1 minuto para aparecer na loja.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('labels archived linked products in the video form', async () => {
+    const user = userEvent.setup();
+    adminData.value = {
+      stories: [second, first],
+      products: [{ ...products[0], archived: true }, ...products.slice(1)],
+    };
+    render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Vídeos de Bastidores' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Editar Pintura do terço' }));
+    expect(await screen.findByLabelText('Terço (arquivada)')).toBeChecked();
+    expect(screen.queryByLabelText('Terço')).not.toBeInTheDocument();
   });
 
   it('removes a video after confirmation', async () => {

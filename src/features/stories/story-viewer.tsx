@@ -260,10 +260,10 @@ export default function StoryViewer({
             </button>
           </div>
         </div>
-        <button type="button" className="sr-only" onClick={previous}>
+        <button type="button" className="story-skip story-skip-prev" onClick={previous}>
           Vídeo anterior
         </button>
-        <button type="button" className="sr-only" onClick={next}>
+        <button type="button" className="story-skip story-skip-next" onClick={next}>
           Próximo vídeo
         </button>
         <div className="story-bottom">
