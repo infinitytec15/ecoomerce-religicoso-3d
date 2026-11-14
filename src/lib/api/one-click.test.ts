@@ -65,6 +65,14 @@ describe('one-click unsubscribe', () => {
     );
   });
 
+  it('a rota de novidades descarta um c grande demais e descadastra mesmo assim', async () => {
+    const response = await marketing(
+      post('http://x/api/email/marketing-unsubscribe?token=' + token + '&c=' + 'x'.repeat(200)),
+    );
+    expect(response.status).toBe(204);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://api.test/marketing/one-click?token=' + token);
+  });
+
   it('a rota de novidades responde 422 sem o corpo one-click', async () => {
     const response = await marketing(
       post('http://x/api/email/marketing-unsubscribe?token=' + token, 'x=1'),

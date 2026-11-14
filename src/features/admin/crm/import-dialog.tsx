@@ -71,6 +71,7 @@ export function ImportDialog({
     [consent, setConsent] = useState(false),
     [progress, setProgress] = useState<{ done: number; total: number }>(),
     [outcome, setOutcome] = useState<Outcome>(),
+    [shown, setShown] = useState(open),
     tooMany = !!parsed && parsed.rows.length > CRM_LIMITS.importRows,
     cleanTag = normalizeTag(tag),
     running = !!progress,
@@ -83,7 +84,13 @@ export function ImportDialog({
       consent &&
       !running &&
       outcome?.kind !== 'done';
+  // Declared consent is the legal basis recorded per contact: it is affirmed for each file.
+  if (shown !== open) {
+    setShown(open);
+    setConsent(false);
+  }
   async function pick(file?: File) {
+    setConsent(false);
     setOutcome(undefined);
     setParsed(undefined);
     setFileError('');

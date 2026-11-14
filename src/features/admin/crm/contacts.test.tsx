@@ -106,6 +106,34 @@ describe('importação de CSV', () => {
     ).toBeVisible();
   });
 
+  it('pede o consentimento de novo a cada arquivo e ao reabrir', async () => {
+    const user = userEvent.setup(),
+      dialog = (isOpen: boolean) => (
+        <QueryClientProvider client={client}>
+          <ImportDialog open={isOpen} onClose={() => {}} onImported={() => {}} />
+        </QueryClientProvider>
+      ),
+      client = new QueryClient(),
+      view = render(dialog(true)),
+      consentBox = () => screen.getByLabelText(/Tenho o consentimento/),
+      submit = () => screen.getByRole('button', { name: 'Importar' });
+    await load(user, ['ana@x.com']);
+    await screen.findByText(/1 contato válido/);
+    await user.type(screen.getByLabelText('Etiqueta do grupo'), 'Lote');
+    await user.click(consentBox());
+    expect(submit()).toBeEnabled();
+    await load(user, ['bia@x.com']);
+    await screen.findByText('bia@x.com');
+    expect(consentBox()).not.toBeChecked();
+    expect(screen.getByLabelText('Etiqueta do grupo')).toHaveValue('Lote');
+    expect(submit()).toBeDisabled();
+    await user.click(consentBox());
+    expect(submit()).toBeEnabled();
+    view.rerender(dialog(false));
+    view.rerender(dialog(true));
+    expect(consentBox()).not.toBeChecked();
+  });
+
   it('envia 2.500 linhas em 3 chamadas de até 1.000 e soma o resumo', async () => {
     const user = userEvent.setup();
     gateway.crmImport.mockImplementation(async ({ rows }: { rows: unknown[] }) => ({

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 
 /**
  * RFC 8058 One-Click unsubscribe: validates the form body, then forwards the POST to the API.
- * `forwardParams` are extra query parameters (besides `token`) copied to the API call.
+ * `forwardParams` are extra query parameters (besides `token`) copied to the API call. They are
+ * attribution only: one over 128 characters is dropped, never a reason to refuse the unsubscribe.
  */
 export async function forwardOneClick(
   request: Request,
@@ -15,10 +16,7 @@ export async function forwardOneClick(
   const query = new URLSearchParams({ token });
   for (const name of forwardParams) {
     const value = url.searchParams.get(name);
-    if (value) {
-      if (value.length > 128) return new NextResponse(null, { status: 422 });
-      query.set(name, value);
-    }
+    if (value && value.length <= 128) query.set(name, value);
   }
   const reader = request.body?.getReader();
   let total = 0,

@@ -133,18 +133,37 @@ export class CrmService {
     });
   }
 
-  /** A new explicit consent: the only path that clears an earlier unsubscribe. */
-  async consent(tx: Transaction, input: { email: string; name: string; source: ConsentSource }) {
+  /**
+   * A new explicit consent. Ruling R3: only the account of a verified user may clear an
+   * earlier unsubscribe; register and checkout never prove the address, so they leave an
+   * unsubscribed contact untouched.
+   */
+  async consent(
+    tx: Transaction,
+    input: { email: string; name: string; source: ConsentSource; verified?: boolean },
+  ) {
     const email = normalizeEmail(input.email),
       name = input.name.trim().slice(0, 100),
-      fields = {
-        legalBasis: 'consent',
-        consentAt: new Date(),
-        consentVersion: MARKETING_CONSENT_VERSION,
-        consentSource: input.source,
-        unsubscribedAt: null,
-        unsubscribedCampaignId: null,
-      };
+      current = await tx.marketingContact.findUnique({
+        where: { email },
+        select: { unsubscribedAt: true },
+      });
+    if (current?.unsubscribedAt) {
+      if (input.source !== 'account') return;
+      if (!input.verified)
+        throw new DomainError(
+          'EMAIL_NOT_VERIFIED',
+          'Confirme seu e-mail para voltar a receber novidades.',
+          422,
+        );
+    }
+    const fields = {
+      legalBasis: 'consent',
+      consentAt: new Date(),
+      consentVersion: MARKETING_CONSENT_VERSION,
+      consentSource: input.source,
+      ...(input.source === 'account' ? { unsubscribedAt: null, unsubscribedCampaignId: null } : {}),
+    };
     await tx.marketingContact.upsert({
       where: { email },
       create: { email, name, ...fields },
@@ -168,9 +187,9 @@ export class CrmService {
 
   async setAccount(actor: Actor | null, value: unknown): Promise<void> {
     const input = z.object({ subscribed: z.boolean() }).parse(value),
-      { id, email, name } = await this.account(actor);
+      { id, email, name, verified } = await this.account(actor);
     await transaction(this.ctx.db, async (tx) => {
-      if (input.subscribed) await this.consent(tx, { email, name, source: 'account' });
+      if (input.subscribed) await this.consent(tx, { email, name, source: 'account', verified });
       else await this.markUnsubscribed(tx, email);
       await audit(
         tx,
@@ -207,7 +226,11 @@ export class CrmService {
   /** Idempotent: the first unsubscribe keeps its date and campaign. */
   async unsubscribe(value: unknown): Promise<void> {
     const input = z
-      .object({ token: z.string().min(20).max(2048), campaignId: z.string().max(64).optional() })
+      .object({
+        token: z.string().min(20).max(2048),
+        // Attribution only: a malformed `c` is dropped, never a reason to refuse the unsubscribe.
+        campaignId: z.string().max(64).optional().catch(undefined),
+      })
       .parse(value);
     let id: string;
     try {
@@ -999,9 +1022,14 @@ export class CrmService {
     const user = requireValue(
       await this.ctx.db.user.findUnique({
         where: { id: a.userId },
-        select: { email: true, name: true },
+        select: { email: true, name: true, verifiedAt: true },
       }),
     );
-    return { id: a.userId, email: normalizeEmail(user.email), name: user.name };
+    return {
+      id: a.userId,
+      email: normalizeEmail(user.email),
+      name: user.name,
+      verified: Boolean(user.verifiedAt),
+    };
   }
 }

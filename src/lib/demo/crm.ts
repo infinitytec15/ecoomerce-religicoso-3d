@@ -176,6 +176,7 @@ export function marketingStatus(state: Operations, accountEmail: string): Market
     version: MARKETING_CONSENT_VERSION,
   };
 }
+/** The account toggle. The demo sends no e-mail, so its accounts count as verified (ruling R3). */
 export function setMarketing(
   state: Operations,
   account: { email: string; name?: string },

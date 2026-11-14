@@ -221,6 +221,21 @@ describe('demo CRM', () => {
     });
     expect((await g.marketingStatus()).subscribed).toBe(true);
   });
+  it('keeps an unsubscribed e-mail out when it registers with marketingOptIn (ruling R3)', async () => {
+    const g = new DemoGateway(new MemoryDemoStorage()),
+      address = 'saiu@exemplo.net';
+    await g.login(staff);
+    await g.adminCommand({ type: 'crm.contact.unsubscribe', email: address });
+    await g.logout();
+    await g.login({
+      ...customer,
+      email: address,
+      register: true,
+      name: 'Quem Saiu',
+      marketingOptIn: true,
+    });
+    expect((await g.marketingStatus()).subscribed).toBe(false);
+  });
   it('unsubscribes by the contact token in the demo', async () => {
     const g = await setup(),
       contact = (await g.crmContacts({ q: 'ana@exemplo.com' })).items[0];

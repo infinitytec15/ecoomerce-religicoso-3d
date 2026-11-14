@@ -3450,6 +3450,17 @@ try {
     assert.equal(off.status, 204, off.body?.error?.code);
     assert.equal((await crmAccount.data('account/marketing')).subscribed, false);
     assert((await crmContact(crmRegistered)).unsubscribedAt);
+    // Ruling R3: back in only once the account e-mail is confirmed.
+    const unverified = await crmAccount.call('account/marketing', 'PUT', { subscribed: true });
+    assert.equal(unverified.status, 422);
+    assert.equal(unverified.body.error.code, 'EMAIL_NOT_VERIFIED');
+    assert.equal(
+      unverified.body.error.message,
+      'Confirme seu e-mail para voltar a receber novidades.',
+    );
+    assert((await crmContact(crmRegistered)).unsubscribedAt);
+    assert.equal((await crmAccount.data('account/marketing')).subscribed, false);
+    await ctx.db.user.update({ where: { email: crmRegistered }, data: { verifiedAt: new Date() } });
     const on = await crmAccount.call('account/marketing', 'PUT', { subscribed: true });
     assert.equal(on.status, 204, on.body?.error?.code);
     assert.equal((await crmAccount.data('account/marketing')).subscribed, true);
@@ -3458,6 +3469,89 @@ try {
     assert.equal(again.consentSource, 'account');
     assert.equal((await owner.call('account/marketing')).status, 403);
     assert.equal((await new Client().call('account/marketing')).status, 401);
+  });
+  await check('CRM: cadastro e checkout não reinscrevem um e-mail descadastrado', async () => {
+    const unsubscribedAt = new Date(Date.now() - 86400000),
+      consentAt = new Date(Date.now() - 2 * 86400000),
+      gone = async (email) =>
+        ctx.db.marketingContact.create({
+          data: {
+            email,
+            name: 'Quem saiu',
+            legalBasis: 'consent',
+            consentAt,
+            consentVersion: '2026-01-01',
+            consentSource: 'account',
+            unsubscribedAt,
+          },
+        }),
+      unchanged = async (email) => {
+        const c = await crmContact(email);
+        assert.equal(c.unsubscribedAt?.getTime(), unsubscribedAt.getTime());
+        assert.equal(c.consentAt?.getTime(), consentAt.getTime());
+        assert.equal(c.consentSource, 'account');
+        assert.equal(c.consentVersion, '2026-01-01');
+        assert.equal(c.name, 'Quem saiu');
+      },
+      registered = crmEmail('saiu-cadastro'),
+      guestEmail = crmEmail('saiu-checkout');
+    await gone(registered);
+    await gone(guestEmail);
+    const r = await new Client().call('auth/login', 'POST', {
+      name: 'Outra pessoa',
+      email: registered,
+      password: 'IntegrationTeste!2026',
+      kind: 'customer',
+      register: true,
+      marketingOptIn: true,
+    });
+    assert.equal(r.status, 200, r.body?.error?.code);
+    await unchanged(registered);
+    await crmBuy(guestEmail, { marketingOptIn: true });
+    await crmBuy(registered, { marketingOptIn: true });
+    await unchanged(guestEmail);
+    await unchanged(registered);
+  });
+  await check('CRM: c malformado ou desconhecido não impede o descadastro', async () => {
+    const { CrmService } = await import('@maos-em-oracao/backend-core/crm');
+    const crm = new CrmService(ctx),
+      contacts = await Promise.all(
+        ['c-longo', 'c-desconhecido', 'c-numero', 'c-repetido'].map((label) =>
+          ctx.db.marketingContact.create({
+            data: {
+              email: crmEmail(label),
+              legalBasis: 'consent',
+              consentAt: new Date(),
+              consentVersion: '2026-11-14',
+              consentSource: 'account',
+            },
+          }),
+        ),
+      ),
+      tokenOf = (id) => new URL(crm.unsubscribeLinks(id).unsubscribeUrl).searchParams.get('token'),
+      oneClick = (id, query) =>
+        fetch(base + '/marketing/one-click?token=' + encodeURIComponent(tokenOf(id)) + query, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'List-Unsubscribe=One-Click',
+        });
+    assert.equal((await oneClick(contacts[0].id, '&c=' + 'x'.repeat(200))).status, 204);
+    const unknown = await guest.call('marketing/unsubscribe', 'POST', {
+      token: tokenOf(contacts[1].id),
+      campaignId: 'campanha-que-nao-existe',
+    });
+    assert.equal(unknown.status, 204, unknown.body?.error?.code);
+    const numeric = await guest.call('marketing/unsubscribe', 'POST', {
+      token: tokenOf(contacts[2].id),
+      campaignId: 12345,
+    });
+    assert.equal(numeric.status, 204, numeric.body?.error?.code);
+    assert.equal((await oneClick(contacts[3].id, '&c=a&c=b')).status, 204);
+    for (const contact of contacts) {
+      const saved = await crmContact(contact.email);
+      assert(saved.unsubscribedAt, contact.email);
+      assert.equal(saved.unsubscribedCampaignId, null);
+    }
   });
   await check('CRM: descadastro pelo link é idempotente e exige o token de marketing', async () => {
     const { CrmService } = await import('@maos-em-oracao/backend-core/crm');

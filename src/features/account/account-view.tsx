@@ -560,17 +560,18 @@ function MarketingPreference() {
   const gateway = useGateway(),
     status = useQuery({ queryKey: ['marketing-status'], queryFn: () => gateway.marketingStatus() }),
     save = useCommand((g, subscribed: boolean) => g.setMarketing(subscribed)),
-    [message, setMessage] = useState(''),
+    [message, setMessage] = useState<{ text: string; error: boolean } | null>(null),
     subscribed = status.data?.subscribed ?? false;
   async function toggle() {
     const next = !subscribed;
     try {
       await save.mutateAsync(next);
-      setMessage(
-        next ? MARKETING_CONSENT_TEXT : 'Pronto. Você não vai mais receber nossas novidades.',
-      );
+      setMessage({
+        text: next ? MARKETING_CONSENT_TEXT : 'Pronto. Você não vai mais receber nossas novidades.',
+        error: false,
+      });
     } catch (error) {
-      setMessage(errorMessage(error));
+      setMessage({ text: errorMessage(error), error: true });
     }
   }
   return (
@@ -586,12 +587,35 @@ function MarketingPreference() {
         aria-labelledby="marketing-title"
         aria-describedby="marketing-help"
         className={subscribed ? 'btn' : 'btn secondary'}
-        disabled={status.isLoading || save.isPending}
+        disabled={status.isLoading || status.isError || save.isPending}
         onClick={toggle}
       >
-        {subscribed ? 'Ligado' : 'Desligado'}
+        {status.isError ? 'Indisponível' : subscribed ? 'Ligado' : 'Desligado'}
       </button>
-      {message && <p role="status">{message}</p>}
+      {status.isError ? (
+        <>
+          <p className="form-error" role="alert">
+            Não foi possível carregar sua preferência. Tente novamente.
+          </p>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={status.isFetching}
+            onClick={() => void status.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </>
+      ) : (
+        message && (
+          <p
+            className={message.error ? 'form-error' : undefined}
+            role={message.error ? 'alert' : 'status'}
+          >
+            {message.text}
+          </p>
+        )
+      )}
     </section>
   );
 }
