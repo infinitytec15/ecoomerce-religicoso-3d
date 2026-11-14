@@ -15,6 +15,7 @@ const id = z.string().min(1).max(100),
   priority = z.enum(['Normal', 'Alta']),
   status = z.enum([
     'Aguardando pagamento',
+    'Aguardando grupo',
     'Confirmado',
     'Em produção',
     'Em acabamento',

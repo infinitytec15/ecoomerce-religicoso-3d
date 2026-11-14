@@ -666,7 +666,12 @@ export class DemoGateway implements CommerceGateway {
       throw new ApiError('FORBIDDEN', 'Seu perfil não permite esta alteração.', 403);
     this.mutate((s) => {
       if (applyAdminExtension(s, command, session)) {
-        audit(s, command.type, 'id' in command ? command.id : 'Operação', session.name);
+        audit(
+          s,
+          command.type,
+          'id' in command && command.id ? command.id : 'Operação',
+          session.name,
+        );
         return;
       }
       switch (command.type) {
@@ -920,7 +925,7 @@ export class DemoGateway implements CommerceGateway {
           s.settings = publicSettingsSchema.parse(command.settings);
           break;
       }
-      audit(s, command.type, 'id' in command ? command.id : 'Operação', session.name);
+      audit(s, command.type, 'id' in command && command.id ? command.id : 'Operação', session.name);
     });
   }
 }

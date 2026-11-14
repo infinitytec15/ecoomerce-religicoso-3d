@@ -20,6 +20,7 @@ import { IS_DEMO } from '@/lib/api/config';
 import { ReceiptButton } from '@/features/account/shipment-card';
 export const orderStatuses: OrderStatus[] = [
   'Aguardando pagamento',
+  'Aguardando grupo',
   'Confirmado',
   'Em produção',
   'Em acabamento',

@@ -4,6 +4,7 @@ const warning = [
   'Pagamento pendente',
   'Aberto',
   'Aguardando pagamento',
+  'Aguardando grupo',
   'Pausada',
   'Previsto',
 ];

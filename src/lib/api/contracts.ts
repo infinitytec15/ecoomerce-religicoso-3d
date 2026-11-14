@@ -33,6 +33,7 @@ export interface CommerceGateway {
     coupon: string;
     cep?: string;
     shippingQuoteId?: string;
+    groupBuyId?: string;
   }): Promise<{
     items: CartItem[];
     subtotalCents: number;

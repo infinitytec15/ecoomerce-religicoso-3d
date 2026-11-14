@@ -84,6 +84,7 @@ export const Situacoes: Story = {
         'Pausada',
         'Pagamento pendente',
         'Cancelada',
+        'Aguardando grupo',
         'Confirmado',
         'Em produção',
         'Pronto para envio',

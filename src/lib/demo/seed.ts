@@ -284,6 +284,7 @@ export function createSeed(legacy = source.operations): Operations {
     coupons: [],
     stockMovements: [],
     reviews,
+    groupBuys: [],
     products,
     clients,
     orders,

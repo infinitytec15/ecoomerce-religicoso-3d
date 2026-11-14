@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { adminReviewSchema, httpsUrlSchema, myReviewSchema } from '@maos-em-oracao/contracts';
+import {
+  adminGroupBuySchema,
+  adminReviewSchema,
+  httpsUrlSchema,
+  myReviewSchema,
+} from '@maos-em-oracao/contracts';
 import {
   workspaceSchema,
   invitationSchema,
@@ -96,6 +101,7 @@ export const orderSchema = z.object({
   shippingCents: cents,
   status: z.enum([
     'Aguardando pagamento',
+    'Aguardando grupo',
     'Confirmado',
     'Em produção',
     'Em acabamento',
@@ -208,6 +214,7 @@ export const operationsSchema = z.object({
   coupons: z.array(couponSchema),
   stockMovements: z.array(stockMovementSchema),
   reviews: z.array(adminReviewSchema).default([]),
+  groupBuys: z.array(adminGroupBuySchema).default([]),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),

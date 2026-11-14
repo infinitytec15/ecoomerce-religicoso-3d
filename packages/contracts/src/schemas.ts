@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { kitSchema, kitSummarySchema } from './kit-schemas';
+import { groupBuySummarySchema } from './group-buys';
 import { productMediaSchema, productModelSchema, productShippingSchema } from './admin-schemas';
 const paymentTokenSchema = z.object({
   token: z.string().min(1).optional(),
@@ -51,6 +52,7 @@ export const checkoutSchema = z.object({
   installments: z.number().int().min(1).max(3),
   consent: z.literal(true, 'Confirme a simulação para continuar.'),
   idempotencyKey: z.string().uuid(),
+  groupBuyId: z.string().min(1).max(64).optional(),
 });
 export const subscriptionSchema = z.object({
   paymentToken: paymentTokenSchema.optional(),
@@ -114,6 +116,7 @@ export const productSchema = z.object({
     .optional(),
   kit: kitSchema.optional(),
   kitSummary: kitSummarySchema.optional(),
+  groupBuy: groupBuySummarySchema.optional(),
 });
 const costPart = z.number().int().nonnegative().max(10_000_000);
 /** Private production cost of one piece; costCents is always their sum. */

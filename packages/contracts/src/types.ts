@@ -10,6 +10,7 @@ import type {
   WorkspaceSettings,
 } from './admin-types';
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
+import type { AdminGroupBuy, GroupBuyInput, GroupBuySummary } from './group-buys';
 import type { Kit, KitSummary } from './kits';
 export type {
   MediaAsset,
@@ -43,6 +44,7 @@ export type FaithProfile = 'Católica' | 'Evangélica' | 'Cristã';
 export type PaymentMethod = 'card' | 'pix' | 'split';
 export type OrderStatus =
   | 'Aguardando pagamento'
+  | 'Aguardando grupo'
   | 'Confirmado'
   | 'Em produção'
   | 'Em acabamento'
@@ -106,6 +108,8 @@ export interface Product {
   /** Present when the product is a kit of other products. */
   kit?: Kit;
   kitSummary?: KitSummary;
+  /** Open group-buy campaign of this product, when there is one. */
+  groupBuy?: GroupBuySummary;
 }
 /** Private production cost of one piece, in cents. costCents is their sum. */
 export interface CostBreakdown {
@@ -350,6 +354,7 @@ export interface Operations {
   coupons: Coupon[];
   stockMovements: StockMovement[];
   reviews: AdminReview[];
+  groupBuys: AdminGroupBuy[];
 }
 export interface AccountSnapshot {
   customer: Customer;
@@ -418,6 +423,9 @@ export interface CatalogQuery {
   occasion?: string;
 }
 export type AdminCommand =
+  | ({ type: 'groupbuy.save' } & GroupBuyInput)
+  | { type: 'groupbuy.close'; id: string }
+  | { type: 'groupbuy.extend'; id: string; endsAt: string }
   | { type: 'product.archive'; id: string }
   | { type: 'stock.adjust'; productId: string; delta: number; reason: string }
   | { type: 'orders.batch'; ids: string[]; action: 'priority' | 'cancel' | 'production' }

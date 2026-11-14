@@ -309,6 +309,7 @@ export function AdminAnalytics({ finance = false }: { finance?: boolean }) {
             <>
               {[
                 ['Aguardando pagamento', 'Pagamento'],
+                ['Aguardando grupo', 'Aguardando grupo'],
                 ['Confirmado', 'Confirmados'],
                 ['Em produção', 'Em produção'],
                 ['Em acabamento', 'Acabamento'],
