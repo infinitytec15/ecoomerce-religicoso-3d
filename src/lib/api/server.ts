@@ -12,7 +12,12 @@ import { seedCatalog, seedGroupBuys, seedSettings, seedStories } from '@/lib/dem
 import { joinableGroupBuys, publicGroupBuy } from '@/lib/domain/group-buys';
 import { productSchema, publicSettingsSchema } from '@/lib/domain/schemas';
 import { IS_DEMO } from './config';
-async function publicFetch<T>(path: string, schema: z.ZodType<T>, missing?: T): Promise<T> {
+async function publicFetch<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  missing?: T,
+  timeoutMs = 10000,
+): Promise<T> {
   await connection();
   const base = process.env.API_BASE_URL;
   if (!base) throw new Error('Configure API_BASE_URL para usar o modo HTTP.');
@@ -22,7 +27,7 @@ async function publicFetch<T>(path: string, schema: z.ZodType<T>, missing?: T): 
       ...(process.env.BFF_SHARED_SECRET ? { 'x-bff-secret': process.env.BFF_SHARED_SECRET } : {}),
     },
     next: { revalidate: 60, tags: ['catalog'] },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (response.status === 404 && missing !== undefined) return missing;
   if (!response.ok) throw new Error('Catálogo temporariamente indisponível.');
@@ -62,12 +67,24 @@ export const getServerGroupBuy = cache(async (id: string) =>
         .find((g) => g.id === id) ?? null)
     : publicFetch('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema.nullable(), null),
 );
+const STORIES_TIMEOUT_MS = 2500;
 /** Story highlights; any failure yields none, so stories never take a page down. */
 export const getServerStories = cache(async (): Promise<StoryHighlightPublic[]> => {
   try {
-    return IS_DEMO
-      ? seedStories
-      : await publicFetch('stories', z.array(storyHighlightPublicSchema));
+    if (IS_DEMO) return seedStories;
+    // Stories are decoration: never hold a page for the catalog's 10 s budget.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<StoryHighlightPublic[]>((resolve) => {
+      timer = setTimeout(() => resolve([]), STORIES_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([
+        publicFetch('stories', z.array(storyHighlightPublicSchema), undefined, STORIES_TIMEOUT_MS),
+        late,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
     return [];
   }

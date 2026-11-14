@@ -132,10 +132,12 @@ export class HttpGateway implements CommerceGateway {
   }
   /** Metrics are best effort: a network error or any status is swallowed. */
   async storyEvent(input: StoryEvent) {
+    const event = storyEventSchema.safeParse(input);
+    if (!event.success) return;
     await this.client
       .request('stories/events', voidSchema, {
         method: 'POST',
-        body: storyEventSchema.parse(input),
+        body: event.data,
         keepalive: true,
       })
       .catch(() => undefined);

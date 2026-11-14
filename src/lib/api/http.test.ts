@@ -270,6 +270,12 @@ describe('HTTP stories', () => {
       type: 'view',
     });
   });
+  it('ignores a malformed event without calling the API', async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    await expect(g.storyEvent({ videoId: '', type: 'like' } as never)).resolves.toBeUndefined();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it('never rejects on a rate limit, a server error or a network failure', async () => {
     for (const fetcher of [
       vi

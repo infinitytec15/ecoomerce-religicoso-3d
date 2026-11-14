@@ -151,6 +151,11 @@ describe('demo stories', () => {
     });
   });
 
+  it('ignores malformed events', async () => {
+    const g = new DemoGateway();
+    await expect(g.storyEvent({ videoId: '', type: 'like' } as never)).resolves.toBeUndefined();
+  });
+
   it('refuses story commands without a staff session', async () => {
     const g = new DemoGateway();
     await expect(

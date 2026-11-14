@@ -25,6 +25,20 @@ describe('getServerStories', () => {
     await expect(getServerStories()).resolves.toEqual([]);
   });
 
+  it('gives up after 2.5 s when the API never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubEnv('API_BASE_URL', 'https://api.test');
+      vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => undefined)));
+      const { getServerStories } = await import('./server');
+      const result = getServerStories();
+      await vi.advanceTimersByTimeAsync(2500);
+      await expect(result).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('returns the API highlights when it answers', async () => {
     vi.stubEnv('API_BASE_URL', 'https://api.test');
     const highlight = {
