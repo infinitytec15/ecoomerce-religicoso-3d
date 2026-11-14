@@ -3,6 +3,7 @@ import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
 import type { PaymentResult } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
 import { Notifications } from './notifications';
+import { GroupBuysService } from './group-buys';
 import { data, json, requireValue, DomainError, audit } from './shared';
 import { orderInclude } from './projections';
 import { digest } from './security';
@@ -94,8 +95,10 @@ export class PaymentsService {
     });
   }
   private mail: Notifications;
+  private groupBuys: GroupBuysService;
   constructor(private ctx: Context) {
     this.mail = new Notifications(ctx);
+    this.groupBuys = new GroupBuysService(ctx);
   }
   async action(orderId: string) {
     const o = requireValue(
@@ -358,6 +361,8 @@ export class PaymentsService {
           data: { status: 'Pago', paidAt: new Date() },
         });
         await tx.order.update({ where: { id: order.id }, data: { status: 'Confirmado' } });
+        // Campaign before stock, the same lock order as the group checkout.
+        if (order.groupBuyId) await lock(tx, 'group-buy/' + order.groupBuyId);
         const reservations = await tx.stockReservation.findMany({ where: { orderId: order.id } });
         let stockReady = true;
         for (const r of [...reservations].sort((a, b) => a.productId.localeCompare(b.productId))) {
@@ -396,7 +401,13 @@ export class PaymentsService {
             await tx.stockReservation.update({ where: { id: r.id }, data: { state: 'consumed' } });
           }
         }
-        if (stockReady) await this.production(tx, order.id);
+        const group =
+          stockReady && order.groupBuyId
+            ? await this.groupBuys.onPaid(tx, order.id, new Date())
+            : 'release';
+        if (group !== 'release')
+          await tx.order.update({ where: { id: order.id }, data: { status: 'Aguardando grupo' } });
+        else if (stockReady) await this.production(tx, order.id);
         else {
           await tx.order.update({
             where: { id: order.id },
@@ -410,14 +421,34 @@ export class PaymentsService {
             reason: 'Estoque indisponível após expiração da reserva.',
           });
         }
-        const a = data<Address>(order.address);
-        await this.mail.email(tx, 'payment-approved/' + intent.id, order.id, a.email, {
-          kind: 'payment-approved',
-          name: a.name,
-          totalCents: order.totalCents,
-          orderNumber: 'MEO-' + String(order.number).padStart(6, '0'),
-          actionUrl: await this.mail.orderUrl(tx, order.id),
-        });
+        const a = data<Address>(order.address),
+          orderNumber = 'MEO-' + String(order.number).padStart(6, '0');
+        if (group === 'hold') {
+          const gb = await tx.groupBuy.findUniqueOrThrow({ where: { id: order.groupBuyId! } });
+          await this.mail.email(tx, 'group-joined/' + order.id, order.id, a.email, {
+            kind: 'group-joined',
+            name: a.name,
+            totalCents: order.totalCents,
+            orderNumber,
+            actionUrl: await this.mail.orderUrl(tx, order.id),
+            groupTitle: gb.title,
+            participants: await this.groupBuys.participants(tx, gb.id),
+            goal: gb.goal,
+            endsAtLabel: gb.endsAt.toLocaleDateString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+            }),
+          });
+        } else if (group === 'release')
+          await this.mail.email(tx, 'payment-approved/' + intent.id, order.id, a.email, {
+            kind: 'payment-approved',
+            name: a.name,
+            totalCents: order.totalCents,
+            orderNumber,
+            actionUrl: await this.mail.orderUrl(tx, order.id),
+          });
         if (order.subscriptionId) {
           await tx.subscription.updateMany({
             where: { id: order.subscriptionId, status: 'Pagamento pendente' },
@@ -452,6 +483,12 @@ export class PaymentsService {
     const order = requireValue(
       await tx.order.findUnique({ where: { id: orderId }, include: { payment: true } }),
     );
+    if (order.status === 'Aguardando grupo')
+      throw new DomainError(
+        'GROUP_PENDING',
+        'O pedido aguarda o fechamento da compra coletiva para ir à produção.',
+        409,
+      );
     if (
       order.payment?.status !== 'Pago' ||
       ['Cancelado', 'Enviado', 'Entregue'].includes(order.status)

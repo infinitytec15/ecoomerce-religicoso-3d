@@ -1,15 +1,27 @@
-import { transaction, lock, type PrismaClient, type Transaction } from '@maos-em-oracao/database';
+import {
+  transaction,
+  lock,
+  type Prisma,
+  type PrismaClient,
+  type Transaction,
+} from '@maos-em-oracao/database';
 import {
   groupBuyInputSchema,
   groupBuyJoinable,
+  groupDifferenceCents,
+  groupUnitCents,
   participantInitials,
   unitPriceCents,
   type AdminGroupBuy,
+  type GroupBuyMode,
+  type GroupBuyOrderSnapshot,
   type GroupBuyPublic,
   type GroupBuySummary,
   type InventoryProduct,
+  type OrderItemInput,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
+import { Notifications } from './notifications';
 import {
   groupBuyAdminDto,
   groupBuyAdminOrderInclude,
@@ -25,8 +37,14 @@ import { type Actor, permit, requireValue, DomainError, data, audit } from './sh
 const OPEN_STATUSES = ['Aberta', 'Meta atingida'];
 const MAX_INITIALS = 8;
 
+/** What the payment flow does with a paid group order. */
+export type GroupPaidOutcome = 'hold' | 'release' | 'fail';
+
 export class GroupBuysService {
-  constructor(private ctx: Context) {}
+  private mail: Notifications;
+  constructor(private ctx: Context) {
+    this.mail = new Notifications(ctx);
+  }
 
   /** Customers that paid: distinct customers among paid, non-cancelled orders of the campaign. */
   async participants(db: PrismaClient | Transaction, groupBuyId: string): Promise<number> {
@@ -244,6 +262,150 @@ export class GroupBuysService {
       });
       return claimed.count > 0;
     });
+  }
+
+  /**
+   * Validates a group checkout under the campaign lock and prices its single line. The caller must
+   * create the order in this same transaction. Without an e-mail (estimate) the per-person limit and
+   * the participant cap are not checked.
+   */
+  async context(
+    tx: Transaction,
+    input: { groupBuyId: string; items: OrderItemInput[]; coupon: string },
+    email: string | null,
+    now: Date,
+  ): Promise<{
+    groupBuy: Prisma.GroupBuyGetPayload<object>;
+    unitCents: number;
+    snapshot: GroupBuyOrderSnapshot;
+  }> {
+    const id = input.groupBuyId;
+    await lock(tx, 'group-buy/' + id);
+    const found = await tx.groupBuy.findUnique({ where: { id }, include: { product: true } });
+    if (!found || !groupBuyJoinable(found, now))
+      throw new DomainError('GROUP_BUY_CLOSED', 'Esta compra coletiva não está aberta.', 409);
+    const { product, ...groupBuy } = found,
+      [item, ...rest] = input.items;
+    if (!item || rest.length)
+      throw new DomainError(
+        'GROUP_BUY_SINGLE_ITEM',
+        'A compra coletiva aceita um único item por pedido.',
+        422,
+      );
+    if (item.productId !== groupBuy.productId || item.sizeIndex !== groupBuy.sizeIndex)
+      throw new DomainError('GROUP_BUY_ITEM', 'Este item não faz parte da compra coletiva.', 422);
+    if (input.coupon.trim())
+      throw new DomainError('COUPON_NOT_ALLOWED', 'Cupons não valem na compra coletiva.', 422);
+    if (email !== null) {
+      const mine = {
+          groupBuyId: id,
+          status: { not: 'Cancelado' },
+          customer: { email: { equals: email.trim(), mode: 'insensitive' as const } },
+        },
+        bought = await tx.orderItem.aggregate({
+          where: { order: mine },
+          _sum: { quantity: true },
+        });
+      if ((bought._sum.quantity ?? 0) + item.quantity > groupBuy.perPersonLimit)
+        throw new DomainError(
+          'GROUP_BUY_LIMIT',
+          `Cada pessoa pode levar até ${groupBuy.perPersonLimit} ${groupBuy.perPersonLimit === 1 ? 'unidade' : 'unidades'} nesta compra coletiva.`,
+          422,
+        );
+      if (
+        groupBuy.maxParticipants !== null &&
+        (await this.participants(tx, id)) >= groupBuy.maxParticipants &&
+        !(await tx.order.count({ where: { ...mine, payment: { status: 'Pago' } } }))
+      )
+        throw new DomainError(
+          'GROUP_BUY_FULL',
+          'Esta compra coletiva já atingiu o limite de participantes.',
+          409,
+        );
+    }
+    const mode = groupBuy.mode as GroupBuyMode,
+      normalUnitCents = unitPriceCents(
+        {
+          priceCents: product.priceCents,
+          sizePrices: data<{ sizePrices?: number[] }>(product.data).sizePrices,
+        },
+        groupBuy.sizeIndex,
+      ),
+      unitCents = groupUnitCents(
+        mode,
+        groupBuy.goalReachedAt !== null,
+        normalUnitCents,
+        groupBuy.groupPriceCents,
+      );
+    return {
+      groupBuy,
+      unitCents,
+      snapshot: {
+        id,
+        title: groupBuy.title,
+        mode,
+        normalUnitCents,
+        groupUnitCents: groupBuy.groupPriceCents,
+        paidUnitCents: unitCents,
+        quantity: item.quantity,
+      },
+    };
+  }
+
+  /**
+   * Called by the payment flow once a group order is fully paid and its stock is secured. Re-counts
+   * participants under the campaign lock, marks the goal and queues the follow-up work.
+   */
+  async onPaid(tx: Transaction, orderId: string, now: Date): Promise<GroupPaidOutcome> {
+    const order = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { groupBuyId: true, data: true },
+      }),
+      id = requireValue(order.groupBuyId, 'Campanha não encontrada.');
+    await lock(tx, 'group-buy/' + id);
+    let gb = await tx.groupBuy.findUniqueOrThrow({ where: { id } });
+    if (gb.status === 'Não fechou') {
+      await this.mail.event(tx, 'group-fail/' + orderId, 'group-buy-fail-order', orderId, {
+        orderId,
+      });
+      return 'fail';
+    }
+    if (!gb.goalReachedAt && (await this.participants(tx, id)) >= gb.goal) {
+      gb = await tx.groupBuy.update({
+        where: { id },
+        data: { goalReachedAt: now, status: 'Meta atingida' },
+      });
+      await this.mail.event(tx, 'group-reached/' + id, 'group-buy-reached', id, {
+        groupBuyId: id,
+      });
+    }
+    if (gb.mode === 'hold' && !gb.goalReachedAt) return 'hold';
+    const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(order.data).groupBuy;
+    if (
+      gb.mode === 'difference' &&
+      gb.goalReachedAt &&
+      snapshot &&
+      groupDifferenceCents(snapshot) > 0
+    )
+      await this.mail.event(tx, 'group-diff/' + orderId, 'group-buy-refund', orderId, {
+        orderId,
+      });
+    return 'release';
+  }
+
+  /** Worker: the goal was reached (implemented in the worker task). */
+  async reached(groupBuyId: string): Promise<void> {
+    void groupBuyId;
+  }
+
+  /** Worker: refunds the difference of a difference-mode order (implemented in the worker task). */
+  async refundDifference(orderId: string): Promise<void> {
+    void orderId;
+  }
+
+  /** Worker: cancels and refunds an order of a campaign that did not close (worker task). */
+  async failOrder(orderId: string): Promise<void> {
+    void orderId;
   }
 
   /** Joinable campaigns of the given products, by product id (storefront). */

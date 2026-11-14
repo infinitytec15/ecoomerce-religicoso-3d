@@ -181,14 +181,17 @@ async function quote(client, p, quantity = 1) {
   assert.equal(r.status, 200, r.body?.error?.code);
   return r.body.data[0];
 }
-function checkout(p, q, email, payment = 'pix') {
+function checkout(p, q, email, payment = 'pix', { groupBuyId, coupon = '', items } = {}) {
   return {
-    items: [{ productId: p.id, quantity: 1, color: p.colors[0], sizeIndex: 0, dedication: '' }],
+    items: items ?? [
+      { productId: p.id, quantity: 1, color: p.colors[0], sizeIndex: 0, dedication: '' },
+    ],
+    ...(groupBuyId ? { groupBuyId } : {}),
     address: address(email),
     shipping: q.id,
     shippingQuoteId: q.quoteId,
     shippingServiceId: q.serviceId,
-    coupon: '',
+    coupon,
     payment,
     pixCents: payment === 'split' ? 2000 : 0,
     installments: 1,
@@ -2309,6 +2312,117 @@ try {
     // The next group-buy checks continue from this campaign: leave it active.
     await owner.command({ ...input, id: groupBuyId, endsAt: later, active: true });
     assert((await guest.data('catalog/products/' + product.id)).groupBuy);
+    operationsSchema.parse(await owner.data('admin/operations'));
+  });
+  await check('compra coletiva segura o pedido até o grupo fechar', async () => {
+    const campaign = await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: groupBuyId } }),
+      line = (quantity = 1, extra = {}) => ({
+        productId: product.id,
+        quantity,
+        color: product.colors[0],
+        sizeIndex: 0,
+        dedication: '',
+        ...extra,
+      }),
+      body = async (client, email, items, extra = {}) =>
+        checkout(product, await quote(client, product, items[0].quantity), email, 'card', {
+          groupBuyId,
+          items,
+          ...extra,
+        }),
+      refused = async (client, email, items, code, extra) => {
+        const r = await buy(client, await body(client, email, items, extra));
+        assert.equal(r.status, 422, JSON.stringify(r.body));
+        assert.equal(r.body.error.code, code);
+      },
+      send = (command) =>
+        owner.call('admin/commands', 'POST', command, {
+          headers: { 'idempotency-key': randomUUID() },
+        }),
+      kinds = async (orderId) =>
+        (await ctx.db.outboxEvent.findMany({ where: { aggregateId: orderId, kind: 'email' } })).map(
+          (row) => unseal(row.payloadEncrypted, ctx.config).kind,
+        ),
+      paid = async (client, email, quantity = 1) => {
+        const r = await buy(client, await body(client, email, [line(quantity)]));
+        assert.equal(r.status, 200, JSON.stringify(r.body));
+        return ctx.db.order.findUniqueOrThrow({
+          where: { id: r.body.data.orderId },
+          include: { items: true, payment: true, job: true },
+        });
+      },
+      buyerA = new Client(),
+      buyerB = new Client(),
+      a = await register(buyerA, 'grupo-a'),
+      b = await register(buyerB, 'grupo-b');
+    assert(product.sizes.length > 1, 'o produto de teste tem mais de um tamanho');
+    await refused(
+      buyerA,
+      a.email,
+      [line(), line(1, { dedication: 'Outra linha' })],
+      'GROUP_BUY_SINGLE_ITEM',
+    );
+    await refused(buyerA, a.email, [line()], 'COUPON_NOT_ALLOWED', { coupon: 'X' });
+    await refused(buyerA, a.email, [line(1, { sizeIndex: 1 })], 'GROUP_BUY_ITEM');
+    await refused(buyerA, a.email, [line(3)], 'GROUP_BUY_LIMIT');
+    assert.equal(await ctx.db.order.count({ where: { groupBuyId } }), 0);
+
+    const first = await paid(buyerA, a.email);
+    assert.equal(first.groupBuyId, groupBuyId);
+    assert.equal(first.items[0].unitCents, campaign.groupPriceCents);
+    assert.equal(first.subtotalCents, campaign.groupPriceCents);
+    assert.equal(first.data.groupBuy.paidUnitCents, campaign.groupPriceCents);
+    assert.equal(first.payment.status, 'Pago');
+    assert.equal(first.status, 'Aguardando grupo');
+    assert.equal(first.job, null);
+    const joined = await mail(first.id, 'group-joined');
+    assert(joined.envelope.text.includes(campaign.title));
+    assert(!(await kinds(first.id)).includes('payment-approved'));
+
+    const toProduction = await send({
+      type: 'order.update',
+      id: first.id,
+      status: 'Em produção',
+      priority: first.priority,
+      due: first.due.toISOString(),
+      notes: first.notes,
+    });
+    assert.equal(toProduction.status, 409, JSON.stringify(toProduction.body));
+    assert.equal(toProduction.body.error.code, 'GROUP_PENDING');
+    const batch = await send({ type: 'orders.batch', ids: [first.id], action: 'production' });
+    assert.equal(batch.status, 409, JSON.stringify(batch.body));
+    assert.equal(batch.body.error.code, 'GROUP_PENDING');
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: first.id } }), 0);
+
+    const again = await paid(buyerA, a.email);
+    assert.equal(again.status, 'Aguardando grupo');
+    const row = (await owner.data('admin/operations')).groupBuys.find((g) => g.id === groupBuyId);
+    assert.equal(row.participants, 1, 'o mesmo cliente conta uma vez');
+    assert.equal(row.status, 'Aberta');
+    await refused(buyerA, a.email, [line()], 'GROUP_BUY_LIMIT');
+
+    const closing = await paid(buyerB, b.email);
+    assert.equal(closing.status, 'Confirmado');
+    assert(closing.job, 'o pedido que fecha a meta vai para a produção');
+    assert(!(await kinds(closing.id)).includes('group-joined'));
+    await mail(closing.id, 'payment-approved');
+    const reached = await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: groupBuyId } });
+    assert.equal(reached.status, 'Meta atingida');
+    assert(reached.goalReachedAt);
+    assert.equal(
+      await ctx.db.outboxEvent.count({
+        where: { key: 'group-reached/' + groupBuyId, kind: 'group-buy-reached' },
+      }),
+      1,
+    );
+
+    const estimate = await guest.call('checkout/estimate', 'POST', {
+      items: [line(2)],
+      coupon: '',
+      groupBuyId,
+    });
+    assert.equal(estimate.status, 200, JSON.stringify(estimate.body));
+    assert.equal(estimate.body.data.subtotalCents, campaign.groupPriceCents * 2);
     operationsSchema.parse(await owner.data('admin/operations'));
   });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {

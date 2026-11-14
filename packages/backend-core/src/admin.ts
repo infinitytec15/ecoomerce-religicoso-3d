@@ -456,6 +456,13 @@ export class AdminService {
           );
           if (c.status === 'Cancelado') await this.cancelOrder(tx, a, o.id);
           else if (c.status !== o.status) {
+            // Only the group closing (or a cancellation) takes an order out of this status.
+            if (o.status === 'Aguardando grupo' || c.status === 'Aguardando grupo')
+              throw new DomainError(
+                'GROUP_PENDING',
+                'O pedido aguarda o fechamento da compra coletiva.',
+                409,
+              );
             if (['Enviado', 'Entregue'].includes(c.status))
               throw new DomainError(
                 'USE_SHIPPING',

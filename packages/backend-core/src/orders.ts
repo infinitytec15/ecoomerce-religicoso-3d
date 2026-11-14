@@ -25,6 +25,7 @@ import { ShippingCredentials } from './credentials';
 import { AuthService } from './auth';
 import { Notifications } from './notifications';
 import { PaymentsService } from './payments';
+import { GroupBuysService } from './group-buys';
 import { data, json, requireValue, DomainError, type Actor, addDays, audit } from './shared';
 import {
   orderInclude,
@@ -99,10 +100,12 @@ export class OrdersService {
   readonly payments: PaymentsService;
   readonly auth: AuthService;
   readonly mail: Notifications;
+  readonly groupBuys: GroupBuysService;
   constructor(private ctx: Context) {
     this.payments = new PaymentsService(ctx);
     this.auth = new AuthService(ctx);
     this.mail = new Notifications(ctx);
+    this.groupBuys = new GroupBuysService(ctx);
   }
   async cart(tx: Transaction | Context['db'], items: OrderItemInput[]) {
     const result: CartItem[] = [];
@@ -364,7 +367,7 @@ export class OrdersService {
   }
   async estimate(value: unknown) {
     const input = checkoutSchema
-      .pick({ items: true, coupon: true, shippingQuoteId: true })
+      .pick({ items: true, coupon: true, shippingQuoteId: true, groupBuyId: true })
       .extend({
         cep: z
           .string()
@@ -373,6 +376,18 @@ export class OrdersService {
       })
       .parse(value);
     const items = await this.cart(this.ctx.db, input.items);
+    const { groupBuyId } = input;
+    if (groupBuyId)
+      items[0]!.unitCents = (
+        await transaction(this.ctx.db, (tx) =>
+          this.groupBuys.context(
+            tx,
+            { groupBuyId, items: input.items, coupon: input.coupon },
+            null,
+            new Date(),
+          ),
+        )
+      ).unitCents;
     const subtotalCents = items.reduce((n, i) => n + i.unitCents * i.quantity, 0);
     const { discount: discountCents } = await this.coupon(this.ctx.db, input.coupon, subtotalCents);
     let shippingCents = 0;
@@ -449,6 +464,23 @@ export class OrdersService {
           }),
           'Selecione uma cotação válida.',
         );
+      // Group rules run under the campaign lock, before the quote check, so their errors come first.
+      const group = input.groupBuyId
+        ? await this.groupBuys.context(
+            tx,
+            { groupBuyId: input.groupBuyId, items: input.items, coupon: input.coupon },
+            actor?.userId && actor.customerId
+              ? requireValue(
+                  await tx.customer.findUnique({
+                    where: { id: actor.customerId },
+                    select: { email: true },
+                  }),
+                ).email
+              : input.address.email,
+            new Date(),
+          )
+        : null;
+      if (group) items[0]!.unitCents = group.unitCents;
       if (
         quote.expiresAt < new Date() ||
         quote.cartHash !== (await this.fingerprint(input.items, input.address.cep, tx)) ||
@@ -499,6 +531,7 @@ export class OrdersService {
         data: {
           customerId: customer.id,
           couponId,
+          groupBuyId: group?.groupBuy.id,
           totalCents: total,
           subtotalCents: subtotal,
           discountCents: discount,
@@ -510,6 +543,7 @@ export class OrdersService {
             shippingServiceId: quote.serviceId,
             consentAt: new Date().toISOString(),
             termsVersion: '2026-11-09',
+            ...(group ? { groupBuy: json(group.snapshot) } : {}),
           },
           items: {
             create: items.map((i) => ({

@@ -15,6 +15,7 @@ import { ContentService } from './content';
 import { ShippingService } from './shipping';
 import { MediaService } from './media';
 import { ReportsService } from './reports';
+import { GroupBuysService } from './group-buys';
 import { unseal, recipientHash, normalizeEmail } from './security';
 import { data, requireValue, DomainError, audit } from './shared';
 import { classifyEmailEvent, resendTag } from '@maos-em-oracao/emails/resend';
@@ -259,6 +260,15 @@ export class WorkerEngine {
           break;
         case 'refund-orphan':
           await this.refundOrphan(String(payload.exceptionId));
+          break;
+        case 'group-buy-reached':
+          await new GroupBuysService(this.ctx).reached(String(payload.groupBuyId));
+          break;
+        case 'group-buy-refund':
+          await new GroupBuysService(this.ctx).refundDifference(String(payload.orderId));
+          break;
+        case 'group-buy-fail-order':
+          await new GroupBuysService(this.ctx).failOrder(String(payload.orderId));
           break;
         default:
           throw new DomainError('UNKNOWN_JOB', 'Tipo de operação não reconhecido.');
