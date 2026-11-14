@@ -19,6 +19,8 @@ import { ProductGrid } from './product-grid';
 import { ProductReviews } from './product-reviews';
 import { RatingStars, reviewCountLabel } from './rating-stars';
 import { useNotify } from '@/components/ui/feedback';
+import { GroupBuyBlock } from '@/features/group-buys/group-buy-block';
+import { groupBuyUrl } from '@/lib/seo/site-url';
 const ProductViewer = dynamic(() => import('@/features/viewer/product-viewer'), { ssr: false });
 export function ProductDetail({
   initialProduct,
@@ -85,6 +87,13 @@ export function ProductDetail({
             ou 3× de {money(Math.round(price / 3))} sem juros
             {IS_DEMO ? ' · valores ilustrativos' : ''}
           </small>
+          {p.groupBuy && (
+            <GroupBuyBlock
+              groupBuy={p.groupBuy}
+              href={'/compra-coletiva/' + p.groupBuy.id}
+              shareUrl={groupBuyUrl(p.groupBuy.id)}
+            />
+          )}
           <div className="detail-options">
             {!p.kit && (
               <>

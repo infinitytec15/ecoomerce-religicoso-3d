@@ -67,6 +67,11 @@ export function ProductCard({
             <small>({p.rating.count})</small>
           </div>
         )}
+        {p.groupBuy && (
+          <span className="badge terra group-buy-badge">
+            Compra coletiva · {money(p.groupBuy.groupPriceCents)}
+          </span>
+        )}
         <div className="price">
           {money(p.priceCents)} <small>ou 3× de {money(Math.round(p.priceCents / 3))}</small>
         </div>

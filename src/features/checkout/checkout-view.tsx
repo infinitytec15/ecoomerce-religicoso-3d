@@ -4,7 +4,13 @@ import dynamic from 'next/dynamic';
 import type { PaymentToken } from '@/lib/domain/types';
 const MercadoPagoCard = dynamic(() => import('./mercado-pago-card'), { ssr: false });
 import { useRouter } from 'next/navigation';
-import type { Address, CheckoutInput, PaymentMethod, ShippingQuote } from '@/lib/domain/types';
+import type {
+  Address,
+  CartItem,
+  CheckoutInput,
+  PaymentMethod,
+  ShippingQuote,
+} from '@/lib/domain/types';
 import { addressSchema, type LoginInput } from '@/lib/domain/schemas';
 import { z } from 'zod';
 import { calculateTotals, validateSplit } from '@/lib/domain/commerce';
@@ -33,8 +39,24 @@ const contactSchema = z.object({
       'Informe um CPF ou CNPJ válido.',
     ),
 });
-export function CheckoutView() {
-  const items = useCartStore((s) => s.items),
+const groupBuyErrors: Record<string, string> = {
+  GROUP_BUY_CLOSED: 'Esta compra coletiva foi encerrada e não aceita mais pedidos.',
+  GROUP_BUY_FULL: 'O grupo já está completo. Não há mais vagas nesta compra coletiva.',
+  GROUP_BUY_LIMIT: 'Você atingiu o limite de peças por pessoa nesta compra coletiva.',
+  GROUP_BUY_SINGLE_ITEM: 'A compra coletiva aceita apenas uma peça por pedido.',
+  GROUP_BUY_ITEM: 'A peça ou o tamanho escolhido não é o da compra coletiva.',
+  COUPON_NOT_ALLOWED: 'Cupons de desconto não valem na compra coletiva.',
+};
+export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: CartItem } }) {
+  const cartItems = useCartStore((s) => s.items),
+    groupLine = groupBuy?.line,
+    items = groupLine ? [groupLine] : cartItems,
+    groupBuyId = groupBuy?.id,
+    loginReturn = groupLine
+      ? encodeURIComponent(
+          `/compra-coletiva/${groupBuyId}/checkout?cor=${encodeURIComponent(groupLine.color)}&qtd=${groupLine.quantity}`,
+        )
+      : '/checkout',
     clear = useCartStore((s) => s.clear),
     [step, setStep] = useState(0),
     [address, setAddress] = useState<Address>(emptyAddress),
@@ -121,7 +143,8 @@ export function CheckoutView() {
         sizeIndex,
         dedication,
       })),
-      coupon: code,
+      coupon: groupBuyId ? '' : code,
+      ...(groupBuyId ? { groupBuyId } : {}),
       ...(address.cep ? { cep: address.cep } : {}),
       shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
     });
@@ -131,29 +154,41 @@ export function CheckoutView() {
   async function complete(paymentToken?: PaymentToken) {
     if (payment === 'split') validateSplit(totals.totalCents, centsFromInput(pixValue));
     if (!key.current) key.current = crypto.randomUUID();
-    const result = await create.mutateAsync({
-      items: items.map((i) => ({
-        productId: i.productId,
-        quantity: i.quantity,
-        color: i.color,
-        sizeIndex: i.sizeIndex,
-        dedication: i.dedication,
-      })),
-      address,
-      shipping,
-      coupon,
-      payment,
-      pixCents:
-        payment === 'split' ? centsFromInput(pixValue) : payment === 'pix' ? totals.totalCents : 0,
-      installments: paymentToken?.installments || installments,
-      consent: true,
-      paymentToken,
-      shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
-      shippingServiceId: rates.find((r) => r.id === shipping)?.serviceId,
-      idempotencyKey: key.current,
-    });
+    let result: { orderId: string };
+    try {
+      result = await create.mutateAsync({
+        items: items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          color: i.color,
+          sizeIndex: i.sizeIndex,
+          dedication: i.dedication,
+        })),
+        address,
+        shipping,
+        coupon: groupBuyId ? '' : coupon,
+        ...(groupBuyId ? { groupBuyId } : {}),
+        payment,
+        pixCents:
+          payment === 'split'
+            ? centsFromInput(pixValue)
+            : payment === 'pix'
+              ? totals.totalCents
+              : 0,
+        installments: paymentToken?.installments || installments,
+        consent: true,
+        paymentToken,
+        shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
+        shippingServiceId: rates.find((r) => r.id === shipping)?.serviceId,
+        idempotencyKey: key.current,
+      });
+    } catch (error) {
+      if (groupBuyId && error instanceof ApiError && groupBuyErrors[error.code])
+        throw new Error(groupBuyErrors[error.code]);
+      throw error;
+    }
     setSubmitted(true);
-    clear();
+    if (!groupBuyId) clear();
     router.push('/checkout/sucesso?pedido=' + encodeURIComponent(result.orderId));
   }
   if (cardRequested)
@@ -259,7 +294,7 @@ export function CheckoutView() {
               ) : (
                 <p className="muted">
                   Já tem cadastro?{' '}
-                  <a href="/login?retorno=/checkout">Entre para usar seus dados salvos</a>.
+                  <a href={`/login?retorno=${loginReturn}`}>Entre para usar seus dados salvos</a>.
                 </p>
               )}
               <AddressFields
@@ -284,7 +319,7 @@ export function CheckoutView() {
                 </label>
               )}
               {existing && (
-                <ButtonLink href="/login?retorno=/checkout" variant="secondary">
+                <ButtonLink href={`/login?retorno=${loginReturn}`} variant="secondary">
                   Entrar e continuar a compra
                 </ButtonLink>
               )}
@@ -492,49 +527,57 @@ export function CheckoutView() {
         <PriceSummary
           items={!IS_DEMO && estimate ? estimate.items : items}
           shippingCents={shippingCents}
-          coupon={IS_DEMO ? coupon : ''}
+          coupon={IS_DEMO && !groupBuyId ? coupon : ''}
           quotedTotals={totals}
           shippingPending={!rates.length}
         >
-          <form
-            className="row"
-            style={{ marginTop: 22 }}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const code = String(new FormData(e.currentTarget).get('coupon') || '')
-                .trim()
-                .toUpperCase();
-              if (!IS_DEMO) {
-                try {
-                  await refreshEstimate(code);
-                  setCoupon(code);
-                  setCouponError('');
-                } catch (error) {
-                  setCoupon('');
-                  setCouponError(errorMessage(error));
-                  setEstimate(undefined);
-                }
-              } else if (code === 'PRIMEIRAFE') {
-                setCoupon(code);
-                setCouponError('');
-              } else {
-                setCoupon('');
-                setCouponError('Cupom não encontrado.');
-              }
-            }}
-          >
-            <input name="coupon" placeholder="Cupom de desconto" aria-label="Cupom de desconto" />
-            <Button variant="secondary" className="small">
-              Aplicar
-            </Button>
-          </form>
-          {coupon && (
-            <small className="coupon-success">PRIMEIRAFE · 10% de desconto aplicado</small>
-          )}
-          {couponError && (
-            <small className="form-error" role="alert">
-              {couponError}
-            </small>
+          {!groupBuyId && (
+            <>
+              <form
+                className="row"
+                style={{ marginTop: 22 }}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const code = String(new FormData(e.currentTarget).get('coupon') || '')
+                    .trim()
+                    .toUpperCase();
+                  if (!IS_DEMO) {
+                    try {
+                      await refreshEstimate(code);
+                      setCoupon(code);
+                      setCouponError('');
+                    } catch (error) {
+                      setCoupon('');
+                      setCouponError(errorMessage(error));
+                      setEstimate(undefined);
+                    }
+                  } else if (code === 'PRIMEIRAFE') {
+                    setCoupon(code);
+                    setCouponError('');
+                  } else {
+                    setCoupon('');
+                    setCouponError('Cupom não encontrado.');
+                  }
+                }}
+              >
+                <input
+                  name="coupon"
+                  placeholder="Cupom de desconto"
+                  aria-label="Cupom de desconto"
+                />
+                <Button variant="secondary" className="small">
+                  Aplicar
+                </Button>
+              </form>
+              {coupon && (
+                <small className="coupon-success">PRIMEIRAFE · 10% de desconto aplicado</small>
+              )}
+              {couponError && (
+                <small className="form-error" role="alert">
+                  {couponError}
+                </small>
+              )}
+            </>
           )}
         </PriceSummary>
       </div>

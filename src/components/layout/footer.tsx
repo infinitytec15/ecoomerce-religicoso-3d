@@ -22,6 +22,7 @@ export function Footer() {
             <Link href="/produtos?categoria=Cat%C3%B3licos">Coleção católica</Link>
             <Link href="/produtos?categoria=Evang%C3%A9licos">Coleção evangélica</Link>
             <Link href="/produtos?categoria=Personalizados">Personalizados</Link>
+            <Link href="/compra-coletiva">Compra coletiva</Link>
           </div>
           <div>
             <h3>Estamos por aqui</h3>

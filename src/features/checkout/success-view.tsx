@@ -116,7 +116,9 @@ export function SuccessView({ orderId }: { orderId?: string }) {
         <p>
           {pending
             ? 'Acompanhe o pagamento para iniciar o preparo da sua peça.'
-            : 'Obrigada por deixar a fé fazer parte da sua história.'}
+            : order.status === 'Aguardando grupo'
+              ? 'Pagamento aprovado. Seu pedido entra na produção assim que o grupo fechar.'
+              : 'Obrigada por deixar a fé fazer parte da sua história.'}
         </p>
         <StatusBadge status={order.status} />
         <div className="success-panel">

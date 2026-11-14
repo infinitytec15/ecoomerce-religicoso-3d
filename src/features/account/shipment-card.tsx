@@ -20,7 +20,15 @@ export function ShipmentCard({ order, details = true }: { order: Order; details?
             ? 1
             : order.status === 'Confirmado'
               ? 0
-              : -1;
+              : order.status === 'Aguardando grupo'
+                ? 0
+                : -1,
+    steps = [
+      'Pagamento confirmado',
+      order.status === 'Aguardando grupo' ? 'Aguardando o grupo fechar' : 'Em produção',
+      'Enviado',
+      'Entregue',
+    ];
   return (
     <>
       <article className="shipment-card">
@@ -40,7 +48,7 @@ export function ShipmentCard({ order, details = true }: { order: Order; details?
         </div>
         {order.status !== 'Cancelado' && (
           <ol className="shipment-progress">
-            {['Pagamento confirmado', 'Em produção', 'Enviado', 'Entregue'].map((step, i) => (
+            {steps.map((step, i) => (
               <li key={step} className={i <= index ? 'done' : ''}>
                 <span>{i <= index && <Icon name="check" />}</span>
                 {step}
