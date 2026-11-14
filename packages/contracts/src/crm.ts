@@ -389,7 +389,7 @@ export function parseContactsCsv(text: string): {
       continue;
     }
     seen.add(email);
-    rows.push({ email, name: nameCol >= 0 ? (cells[nameCol] ?? '').trim() : '' });
+    rows.push({ email, name: nameCol >= 0 ? (cells[nameCol] ?? '').trim().slice(0, 100) : '' });
   }
   return { rows, invalid, duplicates };
 }

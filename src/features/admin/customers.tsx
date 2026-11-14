@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { Customer } from '@/lib/domain/types';
 import { useAdminData } from './admin-frame';
+import { CustomerMarketingCard } from './crm/customer-marketing';
 import { AdminHeading, AdminError, exportAdmin, useAdminAction, useAdminFilter } from './shared';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -276,6 +277,7 @@ export function AdminCustomerDetail({ id }: { id: string }) {
             {customer.status === 'Ativo' ? 'Arquivar cadastro' : 'Reativar cadastro'}
           </Button>
         </aside>
+        <CustomerMarketingCard email={customer.email} />
       </div>
       <Modal
         open={dialog === 'edit'}

@@ -1,4 +1,13 @@
-const success = ['Pago', 'Ativa', 'Ativo', 'Entregue', 'Resolvido', 'Disponível', 'Concluída'];
+const success = [
+  'Pago',
+  'Ativa',
+  'Ativo',
+  'Entregue',
+  'Resolvido',
+  'Disponível',
+  'Concluída',
+  'Pode receber',
+];
 const warning = [
   'Pendente',
   'Pagamento pendente',
@@ -8,7 +17,15 @@ const warning = [
   'Pausada',
   'Previsto',
 ];
-const danger = ['Cancelada', 'Cancelado', 'Estornado', 'Recusado', 'Inativo', 'Manutenção'];
+const danger = [
+  'Cancelada',
+  'Cancelado',
+  'Estornado',
+  'Recusado',
+  'Inativo',
+  'Manutenção',
+  'Descadastrado',
+];
 export function StatusBadge({ status }: { status: string }) {
   const tone = success.includes(status)
     ? 'good'

@@ -194,4 +194,10 @@ describe('parseContactsCsv', () => {
       { email: 'b@x.com', name: 'Bia' },
     ]);
   });
+
+  it('corta nomes longos em 100 caracteres para caber no schema de importação', () => {
+    const { rows } = parseContactsCsv(`a@x.com,${'N'.repeat(150)}`);
+    expect(rows[0]!.name).toHaveLength(100);
+    expect(contactImportSchema.safeParse({ tag: 't', consent: true, rows }).success).toBe(true);
+  });
 });

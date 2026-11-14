@@ -3,23 +3,17 @@ import { useState, type ReactNode } from 'react';
 import { useAdminData } from '../admin-frame';
 import { AdminHeading, AdminMetrics } from '../shared';
 import { CampaignsTab, type CampaignTarget } from './campaigns';
+import { ContactsTab } from './contacts';
+import { CrmSettings } from './settings';
 import { Button } from '@/components/ui/button';
 
-function Placeholder({ children }: { children: ReactNode }) {
-  return <div className="admin-empty">{children}</div>;
-}
-
-/**
- * Tab skeleton. Task 7 replaces the `render` of "contacts" and "settings"; nothing else here changes.
- * `render` receives nothing: tabs read their data with `useAdminData().crm`.
- */
 export const CRM_TABS: { id: string; label: string; render: () => ReactNode }[] = [
   {
     id: 'contacts',
     label: 'Contatos e grupos',
-    render: () => <Placeholder>Em breve.</Placeholder>,
+    render: () => <ContactsTab />,
   },
-  { id: 'settings', label: 'Configurações', render: () => <Placeholder>Em breve.</Placeholder> },
+  { id: 'settings', label: 'Configurações', render: () => <CrmSettings /> },
 ];
 
 export function CrmManager() {
