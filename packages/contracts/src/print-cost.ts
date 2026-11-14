@@ -41,6 +41,8 @@ export const calculatorSettingsSchema = z.object({
   fixedPerOrderCents: cents,
   fixedMonthlyCents: cents,
   targetMarginPct: pct,
+  /** Kits below this margin are flagged in the admin; absent means 20. */
+  minMarginPct: z.number().min(0).max(90).optional(),
 });
 export type CalculatorSettings = z.infer<typeof calculatorSettingsSchema>;
 

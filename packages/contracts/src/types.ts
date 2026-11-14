@@ -10,6 +10,7 @@ import type {
   WorkspaceSettings,
 } from './admin-types';
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
+import type { Kit, KitSummary } from './kits';
 export type {
   MediaAsset,
   AssetKind,
@@ -102,6 +103,9 @@ export interface Product {
   archived?: boolean;
   /** Published-review summary; absent when there are no reviews. */
   rating?: { average: number; count: number };
+  /** Present when the product is a kit of other products. */
+  kit?: Kit;
+  kitSummary?: KitSummary;
 }
 /** Private production cost of one piece, in cents. costCents is their sum. */
 export interface CostBreakdown {
@@ -149,6 +153,17 @@ export interface CartItem {
   dedication: string;
   /** OrderItem id; only present on items of placed orders. */
   itemId?: string;
+  /** Component snapshot of a kit line; recorded on the order. */
+  kit?: {
+    items: {
+      productId: string;
+      name: string;
+      size: string;
+      sizeIndex: number;
+      color: string | null;
+      quantity: number;
+    }[];
+  };
 }
 export interface Order {
   id: string;

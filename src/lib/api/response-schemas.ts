@@ -67,6 +67,20 @@ export const cartItemSchema = z.object({
   quantity: z.number().int().positive(),
   dedication: text,
   itemId: id.optional(),
+  kit: z
+    .object({
+      items: z.array(
+        z.object({
+          productId: id,
+          name: text,
+          size: text,
+          sizeIndex: z.number().int(),
+          color: text.nullable(),
+          quantity: z.number().int().positive(),
+        }),
+      ),
+    })
+    .optional(),
 });
 export const orderSchema = z.object({
   id,

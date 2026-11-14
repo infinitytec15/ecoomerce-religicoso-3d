@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { kitSchema, kitSummarySchema } from './kit-schemas';
 import { productMediaSchema, productModelSchema, productShippingSchema } from './admin-schemas';
 const paymentTokenSchema = z.object({
   token: z.string().min(1).optional(),
@@ -111,6 +112,8 @@ export const productSchema = z.object({
   rating: z
     .object({ average: z.number().min(0).max(5), count: z.number().int().positive() })
     .optional(),
+  kit: kitSchema.optional(),
+  kitSummary: kitSummarySchema.optional(),
 });
 const costPart = z.number().int().nonnegative().max(10_000_000);
 /** Private production cost of one piece; costCents is always their sum. */
