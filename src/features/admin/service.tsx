@@ -2,6 +2,7 @@
 import { PrayerManager } from './prayer-manager';
 import { GroupBuyManager } from './group-buy-manager';
 import { StoriesManager } from './stories-manager';
+import { CrmManager } from './crm/crm-manager';
 import { ReviewManager } from './review-manager';
 import { CampaignManager } from './campaign-manager';
 import { ReportCenter } from './report-center';
@@ -205,6 +206,9 @@ export function AdminGroupBuys() {
 }
 export function AdminStories() {
   return <StoriesManager />;
+}
+export function AdminCrm() {
+  return <CrmManager />;
 }
 export function AdminMarketing() {
   return <CampaignManager />;
