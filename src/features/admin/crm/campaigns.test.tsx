@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AdminMarketingCampaign } from '@maos-em-oracao/contracts';
 import { CrmManager } from './crm-manager';
+import { reaisToCents } from './segment-builder';
 
 const { run, crmPreview } = vi.hoisted(() => ({
   run: vi.fn().mockResolvedValue(undefined),
@@ -189,5 +190,72 @@ describe('crm campaigns', () => {
     await user.click(screen.getByRole('button', { name: 'Novidades de novembro' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Adicionar bloco' })).toBeDisabled();
+  });
+  it('keeps each rule value when an earlier rule is removed', async () => {
+    setup();
+    crmPreview.mockResolvedValue({ total: 2, consent: 2, legitimateInterest: 0 });
+    const user = userEvent.setup();
+    render(<CrmManager />);
+    await user.click(screen.getByRole('button', { name: 'Nova campanha' }));
+    const dialog = await screen.findByRole('dialog');
+    for (const [n, value] of [
+      [1, '10'],
+      [2, '20'],
+    ] as const) {
+      await user.click(within(dialog).getByRole('button', { name: 'Adicionar regra' }));
+      await user.selectOptions(within(dialog).getByLabelText(`Tipo da regra ${n}`), 'spentAbove');
+      await user.type(within(dialog).getByLabelText(`Valor em reais da regra ${n}`), value);
+    }
+    await user.click(within(dialog).getByRole('button', { name: 'Remover regra 1' }));
+    expect(within(dialog).getByLabelText('Valor em reais da regra 1')).toHaveValue('20');
+    await waitFor(() => expect(crmPreview).toHaveBeenCalled());
+    expect(crmPreview).toHaveBeenLastCalledWith({ rules: [{ type: 'spentAbove', cents: 2000 }] });
+  });
+
+  it('reads reais with comma or dot decimals', () => {
+    expect(reaisToCents('10,50')).toBe(1050);
+    expect(reaisToCents('10.50')).toBe(1050);
+    expect(reaisToCents('1.050,00')).toBe(105000);
+    expect(reaisToCents('1.050')).toBe(105000);
+    expect(reaisToCents('1050')).toBe(105000);
+    expect(reaisToCents('')).toBe(0);
+  });
+
+  it('sends now with at: null and repeats the count', async () => {
+    setup([campaign({})]);
+    crmPreview.mockResolvedValue({ total: 1, consent: 1, legitimateInterest: 0 });
+    const user = userEvent.setup();
+    render(<CrmManager />);
+    await user.click(screen.getByRole('button', { name: 'Novidades de novembro' }));
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('button', { name: 'Agendar' }));
+    expect(await screen.findByText(/1 pessoa vai receber/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar envio' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toEqual({ type: 'crm.campaign.schedule', id: 'c1', at: null });
+  });
+
+  it('types the coupon code when the admin has no coupons', async () => {
+    setup();
+    delete (adminData.value as { coupons?: unknown }).coupons;
+    const user = userEvent.setup();
+    render(<CrmManager />);
+    await user.click(screen.getByRole('button', { name: 'Nova campanha' }));
+    const dialog = await screen.findByRole('dialog');
+    await addBlock(user, 'Cupom');
+    await user.type(within(dialog).getByLabelText('Código do cupom do bloco 1'), 'natal10');
+    expect(within(dialog).getByLabelText('Código do cupom do bloco 1')).toHaveValue('NATAL10');
+  });
+
+  it('keeps an inactive product in a block visible and removable', async () => {
+    setup([campaign({ blocks: [{ type: 'products', productIds: ['gone'] }] })]);
+    const user = userEvent.setup();
+    render(<CrmManager />);
+    await user.click(screen.getByRole('button', { name: 'Novidades de novembro' }));
+    const dialog = await screen.findByRole('dialog');
+    const box = within(dialog).getByLabelText('Produto removido (inativa)');
+    expect(box).toBeChecked();
+    await user.click(box);
+    expect(box).not.toBeChecked();
   });
 });

@@ -91,7 +91,15 @@ function ProductFields({
   block: Extract<BlockDraft, { type: 'products' }>;
   onChange: (block: BlockDraft) => void;
 }) {
-  const products = useAdminData().products.filter((p) => p.active && !p.archived),
+  const all = useAdminData().products,
+    // Keep products that were deactivated after being added, so they stay visible and removable.
+    stale = block.productIds
+      .filter((id) => !all.some((p) => p.id === id && p.active && !p.archived))
+      .map((id) => ({ id, name: all.find((p) => p.id === id)?.name ?? 'Produto removido' })),
+    products = [
+      ...all.filter((p) => p.active && !p.archived).map((p) => ({ id: p.id, name: p.name })),
+      ...stale.map((p) => ({ ...p, name: `${p.name} (inativa)` })),
+    ],
     full = block.productIds.length >= CRM_LIMITS.productsPerBlock;
   return (
     <fieldset>
@@ -146,6 +154,9 @@ function CouponFields({
                 {c.code}
               </option>
             ))}
+            {block.code && !coupons.some((c) => c.code === block.code) && (
+              <option value={block.code}>{block.code} (inativo)</option>
+            )}
           </select>
         </label>
       ) : (

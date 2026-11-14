@@ -1,13 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
-import {
-  CRM_LIMITS,
-  estimateDuration,
-  type AdminMarketingCampaign,
-} from '@maos-em-oracao/contracts';
+import { CRM_LIMITS, type AdminMarketingCampaign } from '@maos-em-oracao/contracts';
 import { useAdminData } from '../admin-frame';
 import { useAdminAction } from '../shared';
+import { audienceSentence } from './segment-builder';
 import { brasiliaToIso, nowBrasilia } from './time';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
@@ -105,7 +102,7 @@ function ScheduleForm({
             {count.error
               ? `Não foi possível calcular o público: ${count.error}`
               : data
-                ? `${data.total} pessoas vão receber (${data.consent} por aceite, ${data.legitimateInterest} por legítimo interesse) · envio em ${estimateDuration(data.total, crm.settings.hourlyLimit)}`
+                ? audienceSentence(data, crm.settings.hourlyLimit)
                 : 'Calculando o público…'}
           </p>
           <label className="row">

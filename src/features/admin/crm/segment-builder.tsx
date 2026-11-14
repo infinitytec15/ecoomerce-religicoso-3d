@@ -14,6 +14,8 @@ import { useGateway } from '@/lib/api/query';
 
 const COLLECTIONS = collectionSchema.options;
 const PREVIEW_DELAY_MS = 400;
+let sequence = 0;
+const nextKey = () => `rule-${++sequence}`;
 const typeLabels: Record<SegmentRule['type'], string> = {
   product: 'Comprou o produto',
   category: 'Comprou na categoria',
@@ -46,6 +48,17 @@ export function newRule(type: SegmentRule['type']): SegmentRule {
 export const validRules = (rules: SegmentRule[]) =>
   rules.filter((rule) => segmentRuleSchema.safeParse(rule).success);
 
+/** "10,50", "10.50", "1.050,00" and "1050" -> cents. A lone dot with 1-2 digits after it is a decimal point. */
+export function reaisToCents(text: string): number {
+  const clean = text.replace(/[^\d.,]/g, '');
+  let normalized: string;
+  if (clean.includes(',')) normalized = clean.replace(/\./g, '').replace(',', '.');
+  else if (/^\d*\.\d{1,2}$/.test(clean)) normalized = clean;
+  else normalized = clean.replace(/\./g, '');
+  const value = Number(normalized);
+  return Number.isFinite(value) ? Math.round(value * 100) : 0;
+}
+
 function MoneyInput({
   label,
   cents,
@@ -64,10 +77,9 @@ function MoneyInput({
         placeholder="0,00"
         value={text}
         onChange={(e) => {
-          const next = e.target.value.replace(/[^\d,]/g, '');
+          const next = e.target.value.replace(/[^\d.,]/g, '');
           setText(next);
-          const value = Number(next.replace(',', '.'));
-          onChange(Number.isFinite(value) ? Math.round(value * 100) : 0);
+          onChange(reaisToCents(next));
         }}
       />
     </label>
@@ -176,6 +188,11 @@ function RuleFields({
   }
 }
 
+export function audienceSentence(preview: CrmPreview, hourlyLimit: number): string {
+  const { total, consent, legitimateInterest } = preview;
+  return `${total === 1 ? '1 pessoa vai receber' : `${total} pessoas vão receber`} (${consent} por aceite, ${legitimateInterest} por legítimo interesse) · envio em ${estimateDuration(total, hourlyLimit)}`;
+}
+
 function AudienceCount({ rules }: { rules: SegmentRule[] }) {
   const gateway = useGateway(),
     { crm } = useAdminData(),
@@ -206,12 +223,9 @@ function AudienceCount({ rules }: { rules: SegmentRule[] }) {
       </p>
     );
   if (!current?.data) return <p className="segment-count">Calculando o público…</p>;
-  const { total, consent, legitimateInterest } = current.data;
   return (
     <p className="segment-count" role="status">
-      {total === 1 ? '1 pessoa vai receber' : `${total} pessoas vão receber`} ({consent} por aceite,{' '}
-      {legitimateInterest} por legítimo interesse) · envio em{' '}
-      {estimateDuration(total, crm.settings.hourlyLimit)}
+      {audienceSentence(current.data, crm.settings.hourlyLimit)}
     </p>
   );
 }
@@ -223,13 +237,16 @@ export function SegmentBuilder({
   rules: SegmentRule[];
   onChange: (rules: SegmentRule[]) => void;
 }) {
-  const incomplete = rules.length - validRules(rules).length;
+  const incomplete = rules.length - validRules(rules).length,
+    // Client-only ids so a row keeps its own input state when another row is removed.
+    [keys, setKeys] = useState(() => rules.map(() => nextKey())),
+    rowKeys = keys.length === rules.length ? keys : rules.map((_, i) => keys[i] ?? nextKey());
   return (
     <fieldset className="stack">
       <legend>Quem recebe</legend>
       {rules.length > 0 && <p>Todas as regras precisam valer ao mesmo tempo.</p>}
       {rules.map((rule, index) => (
-        <div className="row wrap" key={index}>
+        <div className="row wrap" key={rowKeys[index]}>
           <label>
             Tipo da regra {index + 1}
             <select
@@ -257,7 +274,10 @@ export function SegmentBuilder({
             variant="text"
             className="small danger-text"
             aria-label={`Remover regra ${index + 1}`}
-            onClick={() => onChange(rules.filter((_, i) => i !== index))}
+            onClick={() => {
+              setKeys(rowKeys.filter((_, i) => i !== index));
+              onChange(rules.filter((_, i) => i !== index));
+            }}
           >
             Remover
           </Button>
@@ -269,7 +289,10 @@ export function SegmentBuilder({
           variant="secondary"
           className="small"
           disabled={rules.length >= CRM_LIMITS.rules}
-          onClick={() => onChange([...rules, newRule('product')])}
+          onClick={() => {
+            setKeys([...rowKeys, nextKey()]);
+            onChange([...rules, newRule('product')]);
+          }}
         >
           Adicionar regra
         </Button>
