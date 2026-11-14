@@ -11,7 +11,7 @@ import type {
 } from './admin-types';
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
 import type { AdminGroupBuy, GroupBuyInput, GroupBuySummary } from './group-buys';
-import type { AdminStoryHighlight } from './stories';
+import type { AdminStoryHighlight, StoryHighlightInput, StoryVideoInput } from './stories';
 import type { Kit, KitSummary } from './kits';
 export type {
   MediaAsset,
@@ -430,6 +430,12 @@ export type AdminCommand =
   | ({ type: 'groupbuy.save' } & GroupBuyInput)
   | { type: 'groupbuy.close'; id: string }
   | { type: 'groupbuy.extend'; id: string; endsAt: string }
+  | ({ type: 'story.save' } & StoryHighlightInput)
+  | { type: 'story.reorder'; ids: string[] }
+  | { type: 'story.delete'; id: string }
+  | ({ type: 'story.video.save' } & StoryVideoInput)
+  | { type: 'story.video.reorder'; highlightId: string; ids: string[] }
+  | { type: 'story.video.delete'; id: string }
   | { type: 'product.archive'; id: string }
   | { type: 'stock.adjust'; productId: string; delta: number; reason: string }
   | { type: 'orders.batch'; ids: string[]; action: 'priority' | 'cancel' | 'production' }

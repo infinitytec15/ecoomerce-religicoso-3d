@@ -3,6 +3,8 @@ import type {
   MyReview,
   ProductReviews,
   ReviewInput,
+  StoryEvent,
+  StoryHighlightPublic,
 } from '@maos-em-oracao/contracts';
 import type { LoginInput, NewsletterInput, PrayerInput } from '@/lib/domain/schemas';
 import type {
@@ -29,6 +31,10 @@ export interface CommerceGateway {
   /** Joinable group-buy campaigns. */
   groupBuys(): Promise<GroupBuyPublic[]>;
   groupBuy(id: string): Promise<GroupBuyPublic>;
+  /** Active story highlights with their videos. */
+  stories(): Promise<StoryHighlightPublic[]>;
+  /** Fire-and-forget view/click counter; never rejects. */
+  storyEvent(input: StoryEvent): Promise<void>;
   settings(): Promise<StoreSettings>;
   session(): Promise<Session | null>;
   login(input: LoginInput): Promise<Session>;

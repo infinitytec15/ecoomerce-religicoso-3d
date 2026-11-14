@@ -243,3 +243,44 @@ describe('HTTP reviews', () => {
     expect(JSON.parse(String(fetcher.mock.calls[3][1]?.body)).groupBuyId).toBe('grupo-demo');
   });
 });
+
+describe('HTTP stories', () => {
+  const highlight = {
+    id: 'h1',
+    title: 'Bastidores',
+    coverUrl: 'https://cdn.test/c.webp',
+    placements: ['home'],
+    categories: [],
+    videos: [{ id: 'v1', caption: '', source: { type: 'file', src: '/a.mp4' }, products: [] }],
+  };
+  it('lists highlights from the stories endpoint', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ data: [highlight] }));
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    expect(await g.stories()).toEqual([highlight]);
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/stories');
+  });
+  it('sends events with keepalive and resolves on 204', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    await expect(g.storyEvent({ videoId: 'v1', type: 'view' })).resolves.toBeUndefined();
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/stories/events');
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: 'POST', keepalive: true });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      videoId: 'v1',
+      type: 'view',
+    });
+  });
+  it('never rejects on a rate limit, a server error or a network failure', async () => {
+    for (const fetcher of [
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(response({ error: { code: 'X', message: 'x' } }, 429)),
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('boom', { status: 500 })),
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')),
+    ]) {
+      const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+      await expect(g.storyEvent({ videoId: 'v1', type: 'click' })).resolves.toBeUndefined();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    }
+  });
+});

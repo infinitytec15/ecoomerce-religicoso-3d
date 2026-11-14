@@ -4,6 +4,9 @@ import {
   myReviewSchema,
   productReviewsSchema,
   reviewInputSchema,
+  storyHighlightPublicSchema,
+  storyEventSchema,
+  type StoryEvent,
   type ReviewInput,
 } from '@maos-em-oracao/contracts';
 import { invitationSchema } from '@/lib/domain/admin-schemas';
@@ -45,12 +48,18 @@ export class HttpClient {
   async request<T>(
     path: string,
     schema: z.ZodType<T>,
-    options: { method?: string; body?: unknown; idempotencyKey?: string } = {},
+    options: {
+      method?: string;
+      body?: unknown;
+      idempotencyKey?: string;
+      keepalive?: boolean;
+    } = {},
   ): Promise<T> {
     const response = await this.fetcher(this.baseUrl.replace(/\/$/, '') + '/' + path, {
       method: options.method || 'GET',
       credentials: 'include',
       signal: AbortSignal.timeout(15000),
+      ...(options.keepalive ? { keepalive: true } : {}),
       headers: {
         Accept: 'application/json',
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -117,6 +126,19 @@ export class HttpGateway implements CommerceGateway {
   }
   groupBuy(id: string) {
     return this.client.request('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema);
+  }
+  stories() {
+    return this.client.request('stories', z.array(storyHighlightPublicSchema));
+  }
+  /** Metrics are best effort: a network error or any status is swallowed. */
+  async storyEvent(input: StoryEvent) {
+    await this.client
+      .request('stories/events', voidSchema, {
+        method: 'POST',
+        body: storyEventSchema.parse(input),
+        keepalive: true,
+      })
+      .catch(() => undefined);
   }
   productReviews(productId: string, rating?: number) {
     return this.client.request(

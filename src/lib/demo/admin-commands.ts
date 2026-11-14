@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { groupBuyInputSchema } from '@maos-em-oracao/contracts';
 import type { AdminCommand, Operations, Session } from '@/lib/domain/types';
+import {
+  deleteStoryHighlight,
+  deleteStoryVideo,
+  reorderStoryHighlights,
+  reorderStoryVideos,
+  saveStoryHighlight,
+  saveStoryVideo,
+} from '@/lib/domain/stories';
 import { closeGroupBuy, extendGroupBuy, saveGroupBuy } from '@/lib/domain/group-buys';
 import { ApiError, requireValue } from '@/lib/api/contracts';
 import {
@@ -34,6 +42,30 @@ export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Sessi
         requireValue(s.groupBuys.find((g) => g.id === c.id)),
         z.string().datetime().parse(c.endsAt),
       );
+      return true;
+    case 'story.save': {
+      const { type, ...input } = c;
+      void type;
+      saveStoryHighlight(s, input);
+      return true;
+    }
+    case 'story.reorder':
+      reorderStoryHighlights(s, c.ids);
+      return true;
+    case 'story.delete':
+      deleteStoryHighlight(s, c.id);
+      return true;
+    case 'story.video.save': {
+      const { type, ...input } = c;
+      void type;
+      saveStoryVideo(s, input);
+      return true;
+    }
+    case 'story.video.reorder':
+      reorderStoryVideos(s, c.highlightId, c.ids);
+      return true;
+    case 'story.video.delete':
+      deleteStoryVideo(s, c.id);
       return true;
     case 'stock.adjust': {
       const p = requireValue(s.products.find((p) => p.id === c.productId));

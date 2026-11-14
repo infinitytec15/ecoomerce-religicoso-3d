@@ -1,5 +1,6 @@
 import { productSchema } from '@/lib/domain/schemas';
 import { withKitSummary } from '@/lib/domain/kits';
+import { publicStories } from '@/lib/domain/stories';
 import { groupBuyProductFields, withGroupBuy } from '@/lib/domain/group-buys';
 import { requireValue } from '@/lib/api/contracts';
 import {
@@ -10,7 +11,7 @@ import {
 } from '@maos-em-oracao/contracts';
 import source from '@/data/legacy-seed.json';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
-import type { AdminGroupBuy, AdminReview } from '@maos-em-oracao/contracts';
+import type { AdminGroupBuy, AdminReview, AdminStoryHighlight } from '@maos-em-oracao/contracts';
 import type {
   Charge,
   Collection,
@@ -71,6 +72,37 @@ function demoKit(products: InventoryProduct[]): InventoryProduct {
     costCents: kitCostCents(kit, new Map(products.map((p) => [p.id, p])), 0),
     kit,
   };
+}
+/** "Bastidores": two short workshop clips; the asset id of a bundled file is its public path. */
+function demoStories(products: InventoryProduct[]): AdminStoryHighlight[] {
+  const [first, second] = products,
+    video = (n: number, caption: string, productIds: string[]) => ({
+      id: 'video-demo-' + n,
+      assetId: `/assets/stories/oficina-${n}.mp4`,
+      caption,
+      productIds,
+      active: true,
+      position: n - 1,
+      status: 'ready' as const,
+      views: 0,
+      clicks: 0,
+    });
+  return [
+    {
+      id: 'destaque-demo',
+      title: 'Bastidores',
+      coverAssetId: '/assets/stories/bastidores.webp',
+      coverUrl: '/assets/stories/bastidores.webp',
+      active: true,
+      position: 0,
+      placements: ['home', 'product', 'category'],
+      categories: ['Presentes'],
+      videos: [
+        video(1, 'Da impressora para a sua casa', [first.id]),
+        video(2, 'Acabamento feito à mão', [first.id, second.id]),
+      ],
+    },
+  ];
 }
 /** "Compra coletiva de Natal": 7 of 10 participants, on the first piece of the demo kit. */
 function demoGroupBuy(products: InventoryProduct[], now = new Date()): AdminGroupBuy {
@@ -325,7 +357,7 @@ export function createSeed(legacy = source.operations): Operations {
     stockMovements: [],
     reviews,
     groupBuys: [demoGroupBuy(products)],
-    stories: [],
+    stories: demoStories(products),
     products,
     clients,
     orders,
@@ -413,6 +445,7 @@ export function createSeed(legacy = source.operations): Operations {
 const seedState = createSeed(),
   seedProducts = seedState.products;
 export const seedGroupBuys = seedState.groupBuys;
+export const seedStories = publicStories(seedState);
 export const seedCatalog = seedProducts.flatMap((product) => {
   const visible = withKitSummary(seedProducts, product);
   return visible ? [productSchema.parse(withGroupBuy(seedGroupBuys, visible))] : [];

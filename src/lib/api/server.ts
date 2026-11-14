@@ -2,8 +2,13 @@ import 'server-only';
 import { cache } from 'react';
 import { connection } from 'next/server';
 import { z } from 'zod';
-import { groupBuyPublicSchema, productReviewsSchema } from '@maos-em-oracao/contracts';
-import { seedCatalog, seedGroupBuys, seedSettings } from '@/lib/demo/seed';
+import {
+  groupBuyPublicSchema,
+  productReviewsSchema,
+  storyHighlightPublicSchema,
+  type StoryHighlightPublic,
+} from '@maos-em-oracao/contracts';
+import { seedCatalog, seedGroupBuys, seedSettings, seedStories } from '@/lib/demo/seed';
 import { joinableGroupBuys, publicGroupBuy } from '@/lib/domain/group-buys';
 import { productSchema, publicSettingsSchema } from '@/lib/domain/schemas';
 import { IS_DEMO } from './config';
@@ -57,3 +62,13 @@ export const getServerGroupBuy = cache(async (id: string) =>
         .find((g) => g.id === id) ?? null)
     : publicFetch('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema.nullable(), null),
 );
+/** Story highlights; any failure yields none, so stories never take a page down. */
+export const getServerStories = cache(async (): Promise<StoryHighlightPublic[]> => {
+  try {
+    return IS_DEMO
+      ? seedStories
+      : await publicFetch('stories', z.array(storyHighlightPublicSchema));
+  } catch {
+    return [];
+  }
+});

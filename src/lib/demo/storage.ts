@@ -47,7 +47,8 @@ export class BrowserDemoStorage implements DemoStorage {
             stockMovements: state.stockMovements || [],
             reviews: state.reviews || [],
             groupBuys: state.groupBuys?.length ? state.groupBuys : seed.groupBuys,
-            stories: state.stories || [],
+            // A saved empty list is respected; only a state from before stories existed gets the demo one.
+            stories: Array.isArray(state.stories) ? state.stories : seed.stories,
           };
         }
       }

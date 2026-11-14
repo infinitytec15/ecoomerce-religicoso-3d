@@ -103,6 +103,8 @@ function withRating<T extends { id: string }>(state: Operations, product: T) {
   const { average, count } = summarizeRatings(ratings);
   return { ...product, rating: { average, count } };
 }
+import { publicStories, recordStoryEvent } from '@/lib/domain/stories';
+import { storyEventSchema, type StoryEvent } from '@maos-em-oracao/contracts';
 import { applyAdminExtension } from './admin-commands';
 export class DemoGateway implements CommerceGateway {
   readonly mode = 'demo' as const;
@@ -139,6 +141,13 @@ export class DemoGateway implements CommerceGateway {
   }
   async groupBuys() {
     return joinableGroupBuys(this.read().groupBuys).map(publicGroupBuy);
+  }
+  async stories() {
+    return publicStories(this.read());
+  }
+  async storyEvent(input: StoryEvent) {
+    const event = storyEventSchema.parse(input);
+    this.mutate((state) => recordStoryEvent(state, event));
   }
   async groupBuy(id: string) {
     const found = joinableGroupBuys(this.read().groupBuys).find((g) => g.id === id);
@@ -683,6 +692,7 @@ export class DemoGateway implements CommerceGateway {
           review: 'community',
           campaign: 'marketing',
           groupbuy: 'marketing',
+          story: 'marketing',
           team: 'team',
           invite: 'team',
           workspace: 'settings',
