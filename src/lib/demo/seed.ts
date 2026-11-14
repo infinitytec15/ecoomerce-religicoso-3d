@@ -1,9 +1,16 @@
 import { productSchema } from '@/lib/domain/schemas';
 import { withKitSummary } from '@/lib/domain/kits';
-import { KIT_COLOR, KIT_SIZE, kitCostCents } from '@maos-em-oracao/contracts';
+import { groupBuyProductFields, withGroupBuy } from '@/lib/domain/group-buys';
+import { requireValue } from '@/lib/api/contracts';
+import {
+  KIT_COLOR,
+  KIT_SIZE,
+  kitCostCents,
+  remainingParticipants,
+} from '@maos-em-oracao/contracts';
 import source from '@/data/legacy-seed.json';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
-import type { AdminReview } from '@maos-em-oracao/contracts';
+import type { AdminGroupBuy, AdminReview } from '@maos-em-oracao/contracts';
 import type {
   Charge,
   Collection,
@@ -63,6 +70,38 @@ function demoKit(products: InventoryProduct[]): InventoryProduct {
     stock: 0,
     costCents: kitCostCents(kit, new Map(products.map((p) => [p.id, p])), 0),
     kit,
+  };
+}
+/** "Compra coletiva de Natal": 7 of 10 participants, on the first piece of the demo kit. */
+function demoGroupBuy(products: InventoryProduct[], now = new Date()): AdminGroupBuy {
+  const kit = requireValue(products.find((p) => p.id === 'kit-oracao-familia')?.kit),
+    product = requireValue(products.find((p) => p.id === kit.components[0].productId)),
+    initials = ['MS', 'JP', 'AC', 'LR', 'FB', 'TC', 'RM'],
+    fields = groupBuyProductFields(product, 0);
+  return {
+    id: 'grupo-demo',
+    title: 'Compra coletiva de Natal',
+    description: 'Junte-se a outras famílias e leve a peça por um preço menor neste Natal.',
+    mode: 'difference',
+    sizeIndex: 0,
+    groupPriceCents: fields.normalPriceCents - 2000,
+    goal: 10,
+    maxParticipants: null,
+    perPersonLimit: 2,
+    productId: product.id,
+    ...fields,
+    participants: initials.length,
+    remaining: remainingParticipants(10, initials.length),
+    goalReached: false,
+    status: 'Aberta',
+    initials,
+    endsAt: new Date(now.getTime() + 2 * 86400000).toISOString(),
+    active: true,
+    startsAt: now.toISOString(),
+    createdAt: now.toISOString(),
+    locked: false,
+    refundedCents: 0,
+    orders: [],
   };
 }
 export function createSeed(legacy = source.operations): Operations {
@@ -284,7 +323,7 @@ export function createSeed(legacy = source.operations): Operations {
     coupons: [],
     stockMovements: [],
     reviews,
-    groupBuys: [],
+    groupBuys: [demoGroupBuy(products)],
     products,
     clients,
     orders,
@@ -369,9 +408,11 @@ export function createSeed(legacy = source.operations): Operations {
     processed: {},
   };
 }
-const seedProducts = createSeed().products;
+const seedState = createSeed(),
+  seedProducts = seedState.products;
+export const seedGroupBuys = seedState.groupBuys;
 export const seedCatalog = seedProducts.flatMap((product) => {
   const visible = withKitSummary(seedProducts, product);
-  return visible ? [productSchema.parse(visible)] : [];
+  return visible ? [productSchema.parse(withGroupBuy(seedGroupBuys, visible))] : [];
 });
 export const seedSettings = createSeed().settings;

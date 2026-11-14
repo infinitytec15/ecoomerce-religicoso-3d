@@ -182,4 +182,64 @@ describe('HTTP reviews', () => {
     expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('key-1');
     expect(JSON.parse(String(init?.body)).orderItemId).toBe(item);
   });
+  it('lists and reads group buys and forwards groupBuyId in checkout and estimate', async () => {
+    const campaign = {
+      id: 'grupo-demo',
+      title: 'Compra coletiva de Natal',
+      mode: 'difference',
+      sizeIndex: 0,
+      size: 'P',
+      groupPriceCents: 1000,
+      normalPriceCents: 3000,
+      goal: 10,
+      participants: 7,
+      remaining: 3,
+      maxParticipants: null,
+      perPersonLimit: 2,
+      endsAt: '2026-11-16T10:00:00.000Z',
+      goalReached: false,
+      status: 'Aberta',
+      initials: ['MS'],
+      description: '',
+      productId: 'cruz-essencial',
+      productName: 'Cruz',
+      productImage: '/a.webp',
+      colors: ['Marfim'],
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ data: [campaign] }))
+      .mockResolvedValueOnce(response({ data: campaign }))
+      .mockResolvedValueOnce(
+        response({ data: { orderId: 'o1', paymentAction: { type: 'none' } } }, 201),
+      )
+      .mockResolvedValueOnce(
+        response({
+          data: { items: [], subtotalCents: 0, discountCents: 0, shippingCents: 0, totalCents: 0 },
+        }),
+      );
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher)),
+      items = [
+        { productId: 'cruz-essencial', quantity: 1, color: 'Marfim', sizeIndex: 0, dedication: '' },
+      ];
+    expect((await g.groupBuys())[0].participants).toBe(7);
+    expect((await g.groupBuy('grupo demo')).id).toBe('grupo-demo');
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/group-buys');
+    expect(fetcher.mock.calls[1][0]).toBe('/api/v1/group-buys/grupo%20demo');
+    await g.checkout({
+      items,
+      address: demoAddress,
+      shipping: 'standard',
+      coupon: '',
+      payment: 'card',
+      pixCents: 0,
+      installments: 1,
+      consent: true,
+      idempotencyKey: crypto.randomUUID(),
+      groupBuyId: 'grupo-demo',
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[2][1]?.body)).groupBuyId).toBe('grupo-demo');
+    await g.estimate({ items, coupon: '', groupBuyId: 'grupo-demo' });
+    expect(JSON.parse(String(fetcher.mock.calls[3][1]?.body)).groupBuyId).toBe('grupo-demo');
+  });
 });

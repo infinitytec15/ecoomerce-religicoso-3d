@@ -19,6 +19,8 @@ export function createLazyDemoGateway(): CommerceGateway {
     createReview: async (...args) => (await load()).createReview(...args),
     catalog: async (...args) => (await load()).catalog(...args),
     product: async (...args) => (await load()).product(...args),
+    groupBuys: async (...args) => (await load()).groupBuys(...args),
+    groupBuy: async (...args) => (await load()).groupBuy(...args),
     settings: async (...args) => (await load()).settings(...args),
     session: async (...args) => (await load()).session(...args),
     login: async (...args) => (await load()).login(...args),

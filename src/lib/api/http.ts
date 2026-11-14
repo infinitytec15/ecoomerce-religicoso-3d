@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  groupBuyPublicSchema,
   myReviewSchema,
   productReviewsSchema,
   reviewInputSchema,
@@ -110,6 +111,12 @@ export class HttpGateway implements CommerceGateway {
       'catalog/products/' + encodeURIComponent(id),
       productSchema.nullable(),
     );
+  }
+  groupBuys() {
+    return this.client.request('group-buys', z.array(groupBuyPublicSchema));
+  }
+  groupBuy(id: string) {
+    return this.client.request('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema);
   }
   productReviews(productId: string, rating?: number) {
     return this.client.request(

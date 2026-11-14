@@ -13,6 +13,7 @@ import { ApiError, requireValue } from '@/lib/api/contracts';
 import { addMonth, monthLabel, today, uid } from './format';
 import { normalizeAddress } from './address';
 import { forSale } from './kits';
+import { groupCheckout, recordGroupOrder, settleGroupPayment } from './group-buys';
 export function cartLine(
   product: Product,
   quantity = 1,
@@ -136,6 +137,12 @@ export function enqueueProduction(
     throw new ApiError('PAYMENT_REQUIRED', 'Confirme o recebimento antes de iniciar a produção.');
   if (['Enviado', 'Entregue', 'Cancelado'].includes(order.status))
     throw new ApiError('ORDER_CLOSED', 'Este pedido não pode voltar à produção.');
+  if (order.status === 'Aguardando grupo')
+    throw new ApiError(
+      'GROUP_PENDING',
+      'Este pedido aguarda a meta da compra coletiva antes de ir para a produção.',
+      409,
+    );
   if (state.jobs.some((j) => j.orderId === id)) return;
   state.jobs.push({
     id: uid('OP'),
@@ -161,6 +168,7 @@ export function payCharge(state: Operations, id: string) {
   charge.paidAt = today();
   const order = state.orders.find((o) => o.id === charge.orderId);
   if (order?.status === 'Aguardando pagamento') order.status = 'Confirmado';
+  if (order) settleGroupPayment(state, order.id);
   const sub = state.subscriptions.find((s) => s.id === charge.subscriptionId);
   if (sub) {
     if (sub.status === 'Pagamento pendente') sub.status = 'Ativa';
@@ -193,6 +201,13 @@ export function createShopOrder(state: Operations, input: CheckoutInput, session
   const existing = state.processed[input.idempotencyKey];
   if (existing) return existing;
   if (!input.items.length) throw new ApiError('EMPTY_CART', 'Adicione uma peça ao carrinho.');
+  const group = input.groupBuyId
+    ? groupCheckout(
+        state,
+        { groupBuyId: input.groupBuyId, items: input.items, coupon: input.coupon },
+        input.address.email,
+      )
+    : null;
   const items = input.items.map((x) =>
     cartLine(
       forSale(state.products, requireValue(state.products.find((p) => p.id === x.productId))),
@@ -202,6 +217,7 @@ export function createShopOrder(state: Operations, input: CheckoutInput, session
       x.dedication,
     ),
   );
+  if (group) items[0].unitCents = group.unitCents;
   const totals = calculateTotals(items, input.shipping === 'express' ? 2990 : 1890, input.coupon);
   const split =
     input.payment === 'split'
@@ -246,6 +262,16 @@ export function createShopOrder(state: Operations, input: CheckoutInput, session
     ...split,
     installments: input.installments,
   });
+  if (group) {
+    recordGroupOrder(
+      group.gb,
+      state.orders[0],
+      { name: customer.name, email: customer.email },
+      items[0].quantity,
+      group.unitCents,
+    );
+    if (paid) settleGroupPayment(state, id);
+  }
   audit(state, 'Pedido criado', id, session?.name || customer.name);
   return (state.processed[input.idempotencyKey] = { orderId: id });
 }

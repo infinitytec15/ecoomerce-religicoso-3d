@@ -51,6 +51,12 @@ import {
 import { addMonth, monthLabel, today, uid } from '@/lib/domain/format';
 import { filterProducts } from '@/lib/domain/catalog';
 import { forSale, withKitSummary } from '@/lib/domain/kits';
+import {
+  groupCheckout,
+  joinableGroupBuys,
+  publicGroupBuy,
+  withGroupBuy,
+} from '@/lib/domain/group-buys';
 import { DEMO_EMAIL, DEMO_PASSWORD, normalizeAddress, STAFF_PERMISSIONS } from './seed';
 import { MemoryDemoStorage, type DemoStorage } from './storage';
 /** Demo reviews remember which order item they came from (the admin shape does not carry it). */
@@ -126,14 +132,25 @@ export class DemoGateway implements CommerceGateway {
     const state = this.read();
     return filterProducts(state.products, query).flatMap((p) => {
       const visible = withKitSummary(state.products, p);
-      return visible ? [productSchema.parse(withRating(state, visible))] : [];
+      return visible
+        ? [productSchema.parse(withGroupBuy(state.groupBuys, withRating(state, visible)))]
+        : [];
     });
+  }
+  async groupBuys() {
+    return joinableGroupBuys(this.read().groupBuys).map(publicGroupBuy);
+  }
+  async groupBuy(id: string) {
+    const found = joinableGroupBuys(this.read().groupBuys).find((g) => g.id === id);
+    return publicGroupBuy(requireValue(found, 'Compra coletiva não encontrada.'));
   }
   async product(id: string) {
     const state = this.read(),
       product = state.products.find((p) => p.id === id && p.active);
     const visible = product && withKitSummary(state.products, product);
-    return visible ? productSchema.parse(withRating(state, visible)) : null;
+    return visible
+      ? productSchema.parse(withGroupBuy(state.groupBuys, withRating(state, visible)))
+      : null;
   }
   async productReviews(productId: string, rating?: number) {
     const all = published(this.read()).filter((r) => r.productId === productId);
@@ -294,7 +311,15 @@ export class DemoGateway implements CommerceGateway {
   }
   async estimate(input: Parameters<CommerceGateway['estimate']>[0]) {
     const { cartLine, calculateTotals } = await import('@/lib/domain/commerce');
-    const { products } = this.read();
+    const state = this.read(),
+      { products } = state;
+    const group = input.groupBuyId
+      ? groupCheckout(
+          state,
+          { groupBuyId: input.groupBuyId, items: input.items, coupon: input.coupon },
+          null,
+        )
+      : null;
     const items = input.items.map((i) =>
       cartLine(
         forSale(products, requireValue(products.find((p) => p.id === i.productId))),
@@ -304,6 +329,7 @@ export class DemoGateway implements CommerceGateway {
         i.dedication,
       ),
     );
+    if (group) items[0].unitCents = group.unitCents;
     return {
       items,
       ...calculateTotals(
@@ -656,6 +682,7 @@ export class DemoGateway implements CommerceGateway {
           prayer: 'community',
           review: 'community',
           campaign: 'marketing',
+          groupbuy: 'marketing',
           team: 'team',
           invite: 'team',
           workspace: 'settings',

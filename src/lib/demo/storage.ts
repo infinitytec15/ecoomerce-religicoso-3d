@@ -46,6 +46,7 @@ export class BrowserDemoStorage implements DemoStorage {
             coupons: state.coupons || [],
             stockMovements: state.stockMovements || [],
             reviews: state.reviews || [],
+            groupBuys: state.groupBuys || seed.groupBuys,
           };
         }
       }

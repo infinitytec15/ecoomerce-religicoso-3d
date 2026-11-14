@@ -1,4 +1,9 @@
-import type { MyReview, ProductReviews, ReviewInput } from '@maos-em-oracao/contracts';
+import type {
+  GroupBuyPublic,
+  MyReview,
+  ProductReviews,
+  ReviewInput,
+} from '@maos-em-oracao/contracts';
 import type { LoginInput, NewsletterInput, PrayerInput } from '@/lib/domain/schemas';
 import type {
   CartItem,
@@ -21,6 +26,9 @@ export interface CommerceGateway {
   readonly mode: 'demo' | 'http';
   catalog(query?: CatalogQuery): Promise<Product[]>;
   product(id: string): Promise<Product | null>;
+  /** Joinable group-buy campaigns. */
+  groupBuys(): Promise<GroupBuyPublic[]>;
+  groupBuy(id: string): Promise<GroupBuyPublic>;
   settings(): Promise<StoreSettings>;
   session(): Promise<Session | null>;
   login(input: LoginInput): Promise<Session>;

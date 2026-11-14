@@ -1,4 +1,7 @@
+import { z } from 'zod';
+import { groupBuyInputSchema } from '@maos-em-oracao/contracts';
 import type { AdminCommand, Operations, Session } from '@/lib/domain/types';
+import { closeGroupBuy, extendGroupBuy, saveGroupBuy } from '@/lib/domain/group-buys';
 import { ApiError, requireValue } from '@/lib/api/contracts';
 import {
   couponSchema,
@@ -16,6 +19,22 @@ export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Sessi
       p.archived = true;
       return true;
     }
+    case 'groupbuy.save': {
+      const { type, ...input } = c;
+      void type;
+      // The demo campaign id is not a UUID, so the id is checked by the lookup rather than the schema.
+      saveGroupBuy(s, { ...groupBuyInputSchema.parse({ ...input, id: undefined }), id: input.id });
+      return true;
+    }
+    case 'groupbuy.close':
+      closeGroupBuy(s, requireValue(s.groupBuys.find((g) => g.id === c.id)));
+      return true;
+    case 'groupbuy.extend':
+      extendGroupBuy(
+        requireValue(s.groupBuys.find((g) => g.id === c.id)),
+        z.string().datetime().parse(c.endsAt),
+      );
+      return true;
     case 'stock.adjust': {
       const p = requireValue(s.products.find((p) => p.id === c.productId));
       if (

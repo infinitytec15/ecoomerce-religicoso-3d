@@ -384,6 +384,8 @@ export interface CheckoutInput {
   paymentToken?: PaymentToken;
   shippingQuoteId?: string;
   shippingServiceId?: string;
+  /** Joins this group-buy campaign; the order must be its single item. */
+  groupBuyId?: string;
 }
 export interface SubscribeInput {
   profile: FaithProfile;
