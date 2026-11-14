@@ -25,6 +25,7 @@ import { ContentService } from '@maos-em-oracao/backend-core/content';
 import { ReviewsService } from '@maos-em-oracao/backend-core/reviews';
 import { GroupBuysService } from '@maos-em-oracao/backend-core/group-buys';
 import { StoriesService } from '@maos-em-oracao/backend-core/stories';
+import { CrmService } from '@maos-em-oracao/backend-core/crm';
 import { MediaService } from '@maos-em-oracao/backend-core/media';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { sessionHash } from '@maos-em-oracao/backend-core/security';
@@ -360,3 +361,52 @@ export class ReviewsModule {}
 export class GroupBuysModule {}
 @Module({ controllers: [StoriesController] })
 export class StoriesModule {}
+@ApiTags('E-mail marketing')
+@Controller()
+class CrmController {
+  private service: CrmService;
+  constructor(@Inject(CONTEXT) ctx: Context) {
+    this.service = new CrmService(ctx);
+  }
+  @Get('account/marketing') async status(@Req() req: ApiRequest) {
+    return result(await this.service.accountStatus(req.actor));
+  }
+  @Put('account/marketing') @HttpCode(204) async account(
+    @Req() req: ApiRequest,
+    @Body() body: unknown,
+  ) {
+    await this.service.setAccount(req.actor, body);
+  }
+  @Post('marketing/unsubscribe') @HttpCode(204) async unsubscribe(@Body() body: unknown) {
+    await this.service.unsubscribe(body);
+  }
+  @Post('marketing/one-click') @HttpCode(204) async oneClick(
+    @Query('token') token: string,
+    @Query('c') campaignId: string | undefined,
+    @Body() body: Record<string, unknown>,
+  ) {
+    if (body?.['List-Unsubscribe'] !== 'One-Click')
+      throw new DomainError('INVALID_REQUEST', 'Solicitação de descadastro inválida.', 422);
+    await this.service.unsubscribe({ token, ...(campaignId ? { campaignId } : {}) });
+  }
+  @Post('admin/crm/preview') @HttpCode(200) async preview(
+    @Req() req: ApiRequest,
+    @Body() body: { segment?: unknown } | undefined,
+  ) {
+    return result(await this.service.preview(req.actor, body?.segment));
+  }
+  @Get('admin/crm/contacts') async contacts(
+    @Req() req: ApiRequest,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return result(await this.service.contacts(req.actor, query));
+  }
+  @Post('admin/crm/contacts/import') @HttpCode(200) async import(
+    @Req() req: ApiRequest,
+    @Body() body: unknown,
+  ) {
+    return result(await this.service.importContacts(req.actor, body));
+  }
+}
+@Module({ controllers: [CrmController] })
+export class CrmModule {}

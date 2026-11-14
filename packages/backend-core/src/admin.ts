@@ -10,6 +10,7 @@ import { ContentService } from './content';
 import { ReviewsService } from './reviews';
 import { GroupBuysService } from './group-buys';
 import { StoriesService } from './stories';
+import { CrmService } from './crm';
 import { OrdersService } from './orders';
 import { SubscriptionsService } from './subscriptions';
 import { ShippingService } from './shipping';
@@ -62,6 +63,7 @@ const permissionMap: Record<string, Permission> = {
   campaign: 'marketing',
   groupbuy: 'marketing',
   story: 'marketing',
+  crm: 'marketing',
   team: 'team',
   invite: 'team',
   workspace: 'settings',
@@ -140,6 +142,7 @@ export class AdminService {
   readonly reviews: ReviewsService;
   readonly groupBuys: GroupBuysService;
   readonly stories: StoriesService;
+  readonly crm: CrmService;
   readonly orders: OrdersService;
   readonly subscriptions: SubscriptionsService;
   readonly shipping: ShippingService;
@@ -151,6 +154,7 @@ export class AdminService {
     this.reviews = new ReviewsService(ctx);
     this.groupBuys = new GroupBuysService(ctx);
     this.stories = new StoriesService(ctx);
+    this.crm = new CrmService(ctx);
     this.orders = new OrdersService(ctx);
     this.subscriptions = new SubscriptionsService(ctx);
     this.shipping = new ShippingService(ctx);
@@ -381,12 +385,14 @@ export class AdminService {
       reviews: reviews.map((r) => reviewDto(r, true)),
       groupBuys,
       stories,
-      crm: {
-        settings: defaultCrmSettings,
-        campaigns: [],
-        tags: [],
-        totals: { contacts: 0, eligible: 0, unsubscribed: 0 },
-      },
+      crm: can('marketing')
+        ? { ...(await this.crm.snapshot()), campaigns: [] }
+        : {
+            settings: defaultCrmSettings,
+            campaigns: [],
+            tags: [],
+            totals: { contacts: 0, eligible: 0, unsubscribed: 0 },
+          },
     };
   }
   async execute(actor: Actor | null, value: unknown) {
@@ -760,6 +766,12 @@ export class AdminService {
         return this.stories.reorderVideos(a, c.highlightId, c.ids);
       case 'story.video.delete':
         return this.stories.removeVideo(a, c.id);
+      case 'crm.settings':
+        return this.crm.saveSettings(a, c.settings);
+      case 'crm.contact.save':
+        return this.crm.saveContact(a, c);
+      case 'crm.contact.unsubscribe':
+        return this.crm.adminUnsubscribe(a, c.email);
       case 'prayer.moderate': {
         const p = requireValue(await this.ctx.db.prayer.findUnique({ where: { id: c.id } }));
         return this.content.moderate(

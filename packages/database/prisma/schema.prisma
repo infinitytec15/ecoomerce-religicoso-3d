@@ -557,6 +557,47 @@ model Campaign {
   @@index([state, scheduledAt])
 }
 
+/// E-mail marketing contact: one row per normalized e-mail, with its legal basis (LGPD).
+model MarketingContact {
+  id                     String    @id @default(uuid())
+  /// normalizeEmail()
+  email                  String    @unique
+  name                   String    @default("")
+  legalBasis             String?
+  consentAt              DateTime?
+  consentVersion         String?
+  consentSource          String?
+  unsubscribedAt         DateTime?
+  unsubscribedCampaignId String?
+  tags                   String[]  @default([])
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([unsubscribedCampaignId])
+  @@index([tags], type: Gin)
+}
+
+model MarketingCampaign {
+  id            String    @id @default(uuid())
+  name          String
+  subject       String
+  previewText   String    @default("")
+  blocks        Json
+  segment       Json
+  state         String    @default("Rascunho")
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  preparedAt    DateTime?
+  finishedAt    DateTime?
+  audienceCount Int       @default(0)
+  sent          Int       @default(0)
+  createdBy     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([state, scheduledAt])
+}
+
 model MediaAsset {
   id         String   @id @default(uuid())
   uploaderId String

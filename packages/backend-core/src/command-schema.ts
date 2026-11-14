@@ -12,7 +12,9 @@ import {
   storyHighlightInputSchema,
   storyVideoInputSchema,
   STORY_LIMITS,
+  crmSettingsSchema,
 } from '@maos-em-oracao/contracts';
+import { contactInputSchema } from './crm';
 const id = z.string().min(1).max(100),
   text = z.string().max(2000),
   date = z.string().refine((v) => Number.isFinite(Date.parse(v)), 'Informe uma data válida.'),
@@ -179,6 +181,9 @@ export const commandSchema = z.discriminatedUnion('type', [
     ids: z.array(z.string().uuid()).max(STORY_LIMITS.videosPerHighlight),
   }),
   z.object({ type: z.literal('story.video.delete'), id: z.string().uuid() }),
+  z.object({ type: z.literal('crm.settings'), settings: crmSettingsSchema }),
+  z.object({ type: z.literal('crm.contact.save'), ...contactInputSchema.shape }),
+  z.object({ type: z.literal('crm.contact.unsubscribe'), email: z.email().max(254) }),
   z.object({
     type: z.literal('prayer.review'),
     id,

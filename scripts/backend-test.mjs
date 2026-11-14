@@ -3368,6 +3368,351 @@ try {
       'entrega conciliada',
     );
   });
+  // ------------------------------------------------------------------ CRM de e-mail
+  const crmSend = (client, command) =>
+      client.call('admin/commands', 'POST', command, {
+        headers: { 'idempotency-key': randomUUID() },
+      }),
+    crmEmail = (label) => 'crm-' + label + '-' + runId + '@example.test',
+    crmContact = (email) => ctx.db.marketingContact.findUnique({ where: { email } }),
+    crmTemplate = (await owner.data('admin/operations')).products.find((p) => p.id === product.id),
+    crmProduct = { ...crmTemplate, id: randomUUID(), sku: 'CRM-' + runId, name: 'Peça do CRM' };
+  delete crmProduct.kit;
+  Object.assign(crmProduct, { active: true, archived: false, stock: 80 });
+  await owner.command({ type: 'product.save', product: crmProduct });
+  /** A real checkout of the CRM product, then forced to a purchase status/total/date. */
+  const crmBuy = async (email, { status = 'Confirmado', cents, days, marketingOptIn } = {}) => {
+      const buyer = new Client(),
+        q = await quote(buyer, crmProduct),
+        r = await buy(buyer, {
+          ...checkout(crmProduct, q, email),
+          ...(marketingOptIn ? { marketingOptIn } : {}),
+        });
+      assert.equal(r.status, 200, r.body?.error?.code);
+      await ctx.db.order.update({
+        where: { id: r.body.data.orderId },
+        data: {
+          status,
+          ...(cents
+            ? { totalCents: cents, subtotalCents: cents, shippingCents: 0, discountCents: 0 }
+            : {}),
+          ...(days ? { createdAt: new Date(Date.now() - days * 86400000) } : {}),
+        },
+      });
+      return r.body.data.orderId;
+    },
+    crmPreview = async (rules, client = owner) => {
+      const r = await client.call('admin/crm/preview', 'POST', { segment: { rules } });
+      assert.equal(r.status, 200, r.body?.error?.code);
+      return r.body.data;
+    },
+    crmSettings = async (patch) => {
+      const current = (await owner.data('admin/operations')).crm.settings;
+      await owner.command({ type: 'crm.settings', settings: { ...current, ...patch } });
+    },
+    crmBought = { type: 'product', productId: crmProduct.id };
+  const crmRegistered = crmEmail('cadastro'),
+    crmGuest = 'CRM-Checkout-' + runId + '@Example.test',
+    crmAccount = new Client();
+  await check('CRM: aceite no cadastro, no checkout e na conta', async () => {
+    const r = await crmAccount.call('auth/login', 'POST', {
+      name: 'Cliente do CRM',
+      email: crmRegistered,
+      password: 'IntegrationTeste!2026',
+      kind: 'customer',
+      register: true,
+      marketingOptIn: true,
+    });
+    assert.equal(r.status, 200, r.body?.error?.code);
+    const registered = await crmContact(crmRegistered);
+    assert.equal(registered.legalBasis, 'consent');
+    assert.equal(registered.consentSource, 'register');
+    assert.equal(registered.consentVersion, '2026-11-14');
+    assert(registered.consentAt);
+    assert.equal(registered.name, 'Cliente do CRM');
+    const plain = await register(new Client(), 'crm-sem-aceite');
+    assert.equal(await ctx.db.marketingContact.count({ where: { email: plain.email } }), 0);
+    // Guest checkout with the opt-in: one contact under the normalized e-mail.
+    await crmBuy(crmGuest, { marketingOptIn: true });
+    const fromCheckout = await crmContact(crmGuest.toLowerCase());
+    assert.equal(fromCheckout.legalBasis, 'consent');
+    assert.equal(fromCheckout.consentSource, 'checkout');
+    assert.equal(fromCheckout.name, 'Cliente de Homologação');
+    // Account preference: off keeps the contact, on is a new consent from the account.
+    const status = await crmAccount.data('account/marketing');
+    assert.equal(status.subscribed, true);
+    assert.equal(status.version, '2026-11-14');
+    assert.match(status.text, /Posso sair quando quiser/);
+    const off = await crmAccount.call('account/marketing', 'PUT', { subscribed: false });
+    assert.equal(off.status, 204, off.body?.error?.code);
+    assert.equal((await crmAccount.data('account/marketing')).subscribed, false);
+    assert((await crmContact(crmRegistered)).unsubscribedAt);
+    const on = await crmAccount.call('account/marketing', 'PUT', { subscribed: true });
+    assert.equal(on.status, 204, on.body?.error?.code);
+    assert.equal((await crmAccount.data('account/marketing')).subscribed, true);
+    const again = await crmContact(crmRegistered);
+    assert.equal(again.unsubscribedAt, null);
+    assert.equal(again.consentSource, 'account');
+    assert.equal((await owner.call('account/marketing')).status, 403);
+    assert.equal((await new Client().call('account/marketing')).status, 401);
+  });
+  await check('CRM: descadastro pelo link é idempotente e exige o token de marketing', async () => {
+    const { CrmService } = await import('@maos-em-oracao/backend-core/crm');
+    const { Notifications } = await import('@maos-em-oracao/backend-core/notifications');
+    const crm = new CrmService(ctx),
+      contact = await crmContact(crmGuest.toLowerCase()),
+      campaign = await ctx.db.marketingCampaign.create({
+        data: {
+          name: 'Campanha do teste',
+          subject: 'Novidades',
+          blocks: [],
+          segment: { rules: [] },
+          createdBy: 'test',
+        },
+      }),
+      links = crm.unsubscribeLinks(contact.id, campaign.id);
+    assert(links.unsubscribeUrl.startsWith(env.PUBLIC_WEB_URL + '/email/descadastro?token='));
+    assert(
+      links.oneClickUnsubscribeUrl.startsWith(
+        env.PUBLIC_WEB_URL + '/api/email/marketing-unsubscribe?token=',
+      ),
+    );
+    assert.equal(new URL(links.unsubscribeUrl).searchParams.get('c'), campaign.id);
+    assert.equal(
+      new URL(crm.unsubscribeLinks(contact.id).unsubscribeUrl).searchParams.has('c'),
+      false,
+    );
+    const token = new URL(links.oneClickUnsubscribeUrl).searchParams.get('token'),
+      oneClick = (body) =>
+        fetch(
+          base +
+            '/marketing/one-click?token=' +
+            encodeURIComponent(token) +
+            '&c=' +
+            encodeURIComponent(campaign.id),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+          },
+        );
+    assert.equal((await oneClick('List-Unsubscribe=Talvez')).status, 422);
+    assert.equal((await crmContact(contact.email)).unsubscribedAt, null);
+    assert.equal((await oneClick('List-Unsubscribe=One-Click')).status, 204);
+    const gone = await crmContact(contact.email);
+    assert(gone.unsubscribedAt);
+    assert.equal(gone.unsubscribedCampaignId, campaign.id);
+    const repeat = await guest.call('marketing/unsubscribe', 'POST', {
+      token,
+      campaignId: campaign.id,
+    });
+    assert.equal(repeat.status, 204, repeat.body?.error?.code);
+    assert.equal(
+      (await crmContact(contact.email)).unsubscribedAt.getTime(),
+      gone.unsubscribedAt.getTime(),
+    );
+    const prayerToken = new URL(
+      new Notifications(ctx).unsubscribeLinks(contact.id, 1).oneClickUnsubscribeUrl,
+    ).searchParams.get('token');
+    const wrong = await guest.call('marketing/unsubscribe', 'POST', { token: prayerToken });
+    assert.equal(wrong.status, 422);
+    assert.equal(wrong.body.error.code, 'INVALID_TOKEN');
+  });
+  const crmTag = 'Lista da paróquia ' + runId,
+    crmNew = crmEmail('importado');
+  await check('CRM: importação etiqueta todos e mantém o descadastro', async () => {
+    const r = await owner.call('admin/crm/contacts/import', 'POST', {
+      tag: crmTag,
+      consent: true,
+      rows: [
+        { email: crmNew.toUpperCase(), name: 'Pessoa Importada' },
+        { email: crmRegistered, name: 'Outro nome' },
+        { email: crmGuest, name: '' },
+      ],
+    });
+    assert.equal(r.status, 200, r.body?.error?.code);
+    assert.deepEqual(r.body.data, { created: 1, updated: 2, keptUnsubscribed: 1 });
+    const [fresh, registered, unsubscribed] = await Promise.all(
+      [crmNew, crmRegistered, crmGuest.toLowerCase()].map(crmContact),
+    );
+    assert.equal(fresh.legalBasis, 'imported-consent');
+    assert.equal(fresh.consentSource, 'import');
+    assert.equal(fresh.consentVersion, 'importação');
+    assert.equal(fresh.name, 'Pessoa Importada');
+    assert.equal(registered.legalBasis, 'consent');
+    assert.equal(registered.name, 'Cliente do CRM');
+    assert(unsubscribed.unsubscribedAt, 'import never re-subscribes');
+    for (const c of [fresh, registered, unsubscribed]) assert(c.tags.includes(crmTag));
+    // Saving tags from the admin does not touch consent or unsubscribe either.
+    await owner.command({
+      type: 'crm.contact.save',
+      email: crmGuest,
+      tags: [crmTag, '  Clientes   fiéis ', 'Clientes fiéis'],
+    });
+    const saved = await crmContact(crmGuest.toLowerCase());
+    assert.deepEqual(saved.tags, [crmTag, 'Clientes fiéis']);
+    assert(saved.unsubscribedAt);
+    assert.equal(saved.legalBasis, 'consent');
+    const page = await owner.data('admin/crm/contacts?tag=' + encodeURIComponent(crmTag));
+    assert.deepEqual(
+      page.items.map((c) => [c.email, c.eligible, c.isCustomer]),
+      [
+        [crmGuest.toLowerCase(), false, true],
+        [crmRegistered, true, true],
+        [crmNew, true, false],
+      ].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+    );
+    const found = await owner.data(
+      'admin/crm/contacts?q=' + encodeURIComponent('PESSOA IMPORTADA'),
+    );
+    assert.deepEqual(
+      found.items.map((c) => c.email),
+      [crmNew],
+    );
+  });
+  const crmAna = 'Ana-' + runId + '@X.test';
+  await check('CRM: público conta uma vez por e-mail e respeita o descadastro', async () => {
+    await crmBuy(crmRegistered);
+    await crmBuy(crmAna);
+    await crmBuy(crmAna.toLowerCase());
+    await crmBuy(crmEmail('pendente'), { status: 'Aguardando pagamento' });
+    // The unsubscribed guest (crmGuest) bought too, and never comes back.
+    assert.deepEqual(await crmPreview([crmBought]), {
+      total: 1,
+      consent: 1,
+      legitimateInterest: 0,
+    });
+    await crmSettings({ legitimateInterest: true });
+    assert.deepEqual(await crmPreview([crmBought]), {
+      total: 2,
+      consent: 1,
+      legitimateInterest: 1,
+    });
+    // A contact without legal basis that bought still counts once, as legitimate interest.
+    await owner.command({ type: 'crm.contact.save', email: crmAna, tags: [] });
+    assert.equal((await crmContact(crmAna.toLowerCase())).legalBasis, null);
+    assert.deepEqual(await crmPreview([crmBought]), {
+      total: 2,
+      consent: 1,
+      legitimateInterest: 1,
+    });
+    // A suppressed e-mail (bounce/complaint) is left out.
+    const { recipientHash } = await import('@maos-em-oracao/backend-core/security');
+    const emailHash = recipientHash(crmRegistered, ctx.config);
+    await ctx.db.emailSuppression.create({ data: { emailHash, reason: 'bounce' } });
+    assert.equal((await crmPreview([crmBought])).total, 1);
+    await ctx.db.emailSuppression.delete({ where: { emailHash } });
+    // The admin can unsubscribe someone: the buyer leaves legitimate interest for good.
+    await owner.command({ type: 'crm.contact.unsubscribe', email: crmAna });
+    assert.deepEqual(await crmPreview([crmBought]), {
+      total: 1,
+      consent: 1,
+      legitimateInterest: 0,
+    });
+    const snapshot = operationsSchema.parse(await owner.data('admin/operations')).crm;
+    assert.equal(snapshot.settings.legitimateInterest, true);
+    assert(snapshot.tags.some((t) => t.tag === crmTag && t.count === 3));
+    assert(snapshot.totals.unsubscribed >= 2);
+  });
+  await check('CRM: regras de gasto, etiqueta, oração e última compra', async () => {
+    const tag = 'Regras ' + runId,
+      [recent, old, prayer, onlyPrayer] = ['recente', 'antiga', 'oracao', 'so-oracao'].map(
+        crmEmail,
+      );
+    const prayers = (await crmPreview([{ type: 'prayer' }])).total;
+    const r = await owner.call('admin/crm/contacts/import', 'POST', {
+      tag,
+      consent: true,
+      rows: [recent, old, prayer].map((email) => ({ email, name: '' })),
+    });
+    assert.deepEqual(r.body.data, { created: 3, updated: 0, keptUnsubscribed: 0 });
+    await crmBuy(recent, { cents: 6000, days: 5 });
+    await crmBuy(recent, { cents: 3000, days: 10 });
+    await crmBuy(old, { cents: 2000, days: 200 });
+    for (const email of [prayer, onlyPrayer])
+      await ctx.db.devotionalSubscriber.create({
+        data: {
+          email,
+          name: 'Pessoa da oração',
+          consentVersion: '2026-11-09',
+          consentAt: new Date(),
+          verifiedAt: new Date(),
+        },
+      });
+    const byTag = { type: 'tag', tag };
+    assert.equal((await crmPreview([byTag])).total, 3);
+    assert.equal((await crmPreview([byTag, { type: 'spentAbove', cents: 8000 }])).total, 1);
+    assert.equal((await crmPreview([byTag, { type: 'spentAbove', cents: 9000 }])).total, 0);
+    assert.equal(
+      (await crmPreview([byTag, { type: 'lastPurchase', op: 'moreThan', days: 90 }])).total,
+      1,
+    );
+    assert.equal(
+      (await crmPreview([byTag, { type: 'lastPurchase', op: 'lessThan', days: 90 }])).total,
+      1,
+    );
+    assert.equal((await crmPreview([byTag, { type: 'prayer' }])).total, 1);
+    assert.equal((await crmPreview([{ type: 'prayer' }])).total, prayers + 1);
+    assert.equal(
+      (await crmPreview([byTag, { type: 'category', category: crmProduct.category }])).total,
+      2,
+    );
+    assert.equal((await crmPreview([byTag, { type: 'club' }, { type: 'groupBuy' }])).total, 0);
+    await crmSettings({ legitimateInterest: false });
+  });
+  await check('CRM: marketing edita o remetente, só o dono muda o legítimo interesse', async () => {
+    const marketing = await marketingMember(owner, 'crm-marketing'),
+      current = operationsSchema.parse(await marketing.data('admin/operations')).crm.settings;
+    const renamed = await crmSend(marketing, {
+      type: 'crm.settings',
+      settings: { ...current, senderName: 'Equipe Mãos em Oração' },
+    });
+    assert.equal(renamed.status, 204, renamed.body?.error?.code);
+    assert.equal(
+      (await owner.data('admin/operations')).crm.settings.senderName,
+      'Equipe Mãos em Oração',
+    );
+    const flip = await crmSend(marketing, {
+      type: 'crm.settings',
+      settings: { ...current, legitimateInterest: !current.legitimateInterest },
+    });
+    assert.equal(flip.status, 403);
+    assert.equal(flip.body.error.code, 'FORBIDDEN');
+    assert.equal(flip.body.error.message, 'Só o dono da loja pode mudar essa chave.');
+    assert.equal((await marketing.call('admin/crm/contacts')).status, 200);
+    const email = crmEmail('suporte'),
+      password = 'EquipeHomologacao!2026',
+      support = new Client();
+    await owner.command({
+      type: 'invite.create',
+      name: 'Suporte teste',
+      email,
+      role: 'support',
+      permissions: ['support'],
+    });
+    const invite = (await owner.data('admin/operations')).invitations.find(
+      (i) => i.email === email,
+    );
+    assert.equal(
+      (
+        await support.call('team/invitations/' + invite.token + '/accept', 'POST', {
+          name: 'Suporte teste',
+          password,
+        })
+      ).status,
+      204,
+    );
+    assert.equal(
+      (await support.call('auth/login', 'POST', { email, password, kind: 'staff' })).status,
+      200,
+    );
+    const denied = await support.call('admin/crm/preview', 'POST', { segment: { rules: [] } });
+    assert.equal(denied.status, 403);
+    assert.equal(denied.body.error.code, 'FORBIDDEN');
+    assert.equal((await customer.call('admin/crm/contacts')).status, 403);
+    const staffFlip = await crmSend(support, { type: 'crm.contact.unsubscribe', email });
+    assert.equal(staffFlip.status, 403);
+  });
   operationsSchema.parse(await owner.data('admin/operations'));
   accountSchema.parse(await customer.data('account'));
   console.log(

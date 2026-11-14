@@ -5,6 +5,7 @@ import { loginSchema, addressSchema } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { rateLimit } from './context';
 import { Notifications } from './notifications';
+import { CrmService } from './crm';
 import {
   token,
   digest,
@@ -68,9 +69,11 @@ export class AuthService {
     });
   }
   readonly notifications: Notifications;
+  private crm: CrmService;
   private dummy = hashPassword(token());
   constructor(private ctx: Context) {
     this.notifications = new Notifications(ctx);
+    this.crm = new CrmService(ctx);
   }
   publicSession(actor: Actor): Session {
     return {
@@ -184,6 +187,7 @@ export class AuthService {
           expiresAtLabel:
             addDays(1).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília)',
         });
+        if (input.marketingOptIn) await this.crm.consent(tx, { email, name, source: 'register' });
         await audit(tx, user.id, 'Conta criada', user.id);
         return { raw: await this.session(tx, user.id), userId: user.id };
       });

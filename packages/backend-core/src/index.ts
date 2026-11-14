@@ -13,3 +13,4 @@ export * from './reviews';
 export * from './admin';
 export * from './team';
 export * from './reports';
+export * from './crm';

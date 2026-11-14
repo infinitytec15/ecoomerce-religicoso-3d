@@ -46,6 +46,7 @@ import {
   ReviewsModule,
   GroupBuysModule,
   StoriesModule,
+  CrmModule,
 } from './commerce.module';
 @Controller('health')
 class HealthController {
@@ -129,6 +130,7 @@ class ApiErrors implements ExceptionFilter {
     ReviewsModule,
     GroupBuysModule,
     StoriesModule,
+    CrmModule,
     OperationsModule,
     WebhooksModule,
   ],
@@ -161,7 +163,7 @@ export async function bootstrap() {
             /^\/api\/v1\/media\/public\/[-a-zA-Z0-9_]+\/(image\.webp|preview\.glb|video)$/.test(
               path,
             ) ||
-            /^\/api\/v1\/(health\/(live|ready)|webhooks\/[^/]+|newsletter\/one-click|integrations\/melhor-envio\/callback)$/.test(
+            /^\/api\/v1\/(health\/(live|ready)|webhooks\/[^/]+|(?:newsletter|marketing)\/one-click|integrations\/melhor-envio\/callback)$/.test(
               path,
             ) ||
             (ctx.config.NODE_ENV !== 'production' && /^\/docs(?:\/|$|-json)/.test(path));

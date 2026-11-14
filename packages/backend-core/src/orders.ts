@@ -26,6 +26,7 @@ import { AuthService } from './auth';
 import { Notifications } from './notifications';
 import { PaymentsService } from './payments';
 import { GroupBuysService } from './group-buys';
+import { CrmService } from './crm';
 import { data, json, requireValue, DomainError, type Actor, addDays, audit } from './shared';
 import {
   orderInclude,
@@ -101,11 +102,13 @@ export class OrdersService {
   readonly auth: AuthService;
   readonly mail: Notifications;
   readonly groupBuys: GroupBuysService;
+  private crm: CrmService;
   constructor(private ctx: Context) {
     this.payments = new PaymentsService(ctx);
     this.auth = new AuthService(ctx);
     this.mail = new Notifications(ctx);
     this.groupBuys = new GroupBuysService(ctx);
+    this.crm = new CrmService(ctx);
   }
   async cart(tx: Transaction | Context['db'], items: OrderItemInput[]) {
     const result: CartItem[] = [];
@@ -590,6 +593,12 @@ export class OrdersService {
             data: { orderId: o.id, productId, quantity, expiresAt: new Date(Date.now() + 1800000) },
           });
         }
+      if (input.marketingOptIn)
+        await this.crm.consent(tx, {
+          email: customer.email,
+          name: customer.name,
+          source: 'checkout',
+        });
       await tx.idempotencyRecord.create({
         data: {
           key: input.idempotencyKey,
