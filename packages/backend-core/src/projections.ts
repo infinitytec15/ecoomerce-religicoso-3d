@@ -12,7 +12,13 @@ import type {
   Prayer,
   PublicReview,
   AdminReview,
+  GroupBuySummary,
+  GroupBuyPublic,
+  GroupBuyStatus,
+  AdminGroupBuy,
+  GroupBuyOrderSnapshot,
 } from '@maos-em-oracao/contracts';
+import { unitPriceCents, unitCostCents, remainingParticipants } from '@maos-em-oracao/contracts';
 import type { Prisma } from '@maos-em-oracao/database';
 import { data, day, instant } from './shared';
 export const orderInclude = {
@@ -246,4 +252,108 @@ export function reviewDto(r: ReviewRow | AdminReviewRow, privateData = false) {
     customerName: r.customer.name,
     customerEmail: r.customer.email,
   } satisfies AdminReview;
+}
+
+export const groupBuyInclude = { product: true } satisfies Prisma.GroupBuyInclude;
+export type GroupBuyRow = Prisma.GroupBuyGetPayload<{ include: typeof groupBuyInclude }>;
+export const groupBuyAdminOrderInclude = {
+  customer: true,
+  items: true,
+  payment: { include: { parts: { include: { refunds: true } } } },
+} satisfies Prisma.OrderInclude;
+export type GroupBuyAdminOrderRow = Prisma.OrderGetPayload<{
+  include: typeof groupBuyAdminOrderInclude;
+}>;
+export interface GroupBuyStats {
+  participants: number;
+  initials: string[];
+}
+export function groupBuySummaryDto(
+  gb: GroupBuyRow,
+  stats: GroupBuyStats = { participants: 0, initials: [] },
+): GroupBuySummary {
+  const product = data<InventoryProduct>(gb.product.data);
+  return {
+    id: gb.id,
+    title: gb.title,
+    mode: gb.mode as GroupBuySummary['mode'],
+    sizeIndex: gb.sizeIndex,
+    size: product.sizes?.[gb.sizeIndex] ?? '',
+    groupPriceCents: gb.groupPriceCents,
+    normalPriceCents: unitPriceCents(
+      { priceCents: gb.product.priceCents, sizePrices: product.sizePrices },
+      gb.sizeIndex,
+    ),
+    goal: gb.goal,
+    participants: stats.participants,
+    remaining: remainingParticipants(gb.goal, stats.participants),
+    maxParticipants: gb.maxParticipants,
+    perPersonLimit: gb.perPersonLimit,
+    endsAt: instant(gb.endsAt),
+    goalReached: gb.goalReachedAt !== null,
+    status: gb.status as GroupBuyStatus,
+    initials: stats.initials,
+  };
+}
+export function groupBuyPublicDto(gb: GroupBuyRow, stats?: GroupBuyStats): GroupBuyPublic {
+  const product = data<InventoryProduct>(gb.product.data);
+  return {
+    ...groupBuySummaryDto(gb, stats),
+    description: gb.description,
+    productId: gb.productId,
+    productName: gb.product.name,
+    productImage: product.image ?? '',
+    colors: product.colors ?? [],
+  };
+}
+export function groupBuyAdminDto(
+  gb: GroupBuyRow,
+  stats: GroupBuyStats,
+  orders: GroupBuyAdminOrderRow[],
+): AdminGroupBuy {
+  const product = data<InventoryProduct>(gb.product.data),
+    refunded = (o: GroupBuyAdminOrderRow) =>
+      (o.payment?.parts ?? []).flatMap((part) => part.refunds);
+  return {
+    ...groupBuyPublicDto(gb, stats),
+    active: gb.active,
+    startsAt: instant(gb.startsAt),
+    createdAt: instant(gb.createdAt),
+    costCents: unitCostCents(
+      {
+        costCents: gb.product.costCents,
+        costBreakdown: product.costBreakdown,
+        costBySize: product.costBySize,
+      },
+      gb.sizeIndex,
+    ),
+    locked: orders.length > 0,
+    refundedCents: orders.reduce(
+      (sum, o) => sum + (o.payment?.parts ?? []).reduce((n, part) => n + part.refundedCents, 0),
+      0,
+    ),
+    orders: orders.map((o) => {
+      const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(o.data).groupBuy,
+        refunds = refunded(o);
+      return {
+        orderId: o.id,
+        number: 'MEO-' + String(o.number).padStart(6, '0'),
+        customerName: o.customer.name,
+        email: o.customer.email,
+        quantity: snapshot?.quantity ?? (o.items.reduce((n, i) => n + i.quantity, 0) || 1),
+        paidUnitCents: snapshot?.paidUnitCents ?? o.items[0]?.unitCents ?? 0,
+        status: o.status as AdminGroupBuy['orders'][number]['status'],
+        paymentStatus: o.payment?.status ?? 'Pendente',
+        refund: refunds.length
+          ? {
+              amountCents: refunds.reduce((n, r) => n + r.amountCents, 0),
+              status: refunds.some((r) => r.status === 'pending')
+                ? 'pending'
+                : refunds.at(-1)!.status,
+            }
+          : null,
+        createdAt: instant(o.createdAt),
+      };
+    }),
+  };
 }

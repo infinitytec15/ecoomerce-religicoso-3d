@@ -105,6 +105,7 @@ model Product {
   movements    StockMovement[]
   reservations StockReservation[]
   reviews      Review[]
+  groupBuys    GroupBuy[]
 
   @@index([active, archived, category])
 }
@@ -192,10 +193,39 @@ model Order {
   reviews           Review[]
   deliveredAt       DateTime?
   reviewRequestedAt DateTime?
+  groupBuyId        String?
+  groupBuy          GroupBuy?          @relation(fields: [groupBuyId], references: [id], onDelete: Restrict)
 
   @@index([customerId, createdAt])
   @@index([status, createdAt])
   @@index([status, deliveredAt])
+  @@index([groupBuyId])
+}
+
+model GroupBuy {
+  id              String    @id @default(uuid())
+  title           String
+  description     String    @default("")
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sizeIndex       Int
+  groupPriceCents Int
+  goal            Int
+  maxParticipants Int?
+  perPersonLimit  Int       @default(1)
+  mode            String
+  status          String    @default("Aberta")
+  active          Boolean   @default(true)
+  startsAt        DateTime  @default(now())
+  endsAt          DateTime
+  goalReachedAt   DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  orders          Order[]
+
+  @@index([status, endsAt])
+  @@index([productId, status])
 }
 
 model OrderItem {

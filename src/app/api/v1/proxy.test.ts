@@ -208,6 +208,38 @@ describe('same-origin backend proxy', () => {
     );
     expect(blocked.status).toBe(404);
   });
+  it('forwards the public group-buy routes and nothing under them', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response('{"data":null}'));
+    const id = '6f0c1b5e-aaaa-4bbb-8ccc-123456789012';
+    expect(
+      (await GET(new NextRequest('http://localhost/api/v1/group-buys'), context('group-buys')))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await GET(
+          new NextRequest('http://localhost/api/v1/group-buys/' + id),
+          context('group-buys/' + id),
+        )
+      ).status,
+    ).toBe(200);
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      'https://api.example.com/api/v1/group-buys',
+      'https://api.example.com/api/v1/group-buys/' + id,
+    ]);
+    expect(
+      (
+        await GET(
+          new NextRequest('http://localhost/api/v1/group-buys/' + id + '/orders'),
+          context('group-buys/' + id + '/orders'),
+        )
+      ).status,
+    ).toBe(404);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it('lets only the review photo content route stream, capped at 8 MB', async () => {
     vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
     const fetcher = vi

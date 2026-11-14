@@ -8,6 +8,7 @@ import {
   couponSchema,
   permissionSchema,
   addressSchema,
+  groupBuyInputSchema,
 } from '@maos-em-oracao/contracts';
 const id = z.string().min(1).max(100),
   text = z.string().max(2000),
@@ -153,6 +154,14 @@ export const commandSchema = z.discriminatedUnion('type', [
     id,
     status: z.enum(['Publicado', 'Em análise', 'Oculto']),
     reply: z.string().max(1000),
+  }),
+  // The full input (with its refinements) is parsed again by GroupBuysService.save.
+  z.object({ type: z.literal('groupbuy.save'), ...groupBuyInputSchema.shape }),
+  z.object({ type: z.literal('groupbuy.close'), id: z.string().uuid() }),
+  z.object({
+    type: z.literal('groupbuy.extend'),
+    id: z.string().uuid(),
+    endsAt: z.string().datetime(),
   }),
   z.object({
     type: z.literal('prayer.review'),

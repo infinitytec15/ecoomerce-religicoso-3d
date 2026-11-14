@@ -23,6 +23,7 @@ import { OrdersService } from '@maos-em-oracao/backend-core/orders';
 import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions';
 import { ContentService } from '@maos-em-oracao/backend-core/content';
 import { ReviewsService } from '@maos-em-oracao/backend-core/reviews';
+import { GroupBuysService } from '@maos-em-oracao/backend-core/group-buys';
 import { MediaService } from '@maos-em-oracao/backend-core/media';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { sessionHash } from '@maos-em-oracao/backend-core/security';
@@ -321,5 +322,21 @@ export class OrdersModule {}
 export class ClubModule {}
 @Module({ controllers: [ContentController] })
 export class CommunityModule {}
+@ApiTags('Compra coletiva')
+@Controller()
+class GroupBuysController {
+  private service: GroupBuysService;
+  constructor(@Inject(CONTEXT) ctx: Context) {
+    this.service = new GroupBuysService(ctx);
+  }
+  @Get('group-buys') async list() {
+    return result(await this.service.publicList());
+  }
+  @Get('group-buys/:id') async one(@Param('id') id: string) {
+    return result(await this.service.publicOne(id));
+  }
+}
 @Module({ controllers: [ReviewsController] })
 export class ReviewsModule {}
+@Module({ controllers: [GroupBuysController] })
+export class GroupBuysModule {}

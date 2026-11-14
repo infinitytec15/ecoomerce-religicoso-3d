@@ -23,6 +23,7 @@ import type { Prisma } from '@maos-em-oracao/database';
 import type { Context } from './context';
 import { settings } from './context';
 import { productDto } from './projections';
+import { GroupBuysService } from './group-buys';
 import {
   json,
   data,
@@ -69,9 +70,16 @@ export class CatalogService {
     });
     const ratings = await this.ratings(products.map((p) => p.id));
     const kits = await this.kitExtras(products);
+    const groupBuys = await new GroupBuysService(this.ctx).forProduct(
+      this.ctx.db,
+      products.map((p) => p.id),
+    );
     return products
       .filter((p) => !kits.has(p.id) || kits.get(p.id))
-      .map((p) => productDto(p, false, ratings.get(p.id), kits.get(p.id) || undefined))
+      .map((p) => ({
+        ...productDto(p, false, ratings.get(p.id), kits.get(p.id) || undefined),
+        ...(groupBuys.has(p.id) ? { groupBuy: groupBuys.get(p.id) } : {}),
+      }))
       .filter((p) => !query.color || query.color === 'Todos' || p.colors.includes(query.color));
   }
   async product(id: string) {
@@ -80,12 +88,13 @@ export class CatalogService {
     const kits = await this.kitExtras([p]);
     // A kit with an unavailable component behaves like an inactive product.
     if (kits.has(p.id) && !kits.get(p.id)) return null;
-    return productDto(
-      p,
-      false,
-      (await this.ratings([p.id])).get(p.id),
-      kits.get(p.id) || undefined,
+    const groupBuy = (await new GroupBuysService(this.ctx).forProduct(this.ctx.db, [p.id])).get(
+      p.id,
     );
+    return {
+      ...productDto(p, false, (await this.ratings([p.id])).get(p.id), kits.get(p.id) || undefined),
+      ...(groupBuy ? { groupBuy } : {}),
+    };
   }
   /**
    * Derived data of the kits among `products`, from one batched read of their components.

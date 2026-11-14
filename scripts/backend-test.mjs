@@ -2219,6 +2219,98 @@ try {
       });
     }
   });
+  let groupBuyId;
+  await check('compra coletiva: admin cria, loja mostra e só marketing mexe', async () => {
+    const send = (command) =>
+        owner.call('admin/commands', 'POST', command, {
+          headers: { 'idempotency-key': randomUUID() },
+        }),
+      current = (await owner.data('admin/operations')).products.find((p) => p.id === product.id),
+      normalCents = current.sizePrices?.[0] ?? current.priceCents,
+      input = {
+        type: 'groupbuy.save',
+        title: 'Compra coletiva de teste',
+        description: 'Quanto mais gente, melhor o preço.',
+        productId: product.id,
+        sizeIndex: 0,
+        groupPriceCents: normalCents - 1500,
+        goal: 2,
+        maxParticipants: null,
+        perPersonLimit: 2,
+        mode: 'hold',
+        endsAt: new Date(Date.now() + 3 * 86400000).toISOString(),
+        active: true,
+      };
+    const notLower = await send({ ...input, groupPriceCents: normalCents });
+    assert.equal(notLower.status, 422);
+    assert.equal(notLower.body.error.code, 'GROUP_PRICE_NOT_LOWER');
+    await owner.command(input);
+    let groupBuys = (await owner.data('admin/operations')).groupBuys;
+    assert.equal(groupBuys.length, 1);
+    const [row] = groupBuys;
+    groupBuyId = row.id;
+    assert.equal(row.participants, 0);
+    assert.equal(row.status, 'Aberta');
+    assert.equal(row.locked, false);
+    assert.deepEqual(row.orders, []);
+    assert.equal(row.normalPriceCents, normalCents);
+    assert.equal(row.groupPriceCents, normalCents - 1500);
+    assert(Number.isInteger(row.costCents), 'admin recebe o custo do tamanho');
+    const duplicate = await send({ ...input, title: 'Outra campanha do mesmo produto' });
+    assert.equal(duplicate.status, 409);
+    assert.equal(duplicate.body.error.code, 'GROUP_BUY_EXISTS');
+    const list = await guest.data('group-buys');
+    assert.deepEqual(
+      list.map((g) => g.id),
+      [groupBuyId],
+    );
+    assert.equal(list[0].productId, product.id);
+    const shown = await guest.data('catalog/products/' + product.id);
+    assert.equal(shown.groupBuy.goal, 2);
+    assert.equal(shown.groupBuy.participants, 0);
+    assert.equal(shown.groupBuy.remaining, 2);
+    assert.equal(shown.groupBuy.mode, 'hold');
+    assert(
+      (await guest.data('catalog/products')).find((p) => p.id === product.id).groupBuy,
+      'listagem traz a campanha',
+    );
+    assert.equal((await guest.data('group-buys/' + groupBuyId)).title, input.title);
+    const pub = JSON.stringify([list, shown.groupBuy]);
+    assert(!/costCents|"email"|customerName/.test(pub), 'rota pública não expõe custo nem cliente');
+    const early = await send({
+      type: 'groupbuy.extend',
+      id: groupBuyId,
+      endsAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+    assert.equal(early.status, 422);
+    assert.equal(early.body.error.code, 'INVALID_END');
+    const later = new Date(Date.now() + 4 * 86400000).toISOString();
+    await owner.command({ type: 'groupbuy.extend', id: groupBuyId, endsAt: later });
+    groupBuys = (await owner.data('admin/operations')).groupBuys;
+    assert.equal(groupBuys[0].endsAt, later);
+    const denied = await customer.call(
+      'admin/commands',
+      'POST',
+      { type: 'groupbuy.close', id: groupBuyId },
+      { headers: { 'idempotency-key': randomUUID() } },
+    );
+    assert.equal(denied.status, 403);
+    assert.equal(
+      (await owner.data('admin/operations')).groupBuys[0].status,
+      'Aberta',
+      'cliente não encerra a campanha',
+    );
+    const missing = await send({ type: 'groupbuy.close', id: randomUUID() });
+    assert.equal(missing.status, 404);
+    await owner.command({ ...input, id: groupBuyId, endsAt: later, active: false });
+    assert(!(await guest.data('catalog/products/' + product.id)).groupBuy);
+    assert.equal((await guest.call('group-buys/' + groupBuyId)).status, 404);
+    assert.deepEqual(await guest.data('group-buys'), []);
+    // The next group-buy checks continue from this campaign: leave it active.
+    await owner.command({ ...input, id: groupBuyId, endsAt: later, active: true });
+    assert((await guest.data('catalog/products/' + product.id)).groupBuy);
+    operationsSchema.parse(await owner.data('admin/operations'));
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,
