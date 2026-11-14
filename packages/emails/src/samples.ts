@@ -109,4 +109,20 @@ export const sampleEmails: EmailMessage[] = [
       'Olá, Mariana! Obrigada por falar com a gente.\n\nJá recebemos sua solicitação de atualização do endereço. Você pode conferir os detalhes e continuar a conversa no atendimento da sua conta.',
   },
   { kind: 'refund-confirmed', ...order, refundedCents: 14890 },
+  {
+    kind: 'group-joined',
+    ...order,
+    groupTitle: 'Cruz Essencial em grupo',
+    participants: 3,
+    goal: 10,
+    endsAtLabel: '30 de novembro',
+  },
+  { kind: 'group-confirmed', ...order, groupTitle: 'Cruz Essencial em grupo' },
+  {
+    kind: 'group-difference',
+    ...order,
+    groupTitle: 'Cruz Essencial em grupo',
+    refundedCents: 4000,
+  },
+  { kind: 'group-failed', ...order, groupTitle: 'Cruz Essencial em grupo' },
 ];

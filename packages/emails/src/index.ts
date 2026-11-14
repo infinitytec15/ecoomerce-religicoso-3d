@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EMAIL_TEMPLATE_VERSION = '2026-11-13.2';
+export const EMAIL_TEMPLATE_VERSION = '2026-11-15.1';
 const line = z
   .string()
   .trim()
@@ -102,6 +102,22 @@ export const emailMessageSchema = z.discriminatedUnion('kind', [
     visibility: z.literal('public'),
   }),
   z.strictObject({ kind: z.literal('refund-confirmed'), ...order, refundedCents: cents }),
+  z.strictObject({
+    kind: z.literal('group-joined'),
+    ...order,
+    groupTitle: line,
+    participants: z.number().int().nonnegative().max(1_000_000),
+    goal: z.number().int().min(2).max(1_000_000),
+    endsAtLabel: line,
+  }),
+  z.strictObject({ kind: z.literal('group-confirmed'), ...order, groupTitle: line }),
+  z.strictObject({
+    kind: z.literal('group-difference'),
+    ...order,
+    groupTitle: line,
+    refundedCents: cents,
+  }),
+  z.strictObject({ kind: z.literal('group-failed'), ...order, groupTitle: line }),
 ]);
 
 export type EmailMessage = z.infer<typeof emailMessageSchema>;
@@ -142,6 +158,10 @@ export const emailLabels: Record<EmailKind, string> = {
   'daily-prayer': 'Oração diária',
   'support-reply': 'Resposta do atendimento',
   'refund-confirmed': 'Estorno confirmado',
+  'group-joined': 'Você entrou no grupo',
+  'group-confirmed': 'O grupo fechou',
+  'group-difference': 'Devolvemos a diferença',
+  'group-failed': 'O grupo não fechou',
 };
 
 const escape = (value: string) =>
@@ -358,6 +378,45 @@ function content(message: EmailMessage): Content {
         ],
         note: 'O prazo para o valor aparecer depende do meio de pagamento e da instituição financeira. Consulte os detalhes na sua conta.',
       };
+    case 'group-joined':
+      return {
+        title: 'Você entrou no grupo!',
+        intro: `Seu pagamento foi aprovado. Quando o grupo chegar a ${message.goal} pessoas, seu pedido vai para a produção. Se não fechar até ${message.endsAtLabel}, devolvemos todo o valor.`,
+        cta: 'Acompanhar pedido',
+        details: [
+          ['Compra coletiva', message.groupTitle],
+          ['Participantes', `${message.participants} de ${message.goal}`],
+        ],
+      };
+    case 'group-confirmed':
+      return {
+        title: 'O grupo fechou!',
+        intro: `A compra coletiva ${message.groupTitle} bateu a meta. Seu pedido já foi para a produção.`,
+        cta: 'Acompanhar pedido',
+        details: [['Pedido', message.orderNumber]],
+      };
+    case 'group-difference':
+      return {
+        title: 'Devolvemos a diferença.',
+        intro: `A compra coletiva ${message.groupTitle} bateu a meta e o preço caiu. Devolvemos ${money(message.refundedCents)} no mesmo meio de pagamento.`,
+        cta: 'Ver pedido',
+        details: [
+          ['Pedido', message.orderNumber],
+          ['Valor devolvido', money(message.refundedCents)],
+        ],
+        note: 'O prazo para o valor aparecer depende do meio de pagamento e da instituição financeira.',
+      };
+    case 'group-failed':
+      return {
+        title: 'O grupo não fechou.',
+        intro: `A compra coletiva ${message.groupTitle} não chegou à meta no prazo. Cancelamos o pedido e vamos estornar ${money(message.totalCents)} no mesmo meio de pagamento.`,
+        cta: 'Ver pedido',
+        details: [
+          ['Pedido', message.orderNumber],
+          ['Valor a estornar', money(message.totalCents)],
+        ],
+        note: 'O prazo para o valor aparecer depende do meio de pagamento e da instituição financeira.',
+      };
   }
 }
 
@@ -383,7 +442,10 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
     if (subtotal + message.shippingCents - message.discountCents !== message.totalCents)
       throw new Error('Resumo do pedido não confere com o total.');
   }
-  if (message.kind === 'refund-confirmed' && message.refundedCents > message.totalCents)
+  if (
+    (message.kind === 'refund-confirmed' || message.kind === 'group-difference') &&
+    message.refundedCents > message.totalCents
+  )
     throw new Error('Estorno maior que o total do pedido.');
   const copy = content(message);
   const preheader = copy.intro;

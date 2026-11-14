@@ -108,6 +108,13 @@ describe('templates de e-mail', () => {
       'Estorno',
     );
   });
+  it('e-mails da compra coletiva trazem participantes e a diferença devolvida', () => {
+    const joined = sampleEmails.find((m) => m.kind === 'group-joined')!;
+    const diff = sampleEmails.find((m) => m.kind === 'group-difference')!;
+    expect(renderEmail(joined, sampleContext).html).toContain('3 de 10');
+    expect(renderEmail(diff, sampleContext).html).toMatch(/R\$\s40,00/);
+    expect(() => renderEmail({ ...diff, refundedCents: 999999 }, sampleContext)).toThrow('Estorno');
+  });
   it('renderiza todas as mudanças da assinatura com vigência explícita', () => {
     const club = sampleEmails.find((m) => m.kind === 'club-status')!;
     for (const status of ['paused', 'resumed', 'cancelled', 'skipped'] as const) {
