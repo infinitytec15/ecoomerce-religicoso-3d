@@ -7,6 +7,8 @@ import { GroupBuysService } from './group-buys';
 import { data, json, requireValue, DomainError, audit } from './shared';
 import { orderInclude } from './projections';
 import { digest } from './security';
+/** Provider answers that end a refund without moving money. */
+const REFUSED_REFUNDS = ['rejected', 'cancelled'];
 export class PaymentsService {
   async cancelPending(intentId: string, expectedDue?: string) {
     const initial = await transaction(this.ctx.db, async (tx) => {
@@ -615,6 +617,19 @@ export class PaymentsService {
     const pixFirst = (method: string) => (method === 'pix' ? 0 : 1),
       parts = [...order.payment.parts].sort((a, b) => pixFirst(a.method) - pixFirst(b.method)),
       plan: { part: (typeof parts)[number]; cents: number }[] = [];
+    // A share the provider refused needs a person: it is never re-split onto the other parts.
+    if (
+      parts.some((part) =>
+        part.refunds.some(
+          (r) => r.key === key + '/' + part.id && REFUSED_REFUNDS.includes(r.status),
+        ),
+      )
+    )
+      throw new DomainError(
+        'REFUND_REJECTED',
+        'O provedor recusou o estorno. Revise o pagamento antes de tentar de novo.',
+        409,
+      );
     let remaining = amountCents;
     for (const part of parts) {
       if (remaining <= 0) break;
@@ -642,14 +657,29 @@ export class PaymentsService {
           create: { key: refundKey, partId: part.id, amountCents: cents, reason },
           update: {},
         });
-      if (refund.status === 'approved') continue;
       if (!part.providerId)
         throw new DomainError('PAYMENT_UNKNOWN', 'Concilie o pagamento antes de estornar.', 409);
+      // Approved by an earlier attempt: only bring the part up to date (idempotent).
+      if (refund.status === 'approved') {
+        await this.syncRefundedPart(part.id, part.providerId, part.amountCents);
+        continue;
+      }
       const result = await this.ctx.payments.refund(
         part.providerId,
         refund.amountCents,
         refund.key,
       );
+      if (result.status && REFUSED_REFUNDS.includes(result.status)) {
+        await this.ctx.db.refund.update({
+          where: { id: refund.id },
+          data: { providerId: String(result.id), status: result.status },
+        });
+        throw new DomainError(
+          'REFUND_REJECTED',
+          'O provedor recusou o estorno. Revise o pagamento antes de tentar de novo.',
+          409,
+        );
+      }
       // Not a DomainError: the outbox retries until the provider confirms.
       if (result.status && result.status !== 'approved')
         throw new ProviderError('Mercado Pago', 'REFUND_PENDING', 409, true);
@@ -657,22 +687,30 @@ export class PaymentsService {
         where: { id: refund.id },
         data: { providerId: String(result.id), status: 'approved' },
       });
-      if (this.ctx.config.INTEGRATIONS_MODE === 'mock') {
-        const current = await this.ctx.db.paymentPart.findUniqueOrThrow({
-          where: { id: part.id },
-        });
-        await this.apply({
-          id: part.providerId,
-          reference: part.id,
-          status: 'approved',
-          amountCents: part.amountCents,
-          currency: 'BRL',
-          updatedAt: new Date().toISOString(),
-          refundedCents: current.refundedCents + refund.amountCents,
-          action: { type: 'none' },
-        });
-      } else await this.apply(await this.ctx.payments.get(part.providerId));
+      await this.syncRefundedPart(part.id, part.providerId, part.amountCents);
     }
+  }
+  /**
+   * Brings a partly refunded part up to date. Live asks the provider; mock derives the refunded
+   * total from the part's approved Refund rows, so running it twice never counts a refund twice.
+   */
+  private async syncRefundedPart(partId: string, providerId: string, amountCents: number) {
+    if (this.ctx.config.INTEGRATIONS_MODE !== 'mock')
+      return this.apply(await this.ctx.payments.get(providerId));
+    const approved = await this.ctx.db.refund.aggregate({
+      where: { partId, status: 'approved' },
+      _sum: { amountCents: true },
+    });
+    await this.apply({
+      id: providerId,
+      reference: partId,
+      status: 'approved',
+      amountCents,
+      currency: 'BRL',
+      updatedAt: new Date().toISOString(),
+      refundedCents: approved._sum.amountCents ?? 0,
+      action: { type: 'none' },
+    });
   }
   async mockApprove(intentId: string) {
     if (this.ctx.config.INTEGRATIONS_MODE !== 'mock')

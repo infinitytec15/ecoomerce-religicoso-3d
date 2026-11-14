@@ -532,7 +532,13 @@ export class GroupBuysService {
         where: { id: orderId },
         include: { payment: { include: { parts: true } }, groupBuy: true },
       });
-      if (order.status === 'Cancelado') return;
+      // The event alone is not enough: only an unshipped order of a failed hold campaign is cancelled.
+      if (
+        ['Cancelado', 'Enviado', 'Entregue'].includes(order.status) ||
+        order.groupBuy?.mode !== 'hold' ||
+        order.groupBuy.status !== 'Não fechou'
+      )
+        return;
       await tx.order.update({
         where: { id: orderId },
         data: { status: 'Cancelado', version: { increment: 1 } },

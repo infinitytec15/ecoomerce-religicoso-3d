@@ -2482,8 +2482,9 @@ try {
       };
     assert(holdProduct && differenceProduct, 'há dois outros produtos sem campanha');
     const failed = await latePayment(holdProduct, 'hold', 'hold');
-    assert.equal(failed.payment.status, 'Pago');
-    assert.equal(failed.status, 'Aguardando grupo');
+    // The live worker may already have run the cancellation (and its refund) for this order.
+    assert(['Pago', 'Estornado'].includes(failed.payment.status), failed.payment.status);
+    assert(['Aguardando grupo', 'Cancelado'].includes(failed.status), failed.status);
     assert.equal(failed.job, null);
     assert.equal(
       await ctx.db.outboxEvent.count({
@@ -2680,6 +2681,49 @@ try {
     await sleep(2500);
     assert.equal(await snapshot(), before);
     assert.equal(before, JSON.stringify([1, 2, 1, 1]));
+    // A retry interrupted after the Pix share but before the card was confirmed: the card share is
+    // redone with the same amount and key, the Pix share is left alone and nothing is doubled.
+    const cardShare = dRefunds.find((r) => r.partId === cardPart.id),
+      pixShare = dRefunds.find((r) => r.partId === pixPart.id),
+      parts = async () =>
+        Object.fromEntries(
+          (await ctx.db.paymentPart.findMany({ where: { intentId: d.payment.id } })).map((p) => [
+            p.method,
+            p.refundedCents,
+          ]),
+        );
+    await ctx.db.refund.update({ where: { id: cardShare.id }, data: { status: 'pending' } });
+    await ctx.db.paymentPart.update({
+      where: { id: cardPart.id },
+      data: { refundedCents: cardPart.refundedCents - cardShare.amountCents },
+    });
+    await new (await import('@maos-em-oracao/backend-core/group-buys')).GroupBuysService(
+      ctx,
+    ).refundDifference(dId);
+    assert.deepEqual(await parts(), { pix: 2000, card: 500 });
+    const retried = await refunds(dId);
+    assert.equal(retried.length, 2);
+    assert(retried.every((r) => r.status === 'approved'));
+    assert.deepEqual(
+      retried.find((r) => r.id === pixShare.id),
+      pixShare,
+      'a parte Pix não muda',
+    );
+    assert.equal(retried.find((r) => r.id === cardShare.id).amountCents, cardShare.amountCents);
+    assert.equal(await count(dId, 'group-difference'), 1);
+    // Asking for more than the payment still holds fails before touching anything.
+    const payments = new (await import('@maos-em-oracao/backend-core/payments')).PaymentsService(
+      ctx,
+    );
+    await assert.rejects(
+      payments.refundPartial(dId, d.payment.amountCents, 'Teste', 'test-exceeds/' + dId),
+      (error) => error.code === 'REFUND_EXCEEDS',
+    );
+    assert.equal(
+      await ctx.db.refund.count({ where: { key: { startsWith: 'test-exceeds/' + dId } } }),
+      0,
+    );
+    assert.deepEqual(await parts(), { pix: 2000, card: 500 });
 
     // 3. After the goal the item already costs the group price: nothing to refund.
     const eId = await order(diffProduct, diff.id, 'e', 'card'),
