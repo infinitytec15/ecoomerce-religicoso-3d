@@ -96,3 +96,21 @@ export function safeCsv(value: unknown) {
   const s = String(value ?? '');
   return '"' + (/^[\s]*[=+@\-\t\r]/.test(s) ? "'" : '') + s.replace(/"/g, '""') + '"';
 }
+
+/**
+ * The kit schema refine would answer VALIDATION_ERROR; a kit with fewer than 2 pieces is a kit
+ * problem, so it is checked before the product schema runs. Returns its input for preprocess use.
+ */
+export function assertKitPieces(value: unknown): unknown {
+  const components = (value as { kit?: { components?: unknown } } | null)?.kit?.components;
+  if (
+    Array.isArray(components) &&
+    components.reduce(
+      (sum: number, c: { quantity?: unknown } | null) =>
+        sum + (typeof c?.quantity === 'number' ? c.quantity : 0),
+      0,
+    ) < 2
+  )
+    throw new DomainError('INVALID_KIT', 'Um kit precisa ter pelo menos 2 peças.', 422);
+  return value;
+}

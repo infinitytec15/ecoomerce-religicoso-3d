@@ -505,7 +505,13 @@ export class SubscriptionsService {
       } catch (error) {
         if (
           error instanceof DomainError &&
-          ['EDITION_UNAVAILABLE', 'EDITION_EMPTY', 'OUT_OF_STOCK', 'NOT_FOUND'].includes(error.code)
+          [
+            'EDITION_UNAVAILABLE',
+            'EDITION_EMPTY',
+            'OUT_OF_STOCK',
+            'NOT_FOUND',
+            'KIT_NOT_ALLOWED',
+          ].includes(error.code)
         ) {
           await this.exception(
             tx,

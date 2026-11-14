@@ -30,6 +30,7 @@ import {
   requireValue,
   DomainError,
   audit,
+  assertKitPieces,
   type Actor,
 } from './shared';
 export class CatalogService {
@@ -154,8 +155,9 @@ export class CatalogService {
     );
   }
   async save(actor: Actor | null, value: unknown) {
-    const a = permit(actor, 'catalog'),
-      parsed = inventoryProductSchema.parse(value);
+    const a = permit(actor, 'catalog');
+    assertKitPieces(value);
+    const parsed = inventoryProductSchema.parse(value);
     // kitSummary is derived on read and never persisted; kits are a fixed single-size product
     // whose availability comes from the components, so their own stock is always 0.
     const p: InventoryProduct = { ...parsed };
@@ -171,6 +173,12 @@ export class CatalogService {
     return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'product/' + p.id);
       const current = await tx.product.findUnique({ where: { id: p.id } });
+      if (p.kit && current && current.reserved > 0)
+        throw new DomainError(
+          'STOCK_RESERVED',
+          'Este produto tem reservas em aberto; finalize os pedidos antes de transformá-lo em kit.',
+          409,
+        );
       if (current && current.reserved > p.stock)
         throw new DomainError(
           'STOCK_RESERVED',
@@ -217,14 +225,16 @@ export class CatalogService {
         create: { id: p.id, ...v },
         update: { ...v, version: { increment: 1 } },
       });
-      if (!p.kit && (!current || current.stock !== p.stock))
+      if (current ? current.stock !== p.stock : !p.kit)
         await tx.stockMovement.create({
           data: {
             productId: p.id,
             delta: p.stock - (current?.stock || 0),
-            reason: current
-              ? 'Saldo ajustado no cadastro do produto.'
-              : 'Saldo inicial do produto.',
+            reason: !current
+              ? 'Saldo inicial do produto.'
+              : p.kit
+                ? 'Produto transformado em kit.'
+                : 'Saldo ajustado no cadastro do produto.',
             actorId: a.id,
           },
         });
@@ -243,9 +253,9 @@ export class CatalogService {
     );
     const sources = new Map<string, Omit<InventoryProduct, 'costCents'> & { costCents: number }>();
     for (const c of kit.components) {
+      if (c.productId === kitId) throw invalid('Um kit não pode conter a si mesmo.');
       const row = rows.get(c.productId);
       if (!row || row.archived) throw invalid('Um componente do kit não existe ou foi arquivado.');
-      if (c.productId === kitId) throw invalid('Um kit não pode conter a si mesmo.');
       const d = data<InventoryProduct>(row.data);
       if (d.kit) throw invalid('Um kit não pode conter outro kit: ' + row.name + '.');
       if (c.sizeIndex >= d.sizes.length)

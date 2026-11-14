@@ -1951,6 +1951,32 @@ try {
       assert.equal(r.status, 422, JSON.stringify(r.body));
       assert.equal(r.body.error.code, code);
     }
+    const short = await save(
+      { ...kit, id: randomUUID(), sku: 'KIT-S-' + randomUUID() },
+      { kit: { components: [comp(A, 0, 1)] } },
+    );
+    assert.equal(short.status, 422);
+    assert.equal(short.body.error.code, 'INVALID_KIT');
+    const newSelf = { ...kit, id: randomUUID(), sku: 'KIT-N-' + randomUUID() },
+      selfNew = await save(newSelf, { kit: { components: [comp(newSelf, 0, 2)] } });
+    assert.equal(selfNew.status, 422);
+    assert.match(selfNew.body.error.message, /a si mesmo/);
+    // Turning a product with stock into a kit zeroes it with a movement; reservations block it.
+    const conv = { ...base, id: randomUUID(), sku: 'KIT-C-' + randomUUID(), name: 'Conversão' };
+    delete conv.kit;
+    await owner.command({ type: 'product.save', product: conv });
+    await ctx.db.product.update({ where: { id: conv.id }, data: { reserved: 1 } });
+    const blocked = await save(conv, { kit: { components: [comp(A, 0, 2)] } });
+    assert.equal(blocked.status, 409);
+    assert.match(blocked.body.error.message, /transformá-lo em kit/);
+    await ctx.db.product.update({ where: { id: conv.id }, data: { reserved: 0 } });
+    assert.equal((await save(conv, { kit: { components: [comp(A, 0, 2)] } })).status, 204);
+    assert.equal(
+      await ctx.db.stockMovement.count({
+        where: { productId: conv.id, reason: 'Produto transformado em kit.', delta: -10 },
+      }),
+      1,
+    );
     const self = await save(kit, { kit: { components: [comp(kit, 0, 2)] } });
     assert.equal(self.status, 422);
     assert.equal(self.body.error.code, 'INVALID_KIT');

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertKitPieces } from './shared';
 import {
   inventoryProductSchema,
   workspaceSchema,
@@ -42,7 +43,10 @@ const campaign = z.object({
   audience: z.enum(['Inscritos em oração', 'Assinantes do clube']).optional(),
 });
 export const commandSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('product.save'), product: inventoryProductSchema }),
+  z.object({
+    type: z.literal('product.save'),
+    product: z.preprocess(assertKitPieces, inventoryProductSchema),
+  }),
   z.object({ type: z.literal('product.archive'), id }),
   z.object({
     type: z.literal('stock.adjust'),
