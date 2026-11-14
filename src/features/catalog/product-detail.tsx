@@ -11,6 +11,7 @@ import { useCatalog, useGateway } from '@/lib/api/query';
 import { useCartStore } from '@/lib/store/cart';
 import { IS_DEMO } from '@/lib/api/config';
 import { ProductGallery } from './product-media';
+import { ProductImage } from '@/components/ui/product-image';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Form, text } from '@/components/ui/form';
@@ -39,6 +40,7 @@ export function ProductDetail({
     openCart = useCartStore((s) => s.setOpen),
     router = useRouter(),
     notify = useNotify(),
+    kit = p.kitSummary,
     price = unitPriceCents(p, size);
   function buy(immediate = false) {
     add(cartLine(p, quantity, color, size, dedication));
@@ -69,41 +71,54 @@ export function ProductDetail({
               <span>{reviewCountLabel(p.rating.count)}</span>
             </a>
           )}
-          <div className="detail-price">{money(price)}</div>
+          <div className="detail-price">
+            {kit && kit.savingsCents > 0 && (
+              <>
+                <span className="kit-was">
+                  De <s>{money(kit.componentsTotalCents)}</s> por
+                </span>{' '}
+              </>
+            )}
+            {money(price)}
+          </div>
           <small>
             ou 3× de {money(Math.round(price / 3))} sem juros
             {IS_DEMO ? ' · valores ilustrativos' : ''}
           </small>
           <div className="detail-options">
-            <div>
-              <span className="option-label">
-                Cor: <strong>{color}</strong>
-              </span>
-              <div className="color-buttons">
-                {p.colors.map((c) => (
-                  <button
-                    className={`color-button ${color === c ? 'selected' : ''}`}
-                    key={c}
-                    aria-pressed={color === c}
-                    onClick={() => setColor(c)}
-                  >
-                    <i style={{ background: colorHex(c) }} />
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label>
-              Tamanho
-              <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
-                {p.sizes.map((s, i) => (
-                  <option key={s} value={i}>
-                    {`${s} · ${money(unitPriceCents(p, i))}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {p.tags.includes('Personalizados') && (
+            {!p.kit && (
+              <>
+                <div>
+                  <span className="option-label">
+                    Cor: <strong>{color}</strong>
+                  </span>
+                  <div className="color-buttons">
+                    {p.colors.map((c) => (
+                      <button
+                        className={`color-button ${color === c ? 'selected' : ''}`}
+                        key={c}
+                        aria-pressed={color === c}
+                        onClick={() => setColor(c)}
+                      >
+                        <i style={{ background: colorHex(c) }} />
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label>
+                  Tamanho
+                  <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
+                    {p.sizes.map((s, i) => (
+                      <option key={s} value={i}>
+                        {`${s} · ${money(unitPriceCents(p, i))}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+            {!p.kit && p.tags.includes('Personalizados') && (
               <label>
                 Dedicatória na embalagem{' '}
                 <span className="muted">(opcional, até 40 caracteres)</span>
@@ -142,6 +157,30 @@ export function ProductDetail({
               Comprar agora <Icon name="arrow" />
             </Button>
           </div>
+          {kit && (
+            <section className="kit-contents" aria-labelledby="kit-contents-title">
+              <h2 id="kit-contents-title">O que vem no kit</h2>
+              <ul>
+                {kit.items.map((item, index) => (
+                  <li key={item.productId + index}>
+                    <Link href={'/produto/' + item.productId}>
+                      <span className="kit-thumb">
+                        <ProductImage src={item.image} alt={item.name} sizes="64px" />
+                      </span>
+                      <span>
+                        <strong>
+                          {item.quantity}× {item.name}
+                        </strong>
+                        <small>
+                          {item.size} · {item.color ?? 'Qualquer cor'}
+                        </small>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <div className="shipping-box">
             <Form
               onSubmit={async (d) =>
@@ -185,11 +224,19 @@ export function ProductDetail({
           <div className="details-list">
             <details open>
               <summary>Sobre a peça</summary>
-              <p>
-                Conceito em PLA com acabamento fosco e textura de camadas. Base incluída. Tamanho
-                selecionado: {p.sizes[size]}. Produção sob encomenda
-                {IS_DEMO ? ' simulada neste protótipo' : ''}.
-              </p>
+              {kit ? (
+                <p>
+                  Kit com {kit.pieces} peças impressas em 3D, embaladas juntas. Produção sob
+                  encomenda
+                  {IS_DEMO ? ' simulada neste protótipo' : ''}.
+                </p>
+              ) : (
+                <p>
+                  Conceito em PLA com acabamento fosco e textura de camadas. Base incluída. Tamanho
+                  selecionado: {p.sizes[size]}. Produção sob encomenda
+                  {IS_DEMO ? ' simulada neste protótipo' : ''}.
+                </p>
+              )}
             </details>
             <details>
               <summary>Cuidados e conservação</summary>
@@ -201,7 +248,7 @@ export function ProductDetail({
             <details>
               <summary>Personalização e entrega</summary>
               <p>
-                Escolha cor e tamanho antes de adicionar.{' '}
+                {kit ? '' : 'Escolha cor e tamanho antes de adicionar. '}
                 {IS_DEMO
                   ? 'Prazos e fretes são demonstrativos e incluem uma estimativa de produção. Nenhuma encomenda real será gerada.'
                   : 'Consulte prazos e opções de entrega no checkout.'}

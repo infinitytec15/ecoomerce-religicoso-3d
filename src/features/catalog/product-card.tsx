@@ -50,7 +50,14 @@ export function ProductCard({
         </button>
       </div>
       <div className="product-info">
-        <span className="category">{p.category} · impressão 3D</span>
+        <span className="category">
+          {p.kitSummary
+            ? `Kit com ${p.kitSummary.pieces} peças` +
+              (p.kitSummary.savingsCents > 0
+                ? ` · economize ${money(p.kitSummary.savingsCents)}`
+                : '')
+            : `${p.category} · impressão 3D`}
+        </span>
         <Link href={'/produto/' + p.id}>
           <h3>{p.name}</h3>
         </Link>
@@ -63,11 +70,13 @@ export function ProductCard({
         <div className="price">
           {money(p.priceCents)} <small>ou 3× de {money(Math.round(p.priceCents / 3))}</small>
         </div>
-        <div className="swatches" aria-label="Cores disponíveis">
-          {p.colors.map((c) => (
-            <i key={c} className="swatch" style={{ background: colorHex(c) }} title={c} />
-          ))}
-        </div>
+        {!p.kit && (
+          <div className="swatches" aria-label="Cores disponíveis">
+            {p.colors.map((c) => (
+              <i key={c} className="swatch" style={{ background: colorHex(c) }} title={c} />
+            ))}
+          </div>
+        )}
       </div>
     </article>
   );
