@@ -8,10 +8,11 @@ import type {
   Session,
   Subscription,
 } from './types';
-import { unitPriceCents } from '@maos-em-oracao/contracts';
+import { KIT_COLOR, KIT_SIZE, unitPriceCents } from '@maos-em-oracao/contracts';
 import { ApiError, requireValue } from '@/lib/api/contracts';
 import { addMonth, monthLabel, today, uid } from './format';
 import { normalizeAddress } from './address';
+import { forSale } from './kits';
 export function cartLine(
   product: Product,
   quantity = 1,
@@ -19,6 +20,7 @@ export function cartLine(
   sizeIndex = 0,
   dedication = '',
 ): CartItem {
+  if (product.kit) return kitCartLine(product, product.kit, quantity, dedication);
   if (
     !product.active ||
     !product.colors.includes(color) ||
@@ -40,6 +42,46 @@ export function cartLine(
     unitCents: unitPriceCents(product, sizeIndex),
     quantity,
     dedication: dedication.slice(0, 40),
+  };
+}
+function kitCartLine(
+  product: Product,
+  kit: NonNullable<Product['kit']>,
+  quantity: number,
+  dedication: string,
+): CartItem {
+  const summary = product.kitSummary;
+  if (
+    !product.active ||
+    !summary ||
+    summary.items.length !== kit.components.length ||
+    quantity < 1 ||
+    quantity > 10 ||
+    !Number.isInteger(quantity)
+  )
+    throw new ApiError('INVALID_ITEM', 'Confira as opções e a quantidade da peça.');
+  return {
+    key: [product.id, KIT_COLOR, 0, dedication].join('|'),
+    productId: product.id,
+    name: product.name,
+    image: product.image,
+    imageIndex: product.imageIndex,
+    color: KIT_COLOR,
+    size: KIT_SIZE,
+    sizeIndex: 0,
+    unitCents: product.priceCents,
+    quantity,
+    dedication: dedication.slice(0, 40),
+    kit: {
+      items: summary.items.map((item, index) => ({
+        productId: item.productId,
+        name: item.name,
+        size: item.size,
+        sizeIndex: kit.components[index].sizeIndex,
+        color: item.color,
+        quantity: item.quantity,
+      })),
+    },
   };
 }
 export function calculateTotals(items: CartItem[], shippingCents = 1890, coupon = '') {
@@ -153,7 +195,7 @@ export function createShopOrder(state: Operations, input: CheckoutInput, session
   if (!input.items.length) throw new ApiError('EMPTY_CART', 'Adicione uma peça ao carrinho.');
   const items = input.items.map((x) =>
     cartLine(
-      requireValue(state.products.find((p) => p.id === x.productId)),
+      forSale(state.products, requireValue(state.products.find((p) => p.id === x.productId))),
       x.quantity,
       x.color,
       x.sizeIndex,

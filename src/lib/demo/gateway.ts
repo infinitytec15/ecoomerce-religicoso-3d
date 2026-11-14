@@ -1,5 +1,9 @@
 import {
+  KIT_COLOR,
+  KIT_SIZE,
   defaultReviewSettings,
+  kitCostCents,
+  kitPieces,
   initialReviewStatus,
   publicReviewSchema,
   reviewAuthorName,
@@ -14,6 +18,7 @@ import type {
   AdminCommand,
   CheckoutInput,
   CheckoutResult,
+  InventoryProduct,
   Operations,
   Session,
   SubscribeInput,
@@ -45,6 +50,7 @@ import {
 } from '@/lib/domain/commerce';
 import { addMonth, monthLabel, today, uid } from '@/lib/domain/format';
 import { filterProducts } from '@/lib/domain/catalog';
+import { forSale, withKitSummary } from '@/lib/domain/kits';
 import { DEMO_EMAIL, DEMO_PASSWORD, normalizeAddress, STAFF_PERMISSIONS } from './seed';
 import { MemoryDemoStorage, type DemoStorage } from './storage';
 /** Demo reviews remember which order item they came from (the admin shape does not carry it). */
@@ -54,6 +60,34 @@ const withItemIds = <T extends { id: string; items: object[] }>(order: T): T => 
   ...order,
   items: order.items.map((item, index) => ({ ...item, itemId: itemIdOf(order, index) })),
 });
+/** Same rules as the backend: a kit sells as one fixed option, owns no stock and costs its components. */
+function normalizeKit(products: InventoryProduct[], product: InventoryProduct): InventoryProduct {
+  const kit = requireValue(product.kit),
+    invalid = (message: string) => new ApiError('INVALID_KIT', message, 422),
+    byId = new Map(products.map((p) => [p.id, p]));
+  for (const c of kit.components) {
+    if (c.productId === product.id) throw invalid('Um kit não pode conter a si mesmo.');
+    const component = byId.get(c.productId);
+    if (!component || component.archived)
+      throw invalid('Um componente do kit não existe ou foi arquivado.');
+    if (component.kit) throw invalid('Um kit não pode conter outro kit: ' + component.name + '.');
+    if (c.sizeIndex >= component.sizes.length)
+      throw invalid('Tamanho inválido para o componente ' + component.name + '.');
+    if (c.color !== null && !component.colors.includes(c.color))
+      throw invalid('A cor ' + c.color + ' não existe no componente ' + component.name + '.');
+  }
+  if (kitPieces(kit) < 2) throw invalid('Um kit precisa ter pelo menos 2 peças.');
+  return {
+    ...product,
+    sizePrices: undefined,
+    costBySize: undefined,
+    kitSummary: undefined,
+    sizes: [KIT_SIZE],
+    colors: [KIT_COLOR],
+    stock: 0,
+    costCents: kitCostCents(kit, byId, product.costBreakdown?.packagingCents ?? 0),
+  };
+}
 const published = (state: Operations) => state.reviews.filter((r) => r.status === 'Publicado');
 function withRating<T extends { id: string }>(state: Operations, product: T) {
   const ratings = published(state)
@@ -90,14 +124,16 @@ export class DemoGateway implements CommerceGateway {
   }
   async catalog(query = {}) {
     const state = this.read();
-    return filterProducts(state.products, query).map((p) =>
-      productSchema.parse(withRating(state, p)),
-    );
+    return filterProducts(state.products, query).flatMap((p) => {
+      const visible = withKitSummary(state.products, p);
+      return visible ? [productSchema.parse(withRating(state, visible))] : [];
+    });
   }
   async product(id: string) {
     const state = this.read(),
       product = state.products.find((p) => p.id === id && p.active);
-    return product ? productSchema.parse(withRating(state, product)) : null;
+    const visible = product && withKitSummary(state.products, product);
+    return visible ? productSchema.parse(withRating(state, visible)) : null;
   }
   async productReviews(productId: string, rating?: number) {
     const all = published(this.read()).filter((r) => r.productId === productId);
@@ -258,9 +294,10 @@ export class DemoGateway implements CommerceGateway {
   }
   async estimate(input: Parameters<CommerceGateway['estimate']>[0]) {
     const { cartLine, calculateTotals } = await import('@/lib/domain/commerce');
+    const { products } = this.read();
     const items = input.items.map((i) =>
       cartLine(
-        requireValue(this.read().products.find((p) => p.id === i.productId)),
+        forSale(products, requireValue(products.find((p) => p.id === i.productId))),
         i.quantity,
         i.color,
         i.sizeIndex,
@@ -687,7 +724,8 @@ export class DemoGateway implements CommerceGateway {
           break;
         }
         case 'product.save': {
-          const product = inventoryProductSchema.parse(command.product),
+          const parsed = inventoryProductSchema.parse(command.product),
+            product = parsed.kit ? normalizeKit(s.products, parsed) : parsed,
             existing = s.products.find((p) => p.id === product.id);
           if (
             s.products.some(
@@ -712,7 +750,7 @@ export class DemoGateway implements CommerceGateway {
         case 'order.create': {
           const customer = requireValue(s.clients.find((c) => c.id === command.customerId)),
             product = requireValue(s.products.find((p) => p.id === command.productId)),
-            item = cartLine(product, command.quantity),
+            item = cartLine(forSale(s.products, product), command.quantity),
             id = uid('PED'),
             cid = uid('COB'),
             totals = {

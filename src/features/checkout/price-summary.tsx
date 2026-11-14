@@ -1,6 +1,7 @@
 import type { CartItem } from '@/lib/domain/types';
 import { calculateTotals } from '@/lib/domain/commerce';
 import { money } from '@/lib/domain/format';
+import { KitItems } from '@/components/commerce/kit-items';
 import { ProductImage } from '@/components/ui/product-image';
 export function PriceSummary({
   items,
@@ -27,9 +28,16 @@ export function PriceSummary({
             <ProductImage src={item.image} alt={item.name} sizes="70px" />
             <div>
               <h3>{item.name}</h3>
-              <small>
-                {item.color} · {item.size} · {item.quantity} un.
-              </small>
+              {item.kit ? (
+                <>
+                  <KitItems kit={item.kit} />
+                  <small>{item.quantity} un.</small>
+                </>
+              ) : (
+                <small>
+                  {item.color} · {item.size} · {item.quantity} un.
+                </small>
+              )}
             </div>
             <strong>{money(item.unitCents * item.quantity)}</strong>
           </div>

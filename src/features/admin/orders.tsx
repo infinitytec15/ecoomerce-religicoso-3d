@@ -6,6 +6,7 @@ import Link from 'next/link';
 import type { Order, OrderStatus } from '@/lib/domain/types';
 import { useAdminData } from './admin-frame';
 import { AdminHeading, AdminError, exportAdmin, useAdminAction, useAdminFilter } from './shared';
+import { KitItems } from '@/components/commerce/kit-items';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -439,7 +440,13 @@ export function AdminOrderDetail({ id }: { id: string }) {
                 label: 'Detalhes',
                 render: (i) => (
                   <>
-                    {i.color} · {i.size}
+                    {i.kit ? (
+                      <KitItems kit={i.kit} />
+                    ) : (
+                      <>
+                        {i.color} · {i.size}
+                      </>
+                    )}
                     {i.dedication && <small>“{i.dedication}”</small>}
                   </>
                 ),

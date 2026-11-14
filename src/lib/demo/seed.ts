@@ -1,4 +1,6 @@
 import { productSchema } from '@/lib/domain/schemas';
+import { withKitSummary } from '@/lib/domain/kits';
+import { KIT_COLOR, KIT_SIZE, kitCostCents } from '@maos-em-oracao/contracts';
 import source from '@/data/legacy-seed.json';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
 import type { AdminReview } from '@maos-em-oracao/contracts';
@@ -33,6 +35,36 @@ export const DEMO_PASSWORD = 'Essencia3D!';
 const cents = (v: number) => Math.round(v * 100);
 export { normalizeAddress } from '@/lib/domain/address';
 import { normalizeAddress } from '@/lib/domain/address';
+/** "Kit Oração em Família": one piece each of three catalog items, sold below their sum. */
+function demoKit(products: InventoryProduct[]): InventoryProduct {
+  const cross = products.find((p) => p.id === 'cruz-essencial') ?? products[0],
+    kit = {
+      components: [
+        { productId: cross.id, sizeIndex: 1, color: 'Marfim', quantity: 1 },
+        { productId: 'palavra-fe', sizeIndex: 0, color: 'Terracota', quantity: 1 },
+        { productId: 'biblia-viva', sizeIndex: 0, color: null, quantity: 1 },
+      ],
+    };
+  return {
+    id: 'kit-oracao-familia',
+    name: 'Kit Oração em Família',
+    description:
+      'Três peças para o altar de casa: a cruz, a Palavra e a Bíblia reunidas em um presente só.',
+    category: 'Presentes',
+    tags: ['Presentes', 'Cristãos', 'Evangélicos'],
+    priceCents: cents(169.9),
+    imageIndex: cross.imageIndex,
+    image: cross.image,
+    badge: 'Kit',
+    sizes: [KIT_SIZE],
+    colors: [KIT_COLOR],
+    active: true,
+    sku: 'MEO-KIT-FAMILIA',
+    stock: 0,
+    costCents: kitCostCents(kit, new Map(products.map((p) => [p.id, p])), 0),
+    kit,
+  };
+}
 export function createSeed(legacy = source.operations): Operations {
   const overrides = legacy.productOverrides as Record<
     string,
@@ -64,6 +96,7 @@ export function createSeed(legacy = source.operations): Operations {
       costCents: cents(inventory.cost),
     };
   });
+  products.push(demoKit(products));
   const clients: Customer[] = legacy.clients.map((c) => ({
     ...normalizeAddress(c),
     id: c.id,
@@ -335,5 +368,9 @@ export function createSeed(legacy = source.operations): Operations {
     processed: {},
   };
 }
-export const seedCatalog = createSeed().products.map((product) => productSchema.parse(product));
+const seedProducts = createSeed().products;
+export const seedCatalog = seedProducts.flatMap((product) => {
+  const visible = withKitSummary(seedProducts, product);
+  return visible ? [productSchema.parse(visible)] : [];
+});
 export const seedSettings = createSeed().settings;

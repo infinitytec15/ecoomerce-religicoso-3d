@@ -257,4 +257,38 @@ describe('demo reviews', () => {
     expect(after.reviews.some((r) => r.id === target.id)).toBe(false);
     expect(after.summary.count).toBe(2);
   });
+  it('serves the demo kit with a positive saving and hides it when a component is inactive', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    const kit = (await g.catalog()).find((p) => p.kit)!;
+    expect(kit.kitSummary!.savingsCents).toBeGreaterThan(0);
+    expect(kit.kitSummary!.pieces).toBe(3);
+    const state = storage.load();
+    state.products.find((p) => p.id === 'palavra-fe')!.active = false;
+    storage.save(state);
+    expect((await g.catalog()).some((p) => p.kit)).toBe(false);
+    expect(await g.product(kit.id)).toBeNull();
+  });
+  it('normalizes a saved kit and rejects invalid ones', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    await g.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
+    const base = storage.load().products.find((p) => p.kit)!;
+    const save = (kit: unknown, extra = {}) =>
+      g.adminCommand({
+        type: 'product.save',
+        product: { ...base, ...extra, kit } as never,
+      });
+    await save(base.kit, { stock: 7, sizes: ['x'], sizePrices: [100], costCents: 1 });
+    const saved = storage.load().products.find((p) => p.id === base.id)!;
+    expect(saved).toMatchObject({ sizes: ['Kit completo'], colors: ['Padrão'], stock: 0 });
+    expect(saved.sizePrices).toBeUndefined();
+    expect(saved.costCents).toBeGreaterThan(1);
+    await expect(
+      save({ components: [{ productId: 'nao-existe', sizeIndex: 0, color: null, quantity: 2 }] }),
+    ).rejects.toMatchObject({ code: 'INVALID_KIT' });
+    await expect(
+      save({ components: [{ productId: base.id, sizeIndex: 0, color: null, quantity: 2 }] }),
+    ).rejects.toMatchObject({ code: 'INVALID_KIT' });
+  });
 });

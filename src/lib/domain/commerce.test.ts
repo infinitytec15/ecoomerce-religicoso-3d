@@ -9,7 +9,7 @@ import {
   payCharge,
 } from './commerce';
 import { addMonth, centsFromInput, csvText } from './format';
-import { createSeed } from '@/lib/demo/seed';
+import { createSeed, seedCatalog } from '@/lib/demo/seed';
 import { demoAddress, checkoutSchema } from './schemas';
 import type { CheckoutInput } from './types';
 const checkout = (overrides: Partial<CheckoutInput> = {}): CheckoutInput => ({
@@ -161,5 +161,20 @@ describe('subscription cycles', () => {
     );
     expect(csv).toContain("'=HYPERLINK");
     expect(csv).toContain('""texto""');
+  });
+});
+describe('kit cart lines', () => {
+  const demoKit = seedCatalog.find((p) => p.kit)!;
+  it('builds a kit line priced at the kit price with a component snapshot', () => {
+    const line = cartLine(demoKit, 2);
+    expect(line.size).toBe('Kit completo');
+    expect(line.color).toBe('Padrão');
+    expect(line.unitCents).toBe(demoKit.priceCents);
+    expect(line.kit?.items).toHaveLength(3);
+    expect(line.kit?.items[0]).toMatchObject({ productId: 'cruz-essencial', sizeIndex: 1 });
+    expect(line.kit?.items[2].color).toBeNull();
+  });
+  it('refuses a kit without its summary', () => {
+    expect(() => cartLine({ ...demoKit, kitSummary: undefined })).toThrow(/opções/);
   });
 });

@@ -4,6 +4,7 @@ import { ShippingDocuments } from './shipping-documents';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import type { RecordReference } from '@/lib/domain/types';
+import { KitItems } from '@/components/commerce/kit-items';
 import { Modal } from '@/components/ui/modal';
 import { ButtonLink } from '@/components/ui/button';
 import { useAdminData } from './admin-frame';
@@ -118,6 +119,7 @@ function RecordContent({ record: r }: { record: RecordReference }) {
           <div>
             <h2>{job.id}</h2>
             <p>{order?.items.map((i) => i.name).join(', ')}</p>
+            {order?.items.map((i) => i.kit && <KitItems key={i.key} kit={i.kit} />)}
           </div>
           <StatusBadge status={job.stage} />
         </div>
@@ -252,7 +254,7 @@ function RecordContent({ record: r }: { record: RecordReference }) {
               <span>
                 {i.quantity} × {i.name}
               </span>
-              <span>{i.size}</span>
+              <span>{i.kit ? <KitItems kit={i.kit} /> : i.size}</span>
             </div>
           ))}
           <p>

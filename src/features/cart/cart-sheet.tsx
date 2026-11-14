@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { KitItems } from '@/components/commerce/kit-items';
 import { Modal } from '@/components/ui/modal';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
@@ -25,9 +26,13 @@ export default function CartSheet() {
                 <Link href={'/produto/' + item.productId} onClick={() => setOpen(false)}>
                   <h3>{item.name}</h3>
                 </Link>
-                <small>
-                  {item.color} · {item.size}
-                </small>
+                {item.kit ? (
+                  <KitItems kit={item.kit} />
+                ) : (
+                  <small>
+                    {item.color} · {item.size}
+                  </small>
+                )}
                 {item.dedication && <small>“{item.dedication}”</small>}
                 <strong>{money(item.unitCents * item.quantity)}</strong>
                 <div className="row between">
@@ -104,9 +109,16 @@ export function CartPage() {
                 <ProductImage src={item.image} alt={item.name} sizes="100px" />
                 <div>
                   <h3>{item.name}</h3>
-                  <small>
-                    {item.color} · {item.size} · {item.quantity} un.
-                  </small>
+                  {item.kit ? (
+                    <>
+                      <KitItems kit={item.kit} />
+                      <small>{item.quantity} un.</small>
+                    </>
+                  ) : (
+                    <small>
+                      {item.color} · {item.size} · {item.quantity} un.
+                    </small>
+                  )}
                   <strong>{money(item.unitCents * item.quantity)}</strong>
                 </div>
               </div>

@@ -7,6 +7,7 @@ import { useAccount, useCommand } from '@/lib/api/query';
 import { errorMessage } from '@/lib/api/contracts';
 import { IS_DEMO } from '@/lib/api/config';
 import { dateLabel, money } from '@/lib/domain/format';
+import { KitItems } from '@/components/commerce/kit-items';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Form, text } from '@/components/ui/form';
 import { AddressFields } from '@/components/ui/address-fields';
@@ -132,9 +133,16 @@ export function AccountView({ tab = 'overview', id }: { tab?: string; id?: strin
             <ProductImage src={item.image} alt={item.name} sizes="85px" />
             <div>
               <h3>{item.name}</h3>
-              <small>
-                {item.color} · {item.size} · {item.quantity} un.
-              </small>
+              {item.kit ? (
+                <>
+                  <KitItems kit={item.kit} />
+                  <small>{item.quantity} un.</small>
+                </>
+              ) : (
+                <small>
+                  {item.color} · {item.size} · {item.quantity} un.
+                </small>
+              )}
               {item.dedication && <small>“{item.dedication}”</small>}
               <strong>{money(item.unitCents * item.quantity)}</strong>
               {order.status === 'Entregue' &&

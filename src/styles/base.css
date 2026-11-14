@@ -2808,3 +2808,16 @@ small {
 .reviews-empty {
   color: var(--muted);
 }
+.kit-items {
+  display: block;
+}
+.kit-items ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kit-items small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
