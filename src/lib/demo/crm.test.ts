@@ -61,8 +61,8 @@ describe('demo CRM', () => {
   it('counts a saved contact in the tag preview and ignores other rules', async () => {
     const g = await setup();
     expect((await g.crmPreview({ rules: [{ type: 'tag', tag: 'X' }] })).total).toBe(0);
-    await g.adminCommand(save());
-    expect(await g.crmPreview({ rules: [{ type: 'tag', tag: 'X' }] })).toEqual({
+    await g.crmImport({ tag: 'X', consent: true, rows: [{ email: 'novo@exemplo.com', name: '' }] });
+    expect(await g.crmPreview({ rules: [{ type: 'tag', tag: ' X ' }] })).toEqual({
       total: 1,
       consent: 1,
       legitimateInterest: 0,
@@ -78,8 +78,12 @@ describe('demo CRM', () => {
     ]);
     expect((await g.crmContacts({ tag: 'X' })).items).toHaveLength(1);
     expect((await g.admin()).crm.tags.find((t) => t.tag === 'X')?.count).toBe(1);
+    expect((await g.crmContacts({ tag: 'X' })).items[0]).toMatchObject({
+      eligible: false,
+      legalBasis: null,
+      consentAt: null,
+    });
     await g.adminCommand({ type: 'crm.contact.unsubscribe', email: 'NOVO@exemplo.com' });
-    expect((await g.crmPreview({ rules: [{ type: 'tag', tag: 'X' }] })).total).toBe(0);
     expect((await g.admin()).crm.totals.unsubscribed).toBe(1);
   });
   it('imports a chunk, keeps unsubscribed contacts out and reports the counts', async () => {
@@ -117,8 +121,55 @@ describe('demo CRM', () => {
     expect(list[0].state).toBe('Agendada');
     await g.adminCommand({ type: 'crm.campaign.cancel', id });
     expect((await g.admin()).crm.campaigns[0].state).toBe('Cancelada');
+    await expect(g.adminCommand({ type: 'crm.campaign.delete', id })).rejects.toMatchObject({
+      code: 'CAMPAIGN_LOCKED',
+    });
+    await g.adminCommand({ type: 'crm.campaign.schedule', id, at: null });
+    expect((await g.admin()).crm.campaigns[0].state).toBe('Agendada');
+    await expect(
+      g.adminCommand({ type: 'crm.campaign.schedule', id, at: null }),
+    ).rejects.toMatchObject({
+      code: 'CAMPAIGN_STATE',
+    });
+  });
+  it('deletes a draft, keeps the sent campaign and refuses to edit a scheduled one', async () => {
+    const g = await setup();
+    await g.adminCommand(campaign());
+    const id = (await g.admin()).crm.campaigns[0].id;
     await g.adminCommand({ type: 'crm.campaign.delete', id });
-    expect((await g.admin()).crm.campaigns.find((c) => c.id === id)).toBeUndefined();
+    expect((await g.admin()).crm.campaigns.map((c) => c.state)).toEqual(['Enviada']);
+    await expect(
+      g.adminCommand({ type: 'crm.campaign.schedule', id: 'campanha-demo', at: null }),
+    ).rejects.toMatchObject({ code: 'CAMPAIGN_STATE' });
+    await g.adminCommand(campaign());
+    const again = (await g.admin()).crm.campaigns[0].id;
+    await g.adminCommand({ type: 'crm.campaign.schedule', id: again, at: null });
+    await expect(
+      g.adminCommand({
+        type: 'crm.campaign.save',
+        campaign: { ...(campaign() as never as { campaign: object }).campaign, id: again },
+      } as never),
+    ).rejects.toMatchObject({ code: 'CAMPAIGN_LOCKED' });
+  });
+  it('edits a draft keeping its id, then schedules, tests, cancels and deletes it by id', async () => {
+    const g = await setup();
+    await g.adminCommand(campaign());
+    const created = (await g.admin()).crm.campaigns[0];
+    await g.adminCommand({
+      type: 'crm.campaign.save',
+      campaign: {
+        ...(campaign() as never as { campaign: object }).campaign,
+        id: created.id,
+        subject: 'Assunto editado',
+      },
+    } as never);
+    const edited = (await g.admin()).crm.campaigns[0];
+    expect(edited.id).toBe(created.id);
+    expect(edited.subject).toBe('Assunto editado');
+    expect((await g.admin()).crm.campaigns).toHaveLength(2);
+    await g.adminCommand({ type: 'crm.campaign.test', id: created.id, extra: [] });
+    await g.adminCommand({ type: 'crm.campaign.schedule', id: created.id, at: null });
+    expect((await g.admin()).crm.campaigns[0].state).toBe('Agendada');
   });
   it('accepts non-UUID demo ids in blocks but still validates the rest', async () => {
     const g = await setup();

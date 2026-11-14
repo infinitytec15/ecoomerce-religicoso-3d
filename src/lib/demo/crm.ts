@@ -229,7 +229,7 @@ export function listContacts(state: Operations, query: CrmContactsQuery = {}): C
 }
 /** Only the `tag` rule narrows the audience here: purchase-based rules need the API's order data. */
 export function previewSegment(state: Operations, segment: Segment): CrmPreview {
-  const tags = segment.rules.flatMap((r) => (r.type === 'tag' ? [r.tag] : [])),
+  const tags = segment.rules.flatMap((r) => (r.type === 'tag' ? [normalizeTag(r.tag)] : [])),
     audience = contactsOf(state).filter(
       (c) => canReceiveMarketing(c, state.crm.settings) && tags.every((t) => c.tags.includes(t)),
     ),
@@ -306,6 +306,8 @@ const campaignOf = (state: Operations, id: string) =>
     state.crm.campaigns.find((c) => c.id === id),
     'Campanha não encontrada.',
   );
+const locked = () =>
+  new ApiError('CAMPAIGN_LOCKED', 'Esta campanha já foi agendada ou enviada.', 422);
 const stateError = (message: string) => new ApiError('CAMPAIGN_STATE', message, 422);
 /** Applies a `crm.*` command to the local state; returns false for any other command. */
 export function applyCrmCommand(state: Operations, command: AdminCommand): boolean {
@@ -319,12 +321,7 @@ export function applyCrmCommand(state: Operations, command: AdminCommand): boole
       upsert(state, input, (contact) => {
         contact.tags = [...new Set(input.tags)];
         if (input.name) contact.name = input.name;
-        if (!contact.legalBasis && !contact.unsubscribedAt)
-          Object.assign(contact, {
-            legalBasis: 'consent',
-            consentAt: new Date().toISOString(),
-            consentSource: 'account',
-          });
+        // Like the API: tags and name only; consent and unsubscribe are never touched here.
       });
       return true;
     }
@@ -338,8 +335,7 @@ export function applyCrmCommand(state: Operations, command: AdminCommand): boole
     case 'crm.campaign.save': {
       const input = validateCampaign(command.campaign),
         existing = command.campaign.id ? campaignOf(state, command.campaign.id) : undefined;
-      if (existing && existing.state !== 'Rascunho')
-        throw stateError('Esta campanha já foi agendada ou enviada.');
+      if (existing && existing.state !== 'Rascunho') throw locked();
       const blank = {
         audience: 0,
         sent: 0,
@@ -350,10 +346,13 @@ export function applyCrmCommand(state: Operations, command: AdminCommand): boole
         unsubscribed: 0,
         cancelled: 0,
       };
-      if (existing) Object.assign(existing, input);
+      // The id is never part of the edited fields (the parse leaves an `id: undefined` key behind).
+      const { id: ignored, ...fields } = input as typeof input & { id?: unknown };
+      void ignored;
+      if (existing) Object.assign(existing, fields);
       else
         state.crm.campaigns.unshift({
-          ...input,
+          ...fields,
           id: `campanha-${crypto.randomUUID()}`,
           state: 'Rascunho',
           createdAt: new Date().toISOString(),
@@ -363,8 +362,12 @@ export function applyCrmCommand(state: Operations, command: AdminCommand): boole
     }
     case 'crm.campaign.schedule': {
       const campaign = campaignOf(state, command.id);
-      if (campaign.state !== 'Rascunho' && campaign.state !== 'Agendada')
-        throw stateError('Só campanhas em rascunho podem ser agendadas.');
+      // Same rule as the API: a draft, or a cancelled campaign that never sent anything.
+      if (
+        (campaign.state !== 'Rascunho' && campaign.state !== 'Cancelada') ||
+        campaign.metrics.sent > 0
+      )
+        throw stateError('Só campanhas em rascunho ou canceladas sem envio podem ser agendadas.');
       // The demo sends nothing: scheduling goes straight to "Agendada".
       campaign.state = 'Agendada';
       campaign.scheduledAt = command.at ?? new Date().toISOString();
@@ -384,8 +387,7 @@ export function applyCrmCommand(state: Operations, command: AdminCommand): boole
     }
     case 'crm.campaign.delete': {
       const campaign = campaignOf(state, command.id);
-      if (!['Rascunho', 'Cancelada'].includes(campaign.state))
-        throw stateError('Só rascunhos e campanhas canceladas podem ser excluídas.');
+      if (campaign.state !== 'Rascunho') throw locked();
       state.crm.campaigns = state.crm.campaigns.filter((c) => c.id !== campaign.id);
       return true;
     }
