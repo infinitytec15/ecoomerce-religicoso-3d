@@ -12,6 +12,7 @@ import {
   groupUnitCents,
   participantInitials,
   unitPriceCents,
+  type Address,
   type AdminGroupBuy,
   type GroupBuyMode,
   type GroupBuyOrderSnapshot,
@@ -22,6 +23,8 @@ import {
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { Notifications } from './notifications';
+// Circular with payments.ts: only used inside methods, never at module load.
+import { PaymentsService } from './payments';
 import {
   groupBuyAdminDto,
   groupBuyAdminOrderInclude,
@@ -36,6 +39,12 @@ import { type Actor, permit, requireValue, DomainError, data, audit } from './sh
 
 const OPEN_STATUSES = ['Aberta', 'Meta atingida'];
 const MAX_INITIALS = 8;
+/** The orders of a campaign that make their customer a participant: paid and not cancelled. */
+const PARTICIPANT_ORDER = {
+  status: { not: 'Cancelado' },
+  payment: { status: 'Pago' },
+} satisfies Prisma.OrderWhereInput;
+const orderNumber = (n: number) => 'MEO-' + String(n).padStart(6, '0');
 
 /** What the payment flow does with a paid group order. */
 export type GroupPaidOutcome = 'hold' | 'release' | 'fail';
@@ -56,7 +65,7 @@ export class GroupBuysService {
   /** Customers that paid: distinct customers among paid, non-cancelled orders of the campaign. */
   async participants(db: PrismaClient | Transaction, groupBuyId: string): Promise<number> {
     const rows = await db.order.findMany({
-      where: { groupBuyId, status: { not: 'Cancelado' }, payment: { status: 'Pago' } },
+      where: { groupBuyId, ...PARTICIPANT_ORDER },
       distinct: ['customerId'],
       select: { customerId: true },
     });
@@ -73,11 +82,7 @@ export class GroupBuysService {
     );
     if (!ids.length) return result;
     const rows = await db.order.findMany({
-        where: {
-          groupBuyId: { in: ids },
-          status: { not: 'Cancelado' },
-          payment: { status: 'Pago' },
-        },
+        where: { groupBuyId: { in: ids }, ...PARTICIPANT_ORDER },
         select: {
           groupBuyId: true,
           customerId: true,
@@ -237,38 +242,58 @@ export class GroupBuysService {
     });
   }
 
+  /** Admin: ends an open campaign now. The clamp, the claim and its follow-up work are atomic. */
   async close(actor: Actor | null, id: string): Promise<void> {
-    const a = permit(actor, 'marketing'),
-      now = new Date(),
-      gb = requireValue(
-        await this.ctx.db.groupBuy.findUnique({ where: { id } }),
+    const a = permit(actor, 'marketing');
+    await transaction(this.ctx.db, async (tx) => {
+      const now = new Date();
+      await lock(tx, 'group-buy/' + id);
+      const gb = requireValue(
+        await tx.groupBuy.findUnique({ where: { id } }),
         'Campanha não encontrada.',
       );
-    if (OPEN_STATUSES.includes(gb.status) && gb.endsAt.getTime() > now.getTime())
-      await this.ctx.db.groupBuy.updateMany({
-        where: { id, status: { in: OPEN_STATUSES } },
-        data: { endsAt: now },
-      });
-    if (!(await this.closeCampaign(id, now)))
-      throw new DomainError('GROUP_BUY_CLOSED', 'Esta campanha já foi encerrada.', 409);
-    await audit(this.ctx.db, a.id, 'Compra coletiva encerrada', id);
+      if (OPEN_STATUSES.includes(gb.status) && gb.endsAt.getTime() > now.getTime())
+        await tx.groupBuy.update({ where: { id }, data: { endsAt: now } });
+      if (!(await this.claim(tx, id, now)))
+        throw new DomainError('GROUP_BUY_CLOSED', 'Esta campanha já foi encerrada.', 409);
+      await audit(tx, a.id, 'Compra coletiva encerrada', id);
+    });
   }
 
   /**
-   * Claims the closing of an open campaign: Concluída when the goal was reached, Não fechou otherwise.
-   * Returns false when someone else already closed it.
+   * Closes an open campaign: Concluída when the goal was reached, Não fechou otherwise. A hold
+   * campaign that did not close queues the cancellation of each of its orders. Returns false when
+   * someone else already closed it.
    */
   async closeCampaign(id: string, now: Date): Promise<boolean> {
     return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'group-buy/' + id);
-      const gb = await tx.groupBuy.findUnique({ where: { id } });
-      if (!gb) return false;
-      const claimed = await tx.groupBuy.updateMany({
-        where: { id, status: { in: OPEN_STATUSES } },
-        data: { status: gb.goalReachedAt ? 'Concluída' : 'Não fechou', closedAt: now },
-      });
-      return claimed.count > 0;
+      return this.claim(tx, id, now);
     });
+  }
+
+  /** The close itself; the caller holds the `group-buy/<id>` lock. */
+  private async claim(tx: Transaction, id: string, now: Date): Promise<boolean> {
+    const gb = await tx.groupBuy.findUnique({ where: { id } });
+    if (!gb) return false;
+    const status = gb.goalReachedAt ? 'Concluída' : 'Não fechou',
+      claimed = await tx.groupBuy.updateMany({
+        where: { id, status: { in: OPEN_STATUSES } },
+        data: { status, closedAt: now },
+      });
+    if (!claimed.count) return false;
+    // Only a hold buyer is owed anything: a difference buyer paid the normal price.
+    if (gb.mode === 'hold' && status === 'Não fechou') {
+      const orders = await tx.order.findMany({
+        where: { groupBuyId: id, status: { not: 'Cancelado' } },
+        select: { id: true },
+      });
+      for (const o of orders)
+        await this.mail.event(tx, 'group-fail/' + o.id, 'group-buy-fail-order', o.id, {
+          orderId: o.id,
+        });
+    }
+    return true;
   }
 
   /**
@@ -411,19 +436,151 @@ export class GroupBuysService {
     return 'release';
   }
 
-  /** Worker: the goal was reached (implemented in the worker task). */
+  /**
+   * Worker: the goal was reached. A hold campaign releases each held order to production; a
+   * difference campaign queues the refund of each paid order that paid more than the group price.
+   */
   async reached(groupBuyId: string): Promise<void> {
-    void groupBuyId;
+    const gb = await this.ctx.db.groupBuy.findUnique({ where: { id: groupBuyId } });
+    if (!gb?.goalReachedAt) return;
+    if (gb.mode === 'hold') {
+      if (gb.status === 'Não fechou') return;
+      const payments = new PaymentsService(this.ctx),
+        held = await this.ctx.db.order.findMany({
+          where: { groupBuyId, status: 'Aguardando grupo', payment: { status: 'Pago' } },
+          select: { id: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      // One transaction per order, under its own lock and never the campaign's (lock order).
+      for (const { id } of held)
+        await transaction(this.ctx.db, async (tx) => {
+          await lock(tx, 'order/' + id);
+          const order = await tx.order.findUniqueOrThrow({
+            where: { id },
+            include: { payment: true },
+          });
+          if (order.status !== 'Aguardando grupo' || order.payment?.status !== 'Pago') return;
+          // Confirmed first: production refuses an order still waiting for the group.
+          await tx.order.update({
+            where: { id },
+            data: { status: 'Confirmado', version: { increment: 1 } },
+          });
+          await payments.production(tx, id);
+          const a = data<Address>(order.address);
+          await this.mail.email(tx, 'group-confirmed/' + id, id, a.email, {
+            kind: 'group-confirmed',
+            name: a.name,
+            orderNumber: orderNumber(order.number),
+            totalCents: order.totalCents,
+            actionUrl: await this.mail.orderUrl(tx, id),
+            groupTitle: gb.title,
+          });
+        });
+      return;
+    }
+    const orders = await this.ctx.db.order.findMany({
+      where: { groupBuyId, ...PARTICIPANT_ORDER },
+      select: { id: true, data: true },
+    });
+    for (const o of orders) {
+      const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(o.data).groupBuy;
+      if (!snapshot || groupDifferenceCents(snapshot) <= 0) continue;
+      await transaction(this.ctx.db, (tx) =>
+        this.mail.event(tx, 'group-diff/' + o.id, 'group-buy-refund', o.id, { orderId: o.id }),
+      );
+    }
   }
 
-  /** Worker: refunds the difference of a difference-mode order (implemented in the worker task). */
+  /** Worker: refunds what a difference-mode buyer paid above the group price, then tells them. */
   async refundDifference(orderId: string): Promise<void> {
-    void orderId;
+    const order = await this.ctx.db.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { groupBuy: true },
+      }),
+      snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(order.data).groupBuy,
+      diff = snapshot ? groupDifferenceCents(snapshot) : 0;
+    if (order.status === 'Cancelado' || diff <= 0) return;
+    await new PaymentsService(this.ctx).refundPartial(
+      orderId,
+      diff,
+      'Compra coletiva: diferença devolvida',
+      'group-diff/' + orderId,
+    );
+    await transaction(this.ctx.db, async (tx) => {
+      const a = data<Address>(order.address);
+      await this.mail.email(tx, 'group-difference/' + orderId, orderId, a.email, {
+        kind: 'group-difference',
+        name: a.name,
+        orderNumber: orderNumber(order.number),
+        totalCents: order.totalCents,
+        refundedCents: diff,
+        actionUrl: await this.mail.orderUrl(tx, orderId),
+        groupTitle: order.groupBuy?.title ?? snapshot!.title,
+      });
+    });
   }
 
-  /** Worker: cancels and refunds an order of a campaign that did not close (worker task). */
+  /**
+   * Worker: cancels an order of a hold campaign that did not close, returns its stock, cancels a
+   * pending payment and queues the refund of what was captured.
+   */
   async failOrder(orderId: string): Promise<void> {
-    void orderId;
+    const payments = new PaymentsService(this.ctx);
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'order/' + orderId);
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { payment: { include: { parts: true } }, groupBuy: true },
+      });
+      if (order.status === 'Cancelado') return;
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: 'Cancelado', version: { increment: 1 } },
+      });
+      await payments.release(tx, orderId);
+      const consumed = await tx.stockReservation.findMany({
+        where: { orderId, state: 'consumed' },
+        orderBy: { productId: 'asc' },
+      });
+      for (const r of consumed) {
+        await lock(tx, 'stock/' + r.productId);
+        await tx.product.update({
+          where: { id: r.productId },
+          data: { stock: { increment: r.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            productId: r.productId,
+            delta: r.quantity,
+            reason: 'Compra coletiva não fechou ' + orderId,
+            actorId: 'system',
+          },
+        });
+        await tx.stockReservation.update({ where: { id: r.id }, data: { state: 'released' } });
+      }
+      const intent = order.payment;
+      if (intent?.status === 'Pendente')
+        await this.mail.event(tx, 'cancel-pending/' + intent.id, 'payment-cancel', orderId, {
+          intentId: intent.id,
+        });
+      if (intent?.parts.some((p) => p.status === 'approved'))
+        await this.mail.event(tx, 'group-fail-refund/' + orderId, 'refund-order', orderId, {
+          orderId,
+          reason: 'Compra coletiva não fechou',
+        });
+      if (intent?.status === 'Pago') {
+        const a = data<Address>(order.address);
+        await this.mail.email(tx, 'group-failed/' + orderId, orderId, a.email, {
+          kind: 'group-failed',
+          name: a.name,
+          orderNumber: orderNumber(order.number),
+          totalCents: order.totalCents,
+          actionUrl: await this.mail.orderUrl(tx, orderId),
+          groupTitle: order.groupBuy?.title ?? '',
+        });
+      }
+      await audit(tx, 'system', 'Pedido cancelado: compra coletiva não fechou', orderId);
+    });
   }
 
   /** Joinable campaigns of the given products, by product id (storefront). */
@@ -470,7 +627,7 @@ export class GroupBuysService {
     });
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id),
-      [stats, orders] = await Promise.all([
+      [stats, orders, counts] = await Promise.all([
         this.stats(this.ctx.db, ids),
         this.ctx.db.order.findMany({
           where: { groupBuyId: { in: ids } },
@@ -478,12 +635,23 @@ export class GroupBuysService {
           orderBy: { createdAt: 'desc' },
           take: 2000,
         }),
+        this.ctx.db.order.groupBy({
+          by: ['groupBuyId'],
+          where: { groupBuyId: { in: ids } },
+          _count: { _all: true },
+        }),
       ]),
-      byCampaign = new Map<string, GroupBuyAdminOrderRow[]>();
+      byCampaign = new Map<string, GroupBuyAdminOrderRow[]>(),
+      orderCount = new Map(counts.map((c) => [c.groupBuyId!, c._count._all]));
     for (const order of orders)
       byCampaign.set(order.groupBuyId!, [...(byCampaign.get(order.groupBuyId!) ?? []), order]);
     return rows.map((row) =>
-      groupBuyAdminDto(row, stats.get(row.id)!, byCampaign.get(row.id) ?? []),
+      groupBuyAdminDto(
+        row,
+        stats.get(row.id)!,
+        byCampaign.get(row.id) ?? [],
+        orderCount.get(row.id) ?? 0,
+      ),
     );
   }
 

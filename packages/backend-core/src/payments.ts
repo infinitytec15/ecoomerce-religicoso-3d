@@ -1,6 +1,6 @@
 import type { PaymentToken, Address } from '@maos-em-oracao/contracts';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
-import type { PaymentResult } from '@maos-em-oracao/integrations';
+import { ProviderError, type PaymentResult } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
 import { Notifications } from './notifications';
 import { GroupBuysService } from './group-buys';
@@ -594,6 +594,85 @@ export class PaymentsService {
         },
       );
     });
+  }
+  /**
+   * Refunds part of a paid order, Pix parts before card, each up to what the part still holds.
+   * Every part gets its own Refund keyed `key/partId`, so a retry reuses the split already made and
+   * skips what was approved. The order stays alive: `apply` only cancels on a full refund.
+   */
+  async refundPartial(orderId: string, amountCents: number, reason: string, key: string) {
+    const order = requireValue(
+      await this.ctx.db.order.findUnique({
+        where: { id: orderId },
+        include: {
+          payment: {
+            include: { parts: { include: { refunds: true }, orderBy: { createdAt: 'asc' } } },
+          },
+        },
+      }),
+    );
+    if (!order.payment) throw new DomainError('NO_PAYMENT', 'Pedido sem pagamento.');
+    const pixFirst = (method: string) => (method === 'pix' ? 0 : 1),
+      parts = [...order.payment.parts].sort((a, b) => pixFirst(a.method) - pixFirst(b.method)),
+      plan: { part: (typeof parts)[number]; cents: number }[] = [];
+    let remaining = amountCents;
+    for (const part of parts) {
+      if (remaining <= 0) break;
+      // A share made by an earlier attempt keeps its amount, whatever the part's status now.
+      const existing = part.refunds.find((r) => r.key === key + '/' + part.id),
+        cents = existing
+          ? existing.amountCents
+          : part.status === 'approved'
+            ? Math.min(remaining, part.amountCents - part.refundedCents)
+            : 0;
+      if (cents <= 0) continue;
+      plan.push({ part, cents });
+      remaining -= cents;
+    }
+    if (remaining > 0)
+      throw new DomainError(
+        'REFUND_EXCEEDS',
+        'O valor a estornar passa do que o pagamento ainda tem.',
+        409,
+      );
+    for (const { part, cents } of plan) {
+      const refundKey = key + '/' + part.id,
+        refund = await this.ctx.db.refund.upsert({
+          where: { key: refundKey },
+          create: { key: refundKey, partId: part.id, amountCents: cents, reason },
+          update: {},
+        });
+      if (refund.status === 'approved') continue;
+      if (!part.providerId)
+        throw new DomainError('PAYMENT_UNKNOWN', 'Concilie o pagamento antes de estornar.', 409);
+      const result = await this.ctx.payments.refund(
+        part.providerId,
+        refund.amountCents,
+        refund.key,
+      );
+      // Not a DomainError: the outbox retries until the provider confirms.
+      if (result.status && result.status !== 'approved')
+        throw new ProviderError('Mercado Pago', 'REFUND_PENDING', 409, true);
+      await this.ctx.db.refund.update({
+        where: { id: refund.id },
+        data: { providerId: String(result.id), status: 'approved' },
+      });
+      if (this.ctx.config.INTEGRATIONS_MODE === 'mock') {
+        const current = await this.ctx.db.paymentPart.findUniqueOrThrow({
+          where: { id: part.id },
+        });
+        await this.apply({
+          id: part.providerId,
+          reference: part.id,
+          status: 'approved',
+          amountCents: part.amountCents,
+          currency: 'BRL',
+          updatedAt: new Date().toISOString(),
+          refundedCents: current.refundedCents + refund.amountCents,
+          action: { type: 'none' },
+        });
+      } else await this.apply(await this.ctx.payments.get(part.providerId));
+    }
   }
   async mockApprove(intentId: string) {
     if (this.ctx.config.INTEGRATIONS_MODE !== 'mock')

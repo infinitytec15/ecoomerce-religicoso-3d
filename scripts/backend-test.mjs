@@ -2503,6 +2503,312 @@ try {
     assert((await kinds(late.id)).includes('payment-approved'));
     operationsSchema.parse(await owner.data('admin/operations'));
   });
+  await check('compra coletiva libera, devolve a diferença e estorna se não fechar', async () => {
+    const send = (command) =>
+        owner.call('admin/commands', 'POST', command, {
+          headers: { 'idempotency-key': randomUUID() },
+        }),
+      kinds = async (orderId) =>
+        (await ctx.db.outboxEvent.findMany({ where: { aggregateId: orderId, kind: 'email' } })).map(
+          (row) => unseal(row.payloadEncrypted, ctx.config).kind,
+        ),
+      count = async (orderId, kind) => (await kinds(orderId)).filter((k) => k === kind).length,
+      // Work still queued for these aggregates (e-mails are delivered on their own queue).
+      idle = async (ids) =>
+        !(await ctx.db.outboxEvent.count({
+          where: {
+            aggregateId: { in: ids },
+            kind: { not: 'email' },
+            state: { in: ['pending', 'enqueued', 'processing'] },
+          },
+        })),
+      drain = (done, message) =>
+        until(async () => {
+          await engine.dispatch();
+          return done();
+        }, message),
+      load = (id) =>
+        ctx.db.order.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            job: true,
+            payment: { include: { parts: { include: { refunds: true } } } },
+          },
+        }),
+      refunds = (orderId) =>
+        ctx.db.refund.findMany({ where: { key: { startsWith: 'group-diff/' + orderId + '/' } } }),
+      approvedSum = (rows) =>
+        rows.filter((r) => r.status === 'approved').reduce((n, r) => n + r.amountCents, 0),
+      adminProducts = (await owner.data('admin/operations')).products,
+      normalOf = (p) => {
+        const row = adminProducts.find((r) => r.id === p.id);
+        return row.sizePrices?.[0] ?? row.priceCents;
+      },
+      campaign = async (p, fields) => {
+        await owner.command({
+          type: 'groupbuy.save',
+          title: 'Compra coletiva ' + fields.mode + ' ' + p.id.slice(0, 6),
+          description: '',
+          productId: p.id,
+          sizeIndex: 0,
+          maxParticipants: null,
+          endsAt: new Date(Date.now() + 86400000).toISOString(),
+          active: true,
+          ...fields,
+        });
+        return ctx.db.groupBuy.findFirstOrThrow({ where: { productId: p.id, status: 'Aberta' } });
+      },
+      order = async (p, gbId, label, payment, quantity = 1) => {
+        const client = new Client(),
+          email = 'grupo-' + label + '-' + runId + '@example.test',
+          q = await quote(client, p, quantity),
+          r = await buy(
+            client,
+            checkout(p, q, email, payment, {
+              groupBuyId: gbId,
+              items: [
+                { productId: p.id, quantity, color: p.colors[0], sizeIndex: 0, dedication: '' },
+              ],
+            }),
+          );
+        assert.equal(r.status, 200, JSON.stringify(r.body));
+        return r.body.data.orderId;
+      };
+
+    // 1. Release: the hold campaign of the previous check reached its goal with B.
+    const held = (
+        await ctx.db.order.findMany({
+          where: { groupBuyId, customer: { email: { startsWith: 'grupo-a-' } } },
+        })
+      ).map((o) => o.id),
+      reachedRow = await ctx.db.outboxEvent.findUniqueOrThrow({
+        where: { key: 'group-reached/' + groupBuyId },
+      });
+    assert.equal(held.length, 2);
+    await drain(async () => {
+      const rows = await Promise.all(held.map(load));
+      return rows.every((o) => o.status === 'Confirmado' && o.job);
+    }, 'pedidos retidos liberados');
+    for (const id of held) await mail(id, 'group-confirmed');
+    // Re-running the event (a retry) releases nothing twice.
+    await until(
+      async () =>
+        (await ctx.db.outboxEvent.findUnique({ where: { id: reachedRow.id } })).state ===
+        'completed',
+      'meta processada',
+    );
+    await ctx.db.outboxEvent.update({
+      where: { id: reachedRow.id },
+      data: { state: 'pending', availableAt: new Date() },
+    });
+    await drain(
+      async () =>
+        (await ctx.db.outboxEvent.findUnique({ where: { id: reachedRow.id } })).state ===
+        'completed',
+      'meta reprocessada',
+    );
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: { in: held } } }), 2);
+    for (const id of held) assert.equal(await count(id, 'group-confirmed'), 1);
+
+    // 2. Difference: C pays the normal price, D pays split before the goal and closes it.
+    const others = (await guest.data('catalog/products')).filter(
+      (p) => p.id !== product.id && !p.kit && !p.kitSummary && !p.groupBuy,
+    );
+    assert(others.length >= 3, 'há três outros produtos sem campanha aberta');
+    const [diffProduct, holdProduct, earlyProduct] = others,
+      normal = normalOf(diffProduct);
+    assert(normal > 3000, 'a diferença precisa passar da parte Pix do pagamento dividido');
+    const diff = await campaign(diffProduct, {
+        mode: 'difference',
+        goal: 2,
+        perPersonLimit: 2,
+        groupPriceCents: normal - 2500,
+      }),
+      cId = await order(diffProduct, diff.id, 'c', 'card', 2),
+      c = await load(cId);
+    assert.equal(c.status, 'Confirmado');
+    assert(c.job, 'C vai para a produção');
+    assert.equal(c.items[0].unitCents, normal);
+    const dId = await order(diffProduct, diff.id, 'd', 'split');
+    await owner.command({ type: 'charge.pay', id: (await load(dId)).payment.id });
+    const reachedDiff = await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: diff.id } });
+    assert.equal(reachedDiff.status, 'Meta atingida');
+    const expected = { [cId]: 2500 * 2, [dId]: 2500 };
+    await drain(async () => {
+      for (const id of [cId, dId])
+        if (
+          approvedSum(await refunds(id)) !== expected[id] ||
+          !(await count(id, 'group-difference'))
+        )
+          return false;
+      return idle([cId, dId, diff.id]);
+    }, 'diferença devolvida');
+    const d = await load(dId),
+      dRefunds = await refunds(dId),
+      pixPart = d.payment.parts.find((p) => p.method === 'pix'),
+      cardPart = d.payment.parts.find((p) => p.method === 'card');
+    assert.equal(dRefunds.length, 2, 'o estorno de D se divide entre Pix e cartão');
+    for (const part of [pixPart, cardPart]) {
+      const row = dRefunds.find((r) => r.partId === part.id);
+      assert(row && row.amountCents <= part.amountCents, 'estorno até o capturado da parte');
+      assert.equal(row.key, 'group-diff/' + dId + '/' + part.id);
+      assert.equal(part.refundedCents, row.amountCents);
+    }
+    assert.equal(dRefunds.find((r) => r.partId === pixPart.id).amountCents, 2000);
+    for (const id of [cId, dId]) {
+      const o = await load(id);
+      assert.equal(o.status, 'Confirmado');
+      assert.equal(o.payment.status, 'Pago');
+      const m = await mail(id, 'group-difference');
+      assert(m.envelope.text.includes(diff.title));
+    }
+    // A second tick, dispatch or direct retry refunds and e-mails nothing more.
+    const snapshot = async () =>
+        JSON.stringify([
+          (await refunds(cId)).length,
+          (await refunds(dId)).length,
+          await count(cId, 'group-difference'),
+          await count(dId, 'group-difference'),
+        ]),
+      before = await snapshot();
+    await new (await import('@maos-em-oracao/backend-core/group-buys')).GroupBuysService(
+      ctx,
+    ).refundDifference(dId);
+    await engine.tick();
+    await engine.dispatch();
+    await sleep(2500);
+    assert.equal(await snapshot(), before);
+    assert.equal(before, JSON.stringify([1, 2, 1, 1]));
+
+    // 3. After the goal the item already costs the group price: nothing to refund.
+    const eId = await order(diffProduct, diff.id, 'e', 'card'),
+      e = await load(eId);
+    assert.equal(e.items[0].unitCents, normal - 2500);
+    assert.equal(e.status, 'Confirmado');
+    await engine.dispatch();
+    await sleep(1500);
+    assert.equal((await refunds(eId)).length, 0);
+    assert.equal(await ctx.db.outboxEvent.count({ where: { key: 'group-diff/' + eId } }), 0);
+
+    // 4. The admin sees each refund and the campaign total.
+    const adminDiff = (await owner.data('admin/operations')).groupBuys.find(
+        (g) => g.id === diff.id,
+      ),
+      refundOf = (id) => adminDiff.orders.find((o) => o.orderId === id).refund;
+    assert.equal(refundOf(cId).amountCents, 5000);
+    assert.equal(refundOf(cId).status, 'approved');
+    assert.equal(refundOf(dId).amountCents, 2500);
+    assert.equal(refundOf(eId), null);
+    assert.equal(adminDiff.refundedCents, 7500);
+    assert.equal(adminDiff.locked, true);
+
+    // 5. Deadline without the goal (hold, stock policy): paid and pending orders are cancelled.
+    const opsNow = await owner.data('admin/operations'),
+      policy = opsNow.workspace;
+    await owner.command({
+      type: 'workspace.save',
+      settings: { ...policy, inventoryPolicy: 'stock' },
+    });
+    try {
+      await owner.command({
+        type: 'product.save',
+        product: { ...opsNow.products.find((p) => p.id === holdProduct.id), stock: 5 },
+      });
+      const hold = await campaign(holdProduct, {
+          mode: 'hold',
+          goal: 3,
+          perPersonLimit: 1,
+          groupPriceCents: normalOf(holdProduct) - 100,
+        }),
+        stock = async () =>
+          (await ctx.db.product.findUniqueOrThrow({ where: { id: holdProduct.id } })).stock,
+        fId = await order(holdProduct, hold.id, 'f', 'card');
+      assert.equal((await load(fId)).status, 'Aguardando grupo');
+      assert.equal(await stock(), 4);
+      const gId = await order(holdProduct, hold.id, 'g', 'pix');
+      assert.equal((await load(gId)).payment.status, 'Pendente');
+      await ctx.db.groupBuy.update({
+        where: { id: hold.id },
+        data: { endsAt: new Date(Date.now() - 1000) },
+      });
+      await engine.tick();
+      assert.equal(
+        (await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: hold.id } })).status,
+        'Não fechou',
+      );
+      await drain(async () => {
+        const [f, g] = await Promise.all([load(fId), load(gId)]);
+        return (
+          f.status === 'Cancelado' &&
+          f.payment.status === 'Estornado' &&
+          g.status === 'Cancelado' &&
+          (await stock()) === 5 &&
+          (await idle([fId, gId, hold.id]))
+        );
+      }, 'campanha sem meta estornada');
+      await mail(fId, 'group-failed');
+      assert.equal(await count(gId, 'group-failed'), 0);
+      assert.equal(
+        await ctx.db.stockMovement.count({
+          where: { productId: holdProduct.id, reason: 'Compra coletiva não fechou ' + fId },
+        }),
+        1,
+      );
+    } finally {
+      await owner.command({ type: 'workspace.save', settings: policy });
+    }
+
+    // 6. A payment approved after the campaign failed is cancelled and refunded.
+    const lateHold = await campaign(holdProduct, {
+        mode: 'hold',
+        goal: 2,
+        perPersonLimit: 1,
+        groupPriceCents: normalOf(holdProduct) - 100,
+      }),
+      hId = await order(holdProduct, lateHold.id, 'h', 'pix');
+    await ctx.db.groupBuy.update({
+      where: { id: lateHold.id },
+      data: { status: 'Não fechou', closedAt: new Date() },
+    });
+    await owner.command({ type: 'charge.pay', id: (await load(hId)).payment.id });
+    await drain(async () => {
+      const h = await load(hId);
+      return h.status === 'Cancelado' && h.payment.status === 'Estornado';
+    }, 'pagamento tardio estornado');
+    await mail(hId, 'group-failed');
+
+    // 7. Closing early: the claim runs once and a difference campaign refunds nothing.
+    const early = await campaign(earlyProduct, {
+        mode: 'difference',
+        goal: 2,
+        perPersonLimit: 1,
+        groupPriceCents: normalOf(earlyProduct) - 100,
+      }),
+      iId = await order(earlyProduct, early.id, 'i', 'card'),
+      campaignRefunds = () =>
+        ctx.db.refund.count({ where: { part: { intent: { order: { groupBuyId: early.id } } } } });
+    assert.equal((await load(iId)).status, 'Confirmado');
+    await owner.command({ type: 'groupbuy.close', id: early.id });
+    const closed = await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: early.id } });
+    assert.equal(closed.status, 'Não fechou');
+    assert(closed.closedAt && closed.endsAt.getTime() <= Date.now());
+    assert.equal(
+      await ctx.db.auditEntry.count({
+        where: { entity: early.id, action: 'Compra coletiva encerrada' },
+      }),
+      1,
+    );
+    const twice = await send({ type: 'groupbuy.close', id: early.id });
+    assert.equal(twice.status, 409, JSON.stringify(twice.body));
+    assert.equal(twice.body.error.code, 'GROUP_BUY_CLOSED');
+    await engine.dispatch();
+    await sleep(1500);
+    assert.equal(await campaignRefunds(), 0);
+    assert.equal(await ctx.db.outboxEvent.count({ where: { key: 'group-fail/' + iId } }), 0);
+    assert.equal((await load(iId)).status, 'Confirmado');
+    operationsSchema.parse(await owner.data('admin/operations'));
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

@@ -756,6 +756,28 @@ export class WorkerEngine {
       }
     return sent;
   }
+  /** Closes the open group buys whose deadline passed; returns how many this call closed. */
+  async closeGroupBuys(now = new Date()) {
+    const service = new GroupBuysService(this.ctx),
+      due = await this.ctx.db.groupBuy.findMany({
+        where: { status: { in: ['Aberta', 'Meta atingida'] }, endsAt: { lte: now } },
+        orderBy: { endsAt: 'asc' },
+        select: { id: true },
+        take: 20,
+      });
+    let closed = 0;
+    for (const { id } of due)
+      try {
+        if (await service.closeCampaign(id, now)) closed++;
+      } catch (error) {
+        console.error(
+          'Encerramento de compra coletiva falhou:',
+          id,
+          (error as { code?: string } | null)?.code ?? (error as Error | null)?.name ?? 'erro',
+        );
+      }
+    return closed;
+  }
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
@@ -764,6 +786,7 @@ export class WorkerEngine {
         mail = new Notifications(this.ctx);
       await this.scheduleDailyPrayer(now).catch(() => null);
       await this.scheduleReviewRequests(now).catch(() => 0);
+      await this.closeGroupBuys(now).catch(() => 0);
       const campaigns = await this.ctx.db.campaign.findMany({
         where: { state: 'Agendada', scheduledAt: { lte: now } },
         take: 20,

@@ -259,7 +259,7 @@ export type GroupBuyRow = Prisma.GroupBuyGetPayload<{ include: typeof groupBuyIn
 export const groupBuyAdminOrderInclude = {
   customer: true,
   items: true,
-  payment: { include: { parts: { include: { refunds: true } } } },
+  payment: { include: { parts: { include: { refunds: { orderBy: { createdAt: 'asc' } } } } } },
 } satisfies Prisma.OrderInclude;
 export type GroupBuyAdminOrderRow = Prisma.OrderGetPayload<{
   include: typeof groupBuyAdminOrderInclude;
@@ -306,14 +306,31 @@ export function groupBuyPublicDto(gb: GroupBuyRow, stats?: GroupBuyStats): Group
     colors: product.colors ?? [],
   };
 }
+/** Refunds that still count as money going back: rejected or failed ones never do. */
+const COUNTED_REFUNDS = ['approved', 'pending'];
+/**
+ * The refunds a campaign caused on one order, oldest first: the difference refunds (keyed
+ * `group-diff/<orderId>/<partId>`) or, for an order cancelled by a hold campaign that did not
+ * close, its whole refund.
+ */
+function groupBuyRefunds(gb: GroupBuyRow, o: GroupBuyAdminOrderRow) {
+  const all = (o.payment?.parts ?? [])
+      .flatMap((part) => part.refunds)
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime() || x.key.localeCompare(y.key)),
+    failed = gb.mode === 'hold' && gb.status === 'Não fechou' && o.status === 'Cancelado';
+  return failed ? all : all.filter((r) => r.key.startsWith('group-diff/' + o.id + '/'));
+}
 export function groupBuyAdminDto(
   gb: GroupBuyRow,
   stats: GroupBuyStats,
   orders: GroupBuyAdminOrderRow[],
+  orderCount: number,
 ): AdminGroupBuy {
   const product = data<InventoryProduct>(gb.product.data),
-    refunded = (o: GroupBuyAdminOrderRow) =>
-      (o.payment?.parts ?? []).flatMap((part) => part.refunds);
+    approvedCents = (o: GroupBuyAdminOrderRow) =>
+      groupBuyRefunds(gb, o)
+        .filter((r) => r.status === 'approved')
+        .reduce((n, r) => n + r.amountCents, 0);
   return {
     ...groupBuyPublicDto(gb, stats),
     active: gb.active,
@@ -327,14 +344,12 @@ export function groupBuyAdminDto(
       },
       gb.sizeIndex,
     ),
-    locked: orders.length > 0,
-    refundedCents: orders.reduce(
-      (sum, o) => sum + (o.payment?.parts ?? []).reduce((n, part) => n + part.refundedCents, 0),
-      0,
-    ),
+    locked: orderCount > 0,
+    refundedCents: orders.reduce((sum, o) => sum + approvedCents(o), 0),
     orders: orders.map((o) => {
       const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(o.data).groupBuy,
-        refunds = refunded(o);
+        refunds = groupBuyRefunds(gb, o),
+        counted = refunds.filter((r) => COUNTED_REFUNDS.includes(r.status));
       return {
         orderId: o.id,
         number: 'MEO-' + String(o.number).padStart(6, '0'),
@@ -346,10 +361,12 @@ export function groupBuyAdminDto(
         paymentStatus: o.payment?.status ?? 'Pendente',
         refund: refunds.length
           ? {
-              amountCents: refunds.reduce((n, r) => n + r.amountCents, 0),
-              status: refunds.some((r) => r.status === 'pending')
+              amountCents: counted.reduce((n, r) => n + r.amountCents, 0),
+              status: counted.some((r) => r.status === 'pending')
                 ? 'pending'
-                : refunds.at(-1)!.status,
+                : counted.length
+                  ? 'approved'
+                  : refunds.at(-1)!.status,
             }
           : null,
         createdAt: instant(o.createdAt),
