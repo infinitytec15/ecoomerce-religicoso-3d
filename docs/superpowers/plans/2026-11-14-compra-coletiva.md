@@ -33,7 +33,7 @@
 - **Novo status de pedido:** `'Aguardando grupo'`, com tom "warning" no badge.
   - É receita paga: não entra em `unpaidStatuses` dos relatórios.
 - **Participante:**
-  - Conta cada `customerId` distinto entre os pedidos com `groupBuyId = campanha`, `payment.status = 'Pago'` e `status ≠ 'Cancelado'`.
+  - Conta cada pessoa distinta (e-mail do cliente, sem diferenciar maiúsculas) entre os pedidos com `groupBuyId = campanha`, `payment.status = 'Pago'` e `status ≠ 'Cancelado'`. (Revisão final: antes era por `customerId`, mas o checkout de visitante cria um cliente por pedido.)
   - O mesmo cliente com dois pedidos conta uma vez.
 - **Preço por unidade no pedido de grupo** (`normal = unitPriceCents(produto, sizeIndex)`):
   - `hold`: sempre `groupPriceCents`.
@@ -51,7 +51,7 @@
 - **Pedido "Aguardando grupo":** nunca vai para a produção.
   - `payments.production()` recusa com 409 `GROUP_PENDING`, inclusive pelos atalhos do admin.
 - **Chaves idempotentes do outbox:**
-  - `group-reached/<groupBuyId>` (kind `group-buy-reached`);
+  - `group-reached/<groupBuyId>` (kind `group-buy-reached`), e `group-close-release/<groupBuyId>` (mesmo kind) quando uma campanha `hold` fecha como "Concluída", para liberar pedidos que ficaram retidos;
   - `group-diff/<orderId>` (kind `group-buy-refund`);
   - `group-fail/<orderId>` (kind `group-buy-fail-order`);
   - `refund-order` com chave `group-fail-refund/<orderId>`.
