@@ -32,6 +32,7 @@ import {
   groupBuyPublicDto,
   groupBuySummaryDto,
   type GroupBuyAdminOrderRow,
+  type GroupBuyAdminScope,
   type GroupBuyRow,
   type GroupBuyStats,
 } from './projections';
@@ -45,6 +46,8 @@ const PARTICIPANT_ORDER = {
   payment: { status: 'Pago' },
 } satisfies Prisma.OrderWhereInput;
 const orderNumber = (n: number) => 'MEO-' + String(n).padStart(6, '0');
+/** One person per e-mail, whatever its case: the same rule as the per-person limit. */
+const personKey = (email: string) => email.trim().toLowerCase();
 
 /** What the payment flow does with a paid group order. */
 export type GroupPaidOutcome = 'hold' | 'release' | 'fail';
@@ -62,14 +65,16 @@ export class GroupBuysService {
     this.mail = new Notifications(ctx);
   }
 
-  /** Customers that paid: distinct customers among paid, non-cancelled orders of the campaign. */
+  /**
+   * People that paid: distinct e-mails (case-insensitive) among the paid, non-cancelled orders of
+   * the campaign. Guest checkout makes a Customer per order, so customer ids would count twice.
+   */
   async participants(db: PrismaClient | Transaction, groupBuyId: string): Promise<number> {
     const rows = await db.order.findMany({
       where: { groupBuyId, ...PARTICIPANT_ORDER },
-      distinct: ['customerId'],
-      select: { customerId: true },
+      select: { customer: { select: { email: true } } },
     });
-    return rows.length;
+    return new Set(rows.map((row) => personKey(row.customer.email))).size;
   }
 
   /** Participant count and first initials (by payment order) of several campaigns in one query. */
@@ -85,15 +90,14 @@ export class GroupBuysService {
         where: { groupBuyId: { in: ids }, ...PARTICIPANT_ORDER },
         select: {
           groupBuyId: true,
-          customerId: true,
-          customer: { select: { name: true } },
+          customer: { select: { name: true, email: true } },
         },
         orderBy: [{ payment: { paidAt: 'asc' } }, { createdAt: 'asc' }],
       }),
       seen = new Set<string>();
     for (const row of rows) {
       const stats = result.get(row.groupBuyId!)!,
-        key = row.groupBuyId + '/' + row.customerId;
+        key = row.groupBuyId + '/' + personKey(row.customer.email);
       if (seen.has(key)) continue;
       seen.add(key);
       stats.participants++;
@@ -293,6 +297,12 @@ export class GroupBuysService {
           orderId: o.id,
         });
     }
+    // A second sweep of the held orders: recovers any the goal event left behind (it may have
+    // failed for good). `reached` skips the orders already released.
+    if (gb.mode === 'hold' && status === 'Concluída')
+      await this.mail.event(tx, 'group-close-release/' + id, 'group-buy-reached', id, {
+        groupBuyId: id,
+      });
     return true;
   }
 
@@ -452,43 +462,75 @@ export class GroupBuysService {
           orderBy: { createdAt: 'asc' },
         });
       // One transaction per order, under its own lock and never the campaign's (lock order).
-      for (const { id } of held)
-        await transaction(this.ctx.db, async (tx) => {
-          await lock(tx, 'order/' + id);
-          const order = await tx.order.findUniqueOrThrow({
-            where: { id },
-            include: { payment: true },
-          });
-          if (order.status !== 'Aguardando grupo' || order.payment?.status !== 'Pago') return;
-          // Confirmed first: production refuses an order still waiting for the group.
-          await tx.order.update({
-            where: { id },
-            data: { status: 'Confirmado', version: { increment: 1 } },
-          });
-          await payments.production(tx, id);
-          const a = data<Address>(order.address);
-          await this.mail.email(tx, 'group-confirmed/' + id, id, a.email, {
-            kind: 'group-confirmed',
-            name: a.name,
-            orderNumber: orderNumber(order.number),
-            totalCents: order.totalCents,
-            actionUrl: await this.mail.orderUrl(tx, id),
-            groupTitle: gb.title,
-          });
-        });
+      await this.eachOrder(
+        held.map((o) => o.id),
+        (id) =>
+          transaction(this.ctx.db, async (tx) => {
+            await lock(tx, 'order/' + id);
+            const order = await tx.order.findUniqueOrThrow({
+              where: { id },
+              include: { payment: true },
+            });
+            if (order.status !== 'Aguardando grupo' || order.payment?.status !== 'Pago') return;
+            // Confirmed first: production refuses an order still waiting for the group.
+            await tx.order.update({
+              where: { id },
+              data: { status: 'Confirmado', version: { increment: 1 } },
+            });
+            await payments.production(tx, id);
+            const a = data<Address>(order.address);
+            await this.mail.email(tx, 'group-confirmed/' + id, id, a.email, {
+              kind: 'group-confirmed',
+              name: a.name,
+              orderNumber: orderNumber(order.number),
+              totalCents: order.totalCents,
+              actionUrl: await this.mail.orderUrl(tx, id),
+              groupTitle: gb.title,
+            });
+          }),
+      );
       return;
     }
     const orders = await this.ctx.db.order.findMany({
       where: { groupBuyId, ...PARTICIPANT_ORDER },
       select: { id: true, data: true },
     });
-    for (const o of orders) {
-      const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(o.data).groupBuy;
-      if (!snapshot || groupDifferenceCents(snapshot) <= 0) continue;
-      await transaction(this.ctx.db, (tx) =>
-        this.mail.event(tx, 'group-diff/' + o.id, 'group-buy-refund', o.id, { orderId: o.id }),
-      );
-    }
+    await this.eachOrder(
+      orders
+        .filter((o) => {
+          const snapshot = data<{ groupBuy?: GroupBuyOrderSnapshot }>(o.data).groupBuy;
+          return snapshot && groupDifferenceCents(snapshot) > 0;
+        })
+        .map((o) => o.id),
+      (id) =>
+        transaction(this.ctx.db, async (tx) => {
+          await this.mail.event(tx, 'group-diff/' + id, 'group-buy-refund', id, { orderId: id });
+        }),
+    );
+  }
+
+  /**
+   * Runs `work` for every order, so one failing order never blocks the ones after it, then
+   * rethrows. Any transient failure becomes a plain Error, so the outbox retries the whole event
+   * (the work is idempotent per order); otherwise the first DomainError fails it for good.
+   */
+  private async eachOrder(ids: string[], work: (id: string) => Promise<void>): Promise<void> {
+    let permanent: DomainError | null = null,
+      transient = false;
+    for (const id of ids)
+      try {
+        await work(id);
+      } catch (error) {
+        console.error(
+          'Compra coletiva: pedido não processado:',
+          id,
+          (error as { code?: string } | null)?.code ?? (error as Error | null)?.name ?? 'erro',
+        );
+        if (error instanceof DomainError) permanent ??= error;
+        else transient = true;
+      }
+    if (transient) throw new Error('GROUP_ORDER_RETRY');
+    if (permanent) throw permanent;
   }
 
   /** Worker: refunds what a difference-mode buyer paid above the group price, then tells them. */
@@ -624,8 +666,8 @@ export class GroupBuysService {
     return groupBuyPublicDto(row, (await this.stats(this.ctx.db, [id])).get(id));
   }
 
-  /** Admin snapshot: newest first, with orders and refunds. */
-  async forAdmin(): Promise<AdminGroupBuy[]> {
+  /** Admin snapshot: newest first, with orders and refunds, limited to what the viewer may see. */
+  async forAdmin(scope: GroupBuyAdminScope): Promise<AdminGroupBuy[]> {
     const rows = await this.ctx.db.groupBuy.findMany({
       include: groupBuyInclude,
       orderBy: { createdAt: 'desc' },
@@ -657,6 +699,7 @@ export class GroupBuysService {
         stats.get(row.id)!,
         byCampaign.get(row.id) ?? [],
         orderCount.get(row.id) ?? 0,
+        scope,
       ),
     );
   }

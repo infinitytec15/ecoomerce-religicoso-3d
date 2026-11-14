@@ -2560,9 +2560,15 @@ try {
         });
         return ctx.db.groupBuy.findFirstOrThrow({ where: { productId: p.id, status: 'Aberta' } });
       },
-      order = async (p, gbId, label, payment, quantity = 1) => {
+      order = async (
+        p,
+        gbId,
+        label,
+        payment,
+        quantity = 1,
+        email = 'grupo-' + label + '-' + runId + '@example.test',
+      ) => {
         const client = new Client(),
-          email = 'grupo-' + label + '-' + runId + '@example.test',
           q = await quote(client, p, quantity),
           r = await buy(
             client,
@@ -2611,6 +2617,36 @@ try {
     );
     assert.equal(await ctx.db.productionJob.count({ where: { orderId: { in: held } } }), 2);
     for (const id of held) assert.equal(await count(id, 'group-confirmed'), 1);
+    // The goal event can fail for good and leave a held order behind: the deadline close of a
+    // hold campaign that reached its goal sweeps the held orders once more.
+    const [stuck] = held;
+    await ctx.db.productionJob.deleteMany({ where: { orderId: stuck } });
+    await ctx.db.order.update({ where: { id: stuck }, data: { status: 'Aguardando grupo' } });
+    await ctx.db.outboxEvent.update({
+      where: { id: reachedRow.id },
+      data: { state: 'failed', errorCode: 'JOB_EXHAUSTED' },
+    });
+    await ctx.db.groupBuy.update({
+      where: { id: groupBuyId },
+      data: { endsAt: new Date(Date.now() - 1000) },
+    });
+    await engine.tick();
+    assert.equal(
+      (await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: groupBuyId } })).status,
+      'Concluída',
+    );
+    assert.equal(
+      await ctx.db.outboxEvent.count({
+        where: { key: 'group-close-release/' + groupBuyId, kind: 'group-buy-reached' },
+      }),
+      1,
+    );
+    await drain(async () => {
+      const o = await load(stuck);
+      return o.status === 'Confirmado' && o.job;
+    }, 'pedido retido liberado no encerramento');
+    assert.equal(await count(stuck, 'group-confirmed'), 1);
+    assert.equal(await ctx.db.productionJob.count({ where: { orderId: { in: held } } }), 2);
 
     // 2. Difference: C pays the normal price, D pays split before the goal and closes it.
     const others = (await guest.data('catalog/products')).filter(
@@ -2826,13 +2862,93 @@ try {
     const early = await campaign(earlyProduct, {
         mode: 'difference',
         goal: 2,
-        perPersonLimit: 1,
+        perPersonLimit: 2,
         groupPriceCents: normalOf(earlyProduct) - 100,
       }),
       iId = await order(earlyProduct, early.id, 'i', 'card'),
+      // The same person again as a guest, with the e-mail in another case: still one participant.
+      jId = await order(
+        earlyProduct,
+        early.id,
+        'j',
+        'card',
+        1,
+        ('grupo-i-' + runId + '@example.test').toUpperCase(),
+      ),
       campaignRefunds = () =>
         ctx.db.refund.count({ where: { part: { intent: { order: { groupBuyId: early.id } } } } });
     assert.equal((await load(iId)).status, 'Confirmado');
+    assert.equal((await load(jId)).payment.status, 'Pago');
+    assert.notEqual((await load(iId)).customerId, (await load(jId)).customerId);
+    // A known cost, to tell the owner's view from a marketing-only one.
+    const earlyStored = await ctx.db.product.findUniqueOrThrow({ where: { id: earlyProduct.id } });
+    await ctx.db.product.update({
+      where: { id: earlyProduct.id },
+      data: {
+        data: {
+          ...earlyStored.data,
+          costBySize: undefined,
+          costBreakdown: {
+            materialCents: 1234,
+            packagingCents: 0,
+            energyCents: 0,
+            laborCents: 0,
+            otherCents: 0,
+          },
+        },
+      },
+    });
+    const earlyRow = (await owner.data('admin/operations')).groupBuys.find(
+      (g) => g.id === early.id,
+    );
+    assert.equal(earlyRow.participants, 1, 'o mesmo e-mail conta uma pessoa');
+    assert.equal(earlyRow.initials.length, 1);
+    assert.equal(earlyRow.status, 'Aberta', 'a mesma pessoa não bate a meta sozinha');
+    assert.equal((await guest.data('group-buys/' + early.id)).participants, 1);
+    // Owner sees full e-mails and the cost; a marketing-only member sees neither.
+    assert(earlyRow.orders.some((o) => o.email === 'grupo-i-' + runId + '@example.test'));
+    assert.equal(earlyRow.costCents, 1234);
+    const marketingEmail = 'marketing-' + runId + '@example.test';
+    await owner.command({
+      type: 'invite.create',
+      name: 'Marketing teste',
+      email: marketingEmail,
+      role: 'production',
+      permissions: ['marketing'],
+    });
+    const invite = (await owner.data('admin/operations')).invitations.find(
+        (i) => i.email === marketingEmail,
+      ),
+      marketing = new Client();
+    assert.equal(
+      (
+        await marketing.call('team/invitations/' + invite.token + '/accept', 'POST', {
+          name: 'Marketing teste',
+          password: 'EquipeHomologacao!2026',
+        })
+      ).status,
+      204,
+    );
+    assert.equal(
+      (
+        await marketing.call('auth/login', 'POST', {
+          email: marketingEmail,
+          password: 'EquipeHomologacao!2026',
+          kind: 'staff',
+        })
+      ).status,
+      200,
+    );
+    const scoped = operationsSchema.parse(await marketing.data('admin/operations')),
+      scopedRow = scoped.groupBuys.find((g) => g.id === early.id);
+    assert.equal(scopedRow.costCents, 0);
+    assert(scopedRow.orders.length >= 2);
+    for (const o of scopedRow.orders) assert.match(o.email, /^g\*\*\*@example\.test$/i);
+    assert(
+      !JSON.stringify(scoped.groupBuys)
+        .toLowerCase()
+        .includes('grupo-i-' + runId),
+    );
     await owner.command({ type: 'groupbuy.close', id: early.id });
     const closed = await ctx.db.groupBuy.findUniqueOrThrow({ where: { id: early.id } });
     assert.equal(closed.status, 'Não fechou');

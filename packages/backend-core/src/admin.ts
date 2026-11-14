@@ -251,7 +251,20 @@ export class AdminService {
             take: 1000,
           })
         : [],
-      can('marketing') ? this.groupBuys.forAdmin() : [],
+      can('marketing')
+        ? this.groupBuys.forAdmin({
+            cost: can('catalog'),
+            // The same permissions that open the customer list.
+            contact: [
+              'customers',
+              'orders',
+              'shipping',
+              'finance',
+              'support',
+              'subscriptions',
+            ].some((p) => can(p as Permission)),
+          })
+        : [],
     ]);
     const names = new Map(users.map((u) => [u.id, u.name]));
     return {

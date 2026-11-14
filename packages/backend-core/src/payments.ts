@@ -408,7 +408,10 @@ export class PaymentsService {
             ? await this.groupBuys.onPaid(tx, order.id, new Date())
             : 'release';
         if (group !== 'release')
-          await tx.order.update({ where: { id: order.id }, data: { status: 'Aguardando grupo' } });
+          await tx.order.update({
+            where: { id: order.id },
+            data: { status: 'Aguardando grupo', version: { increment: 1 } },
+          });
         else if (stockReady) await this.production(tx, order.id);
         else {
           await tx.order.update({

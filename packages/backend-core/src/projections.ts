@@ -320,11 +320,24 @@ function groupBuyRefunds(gb: GroupBuyRow, o: GroupBuyAdminOrderRow) {
     failed = gb.mode === 'hold' && gb.status === 'Não fechou' && o.status === 'Cancelado';
   return failed ? all : all.filter((r) => r.key.startsWith('group-diff/' + o.id + '/'));
 }
+/** What the viewing team member may see of a campaign beyond its marketing data. */
+export interface GroupBuyAdminScope {
+  /** Production cost (catalog permission). */
+  cost: boolean;
+  /** Buyer e-mails in full (the permissions that open the customer list). */
+  contact: boolean;
+}
+/** `maria@dominio.com` → `m***@dominio.com`. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  return at > 0 ? email[0] + '***' + email.slice(at) : '***';
+}
 export function groupBuyAdminDto(
   gb: GroupBuyRow,
   stats: GroupBuyStats,
   orders: GroupBuyAdminOrderRow[],
   orderCount: number,
+  scope: GroupBuyAdminScope,
 ): AdminGroupBuy {
   const product = data<InventoryProduct>(gb.product.data),
     approvedCents = (o: GroupBuyAdminOrderRow) =>
@@ -336,14 +349,16 @@ export function groupBuyAdminDto(
     active: gb.active,
     startsAt: instant(gb.startsAt),
     createdAt: instant(gb.createdAt),
-    costCents: unitCostCents(
-      {
-        costCents: gb.product.costCents,
-        costBreakdown: product.costBreakdown,
-        costBySize: product.costBySize,
-      },
-      gb.sizeIndex,
-    ),
+    costCents: scope.cost
+      ? unitCostCents(
+          {
+            costCents: gb.product.costCents,
+            costBreakdown: product.costBreakdown,
+            costBySize: product.costBySize,
+          },
+          gb.sizeIndex,
+        )
+      : 0,
     locked: orderCount > 0,
     refundedCents: orders.reduce((sum, o) => sum + approvedCents(o), 0),
     orders: orders.map((o) => {
@@ -354,7 +369,7 @@ export function groupBuyAdminDto(
         orderId: o.id,
         number: 'MEO-' + String(o.number).padStart(6, '0'),
         customerName: o.customer.name,
-        email: o.customer.email,
+        email: scope.contact ? o.customer.email : maskEmail(o.customer.email),
         quantity: snapshot?.quantity ?? (o.items.reduce((n, i) => n + i.quantity, 0) || 1),
         paidUnitCents: snapshot?.paidUnitCents ?? o.items[0]?.unitCents ?? 0,
         status: o.status as AdminGroupBuy['orders'][number]['status'],
