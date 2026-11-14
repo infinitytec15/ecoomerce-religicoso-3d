@@ -19,6 +19,7 @@ import {
 } from '@/lib/domain/admin-schemas';
 import { enqueueProduction } from '@/lib/domain/commerce';
 import { today, uid } from '@/lib/domain/format';
+import { applyCrmCommand } from './crm';
 export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Session) {
   switch (c.type) {
     case 'product.archive': {
@@ -251,6 +252,6 @@ export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Sessi
       return true;
     }
     default:
-      return false;
+      return applyCrmCommand(s, c);
   }
 }

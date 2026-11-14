@@ -1,4 +1,5 @@
 import type { Operations, Session } from '@/lib/domain/types';
+import { seedContacts, seedCrm } from './crm';
 import { createSeed, DEMO_EMAIL, STAFF_PERMISSIONS } from './seed';
 export interface DemoStorage {
   load(): Operations;
@@ -49,6 +50,10 @@ export class BrowserDemoStorage implements DemoStorage {
             groupBuys: state.groupBuys?.length ? state.groupBuys : seed.groupBuys,
             // A saved empty list is respected; only a state from before stories existed gets the demo one.
             stories: Array.isArray(state.stories) ? state.stories : seed.stories,
+            // A state from before the CRM existed (no contacts) gets the demo contacts and snapshot.
+            ...((state as { crmContacts?: unknown }).crmContacts
+              ? {}
+              : { crm: seedCrm(state.clients), crmContacts: seedContacts(state.clients) }),
           };
         }
       }

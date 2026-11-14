@@ -1,16 +1,21 @@
 import { z } from 'zod';
 import {
+  contactImportSchema,
   groupBuyPublicSchema,
+  marketingContactRowSchema,
+  marketingStatusSchema,
   myReviewSchema,
   productReviewsSchema,
   reviewInputSchema,
   storyHighlightPublicSchema,
   storyEventSchema,
+  type ContactImportInput,
+  type Segment,
   type StoryEvent,
   type ReviewInput,
 } from '@maos-em-oracao/contracts';
 import { invitationSchema } from '@/lib/domain/admin-schemas';
-import { ApiError, type CommerceGateway } from './contracts';
+import { ApiError, type CommerceGateway, type CrmContactsQuery } from './contracts';
 import {
   cartItemSchema,
   accountSchema,
@@ -102,6 +107,13 @@ export class HttpClient {
     return parsed.data.data;
   }
 }
+const count = z.number().int().min(0),
+  crmPreviewSchema = z.object({ total: count, consent: count, legitimateInterest: count }),
+  crmContactsPageSchema = z.object({
+    items: z.array(marketingContactRowSchema),
+    next: z.string().optional(),
+  }),
+  crmImportSchema = z.object({ created: count, updated: count, keptUnsubscribed: count });
 const message = z.object({ message: z.string() }),
   voidSchema = z.unknown().transform(() => undefined);
 export class HttpGateway implements CommerceGateway {
@@ -288,6 +300,42 @@ export class HttpGateway implements CommerceGateway {
     return this.client.request('newsletter/unsubscribe', voidSchema, {
       method: 'POST',
       body: { token },
+    });
+  }
+  marketingStatus() {
+    return this.client.request('account/marketing', marketingStatusSchema);
+  }
+  setMarketing(subscribed: boolean) {
+    return this.client.request('account/marketing', voidSchema, {
+      method: 'PUT',
+      body: { subscribed },
+    });
+  }
+  marketingUnsubscribe(input: { token: string; campaignId?: string }) {
+    return this.client.request('marketing/unsubscribe', voidSchema, {
+      method: 'POST',
+      body: input,
+    });
+  }
+  crmPreview(segment: Segment) {
+    return this.client.request('admin/crm/preview', crmPreviewSchema, {
+      method: 'POST',
+      body: { segment },
+    });
+  }
+  crmContacts(query: CrmContactsQuery = {}) {
+    const params = new URLSearchParams(
+      Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1])),
+    );
+    return this.client.request(
+      'admin/crm/contacts' + (params.size ? '?' + params : ''),
+      crmContactsPageSchema,
+    );
+  }
+  crmImport(input: ContactImportInput) {
+    return this.client.request('admin/crm/contacts/import', crmImportSchema, {
+      method: 'POST',
+      body: contactImportSchema.parse(input),
     });
   }
   admin() {

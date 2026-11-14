@@ -44,6 +44,12 @@ export function createLazyDemoGateway(): CommerceGateway {
     deletePrayer: async (...args) => (await load()).deletePrayer(...args),
     newsletter: async (...args) => (await load()).newsletter(...args),
     unsubscribeNewsletter: async (...args) => (await load()).unsubscribeNewsletter(...args),
+    marketingStatus: async (...args) => (await load()).marketingStatus(...args),
+    setMarketing: async (...args) => (await load()).setMarketing(...args),
+    marketingUnsubscribe: async (...args) => (await load()).marketingUnsubscribe(...args),
+    crmPreview: async (...args) => (await load()).crmPreview(...args),
+    crmContacts: async (...args) => (await load()).crmContacts(...args),
+    crmImport: async (...args) => (await load()).crmImport(...args),
     admin: async (...args) => (await load()).admin(...args),
     adminCommand: async (...args) => (await load()).adminCommand(...args),
   };

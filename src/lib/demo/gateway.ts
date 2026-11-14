@@ -11,10 +11,15 @@ import {
   type AdminReview,
   type ReviewInput,
 } from '@maos-em-oracao/contracts';
-import { storyEventSchema, type StoryEvent } from '@maos-em-oracao/contracts';
+import {
+  storyEventSchema,
+  type ContactImportInput,
+  type Segment,
+  type StoryEvent,
+} from '@maos-em-oracao/contracts';
 import { publicStories, recordStoryEvent } from '@/lib/domain/stories';
 import type { CommerceGateway } from '@/lib/api/contracts';
-import { ApiError, requireValue } from '@/lib/api/contracts';
+import { ApiError, requireValue, type CrmContactsQuery } from '@/lib/api/contracts';
 import type {
   Address,
   AdminCommand,
@@ -106,6 +111,15 @@ function withRating<T extends { id: string }>(state: Operations, product: T) {
   return { ...product, rating: { average, count } };
 }
 import { applyAdminExtension } from './admin-commands';
+import {
+  importContacts,
+  listContacts,
+  marketingStatus,
+  previewSegment,
+  registerConsent,
+  setMarketing,
+  unsubscribeByToken,
+} from './crm';
 export class DemoGateway implements CommerceGateway {
   readonly mode = 'demo' as const;
   constructor(private storage: DemoStorage = new MemoryDemoStorage()) {}
@@ -251,16 +265,19 @@ export class DemoGateway implements CommerceGateway {
         demo: true,
       };
     } else {
-      const customer = this.mutate((s) =>
-        ensureCustomer(
+      const customer = this.mutate((s) => {
+        const found = ensureCustomer(
           s,
           normalizeAddress({
             ...s.clients.find((c) => c.email.toLowerCase() === data.email.toLowerCase()),
             email: data.email,
             ...(data.name ? { name: data.name } : {}),
           }),
-        ),
-      );
+        );
+        if (data.register && data.marketingOptIn)
+          registerConsent(s, { email: found.email, name: found.name }, 'register');
+        return found;
+      });
       session = {
         id: customer.id,
         name: customer.name,
@@ -351,7 +368,16 @@ export class DemoGateway implements CommerceGateway {
   }
   async checkout(input: CheckoutInput): Promise<CheckoutResult> {
     checkoutSchema.parse(input);
-    const result = this.mutate((state) => createShopOrder(state, input, this.storage.session()));
+    const result = this.mutate((state) => {
+      const created = createShopOrder(state, input, this.storage.session());
+      if (input.marketingOptIn)
+        registerConsent(
+          state,
+          { email: input.address.email, name: input.address.name },
+          'checkout',
+        );
+      return created;
+    });
     const state = this.read(),
       order = requireValue(state.orders.find((o) => o.id === result.orderId)),
       client = requireValue(state.clients.find((c) => c.id === order.customerId));
@@ -628,6 +654,34 @@ export class DemoGateway implements CommerceGateway {
       s.newsletter = null;
     });
   }
+  async marketingStatus() {
+    const session = this.customerSession();
+    return marketingStatus(this.read(), session.email);
+  }
+  async setMarketing(subscribed: boolean) {
+    const session = this.customerSession();
+    this.mutate((s) => setMarketing(s, { email: session.email, name: session.name }, subscribed));
+  }
+  async marketingUnsubscribe(input: { token: string; campaignId?: string }) {
+    this.mutate((s) => unsubscribeByToken(s, input.token));
+  }
+  private marketingStaff() {
+    const session = this.staffSession();
+    if (session.role !== 'admin' && !session.permissions.includes('marketing'))
+      throw new ApiError('FORBIDDEN', 'Seu perfil não permite esta operação.', 403);
+  }
+  async crmPreview(segment: Segment) {
+    this.marketingStaff();
+    return previewSegment(this.read(), segment);
+  }
+  async crmContacts(query: CrmContactsQuery = {}) {
+    this.marketingStaff();
+    return listContacts(this.read(), query);
+  }
+  async crmImport(input: ContactImportInput) {
+    this.marketingStaff();
+    return this.mutate((s) => importContacts(s, input));
+  }
   async admin() {
     this.staffSession();
     return this.read();
@@ -694,6 +748,7 @@ export class DemoGateway implements CommerceGateway {
           campaign: 'marketing',
           groupbuy: 'marketing',
           story: 'marketing',
+          crm: 'marketing',
           team: 'team',
           invite: 'team',
           workspace: 'settings',

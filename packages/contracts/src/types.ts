@@ -390,6 +390,8 @@ export interface CheckoutInput {
   shippingServiceId?: string;
   /** Joins this group-buy campaign; the order must be its single item. */
   groupBuyId?: string;
+  /** Opt-in to e-mail marketing given at checkout. */
+  marketingOptIn?: boolean;
 }
 export interface SubscribeInput {
   profile: FaithProfile;

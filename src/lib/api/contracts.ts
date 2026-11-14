@@ -1,8 +1,12 @@
 import type {
+  ContactImportInput,
   GroupBuyPublic,
+  MarketingContactRow,
+  MarketingStatus,
   MyReview,
   ProductReviews,
   ReviewInput,
+  Segment,
   StoryEvent,
   StoryHighlightPublic,
 } from '@maos-em-oracao/contracts';
@@ -24,6 +28,25 @@ import type {
   SubscriptionChange,
   Address,
 } from '@/lib/domain/types';
+export interface CrmPreview {
+  total: number;
+  consent: number;
+  legitimateInterest: number;
+}
+export interface CrmContactsQuery {
+  q?: string;
+  tag?: string;
+  cursor?: string;
+}
+export interface CrmContactsPage {
+  items: MarketingContactRow[];
+  next?: string;
+}
+export interface CrmImportResult {
+  created: number;
+  updated: number;
+  keptUnsubscribed: number;
+}
 export interface CommerceGateway {
   readonly mode: 'demo' | 'http';
   catalog(query?: CatalogQuery): Promise<Product[]>;
@@ -81,6 +104,17 @@ export interface CommerceGateway {
   unsubscribeNewsletter(token?: string): Promise<void>;
   productReviews(productId: string, rating?: number): Promise<ProductReviews>;
   createReview(input: ReviewInput, idempotencyKey: string): Promise<MyReview>;
+  /** The signed-in customer's e-mail marketing choice. */
+  marketingStatus(): Promise<MarketingStatus>;
+  setMarketing(subscribed: boolean): Promise<void>;
+  /** Public unsubscribe link: the token comes from the e-mail. */
+  marketingUnsubscribe(input: { token: string; campaignId?: string }): Promise<void>;
+  /** Admin (marketing permission): audience size for a segment. */
+  crmPreview(segment: Segment): Promise<CrmPreview>;
+  /** Admin: contacts, 50 per page; pass the previous `next` as `cursor`. */
+  crmContacts(query?: CrmContactsQuery): Promise<CrmContactsPage>;
+  /** Admin: imports ONE chunk of rows (the caller splits large files). */
+  crmImport(input: ContactImportInput): Promise<CrmImportResult>;
   admin(): Promise<Operations>;
   adminCommand(command: AdminCommand, idempotencyKey?: string): Promise<void>;
   invitation(token: string): Promise<import('@/lib/domain/types').TeamInvitation>;
