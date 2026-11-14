@@ -4,8 +4,17 @@ const HLS_MIME = 'application/vnd.apple.mpegurl';
 
 const fail = (video: HTMLVideoElement) => video.dispatchEvent(new Event('error'));
 
-/** Stops the download without firing `error` (an empty `src` would). */
-function detach(video: HTMLVideoElement) {
+/**
+ * The latest attach on each element. A cleanup that resolves late (StrictMode's double effect,
+ * or a fast video change) must not detach a source put there by a later call.
+ */
+const owners = new WeakMap<HTMLVideoElement, number>();
+let lastToken = 0;
+
+/** Stops the download without firing `error` (an empty `src` would), if `token` still owns it. */
+function detach(video: HTMLVideoElement, token: number) {
+  if (owners.get(video) !== token) return;
+  owners.delete(video);
   video.removeAttribute('src');
   video.load();
 }
@@ -21,9 +30,11 @@ export async function attachSource(
   source: StorySource,
   signal?: AbortSignal,
 ): Promise<() => void> {
+  const token = ++lastToken;
+  owners.set(video, token);
   if (source.type === 'file' || video.canPlayType(HLS_MIME) !== '') {
     video.src = source.src;
-    return () => detach(video);
+    return () => detach(video, token);
   }
   let Hls: typeof import('hls.js').default;
   try {

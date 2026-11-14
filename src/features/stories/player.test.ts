@@ -44,6 +44,25 @@ describe('attachSource', () => {
     expect(h.Hls).not.toHaveBeenCalled();
   });
 
+  it('a limpeza de uma chamada antiga não tira a fonte de uma chamada mais nova', async () => {
+    const video = videoWith('maybe'),
+      load = vi.spyOn(video, 'load').mockImplementation(() => {});
+    const first = await attachSource(video, { type: 'file', src: '/assets/stories/a.mp4' });
+    const second = await attachSource(video, { type: 'file', src: '/assets/stories/a.mp4' });
+    first();
+    expect(video.getAttribute('src')).toBe('/assets/stories/a.mp4');
+    const third = await attachSource(video, { type: 'file', src: '/assets/stories/b.mp4' });
+    second();
+    expect(video.getAttribute('src')).toBe('/assets/stories/b.mp4');
+    const native = await attachSource(video, { type: 'hls', src: playlist });
+    third();
+    expect(video.src).toBe(playlist);
+    expect(load).not.toHaveBeenCalled();
+    native();
+    expect(video.hasAttribute('src')).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it('HLS nativo usa o src sem carregar o hls.js', async () => {
     const video = videoWith('maybe');
     await attachSource(video, { type: 'hls', src: playlist });
