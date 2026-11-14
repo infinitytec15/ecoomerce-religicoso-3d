@@ -13,20 +13,28 @@ import {
   canReceiveMarketing,
   contactImportSchema,
   crmSettingsSchema,
-  defaultCrmSettings,
+  marketingBlockInputSchema,
+  marketingCampaignInputSchema,
   normalizeTag,
   segmentSchema,
   tagSchema,
   type AdminCrm,
+  type AdminMarketingCampaign,
+  type CampaignMetrics,
+  type CampaignState,
   type ConsentSource,
   type CrmSettings,
   type LegalBasis,
   type MarketingContactRow,
   type MarketingStatus,
+  type MediaAsset,
   type Segment,
   type SegmentRule,
 } from '@maos-em-oracao/contracts';
-import type { Context } from './context';
+import type { EmailMessage, RenderedBlock } from '@maos-em-oracao/emails';
+import { crmSettings, rateLimit, type Context } from './context';
+import { CatalogService } from './catalog';
+import { Notifications } from './notifications';
 import { normalizeEmail, readSignedToken, recipientHash, signedToken } from './security';
 import {
   type Actor,
@@ -41,6 +49,7 @@ import {
 
 type Db = PrismaClient | Transaction;
 type ContactRow = Prisma.MarketingContactGetPayload<object>;
+type CampaignRow = Prisma.MarketingCampaignGetPayload<object>;
 /** One audience line per normalized e-mail; `contactId` is null for a buyer without contact. */
 export interface AudienceRow {
   contactId: string | null;
@@ -59,7 +68,14 @@ export const contactInputSchema = z.object({
 const IMPORT_BATCH = 500,
   CONTACTS_PAGE = 50,
   AUDIENCE_PAGE = 1000,
+  FANOUT_PAGE = 500,
+  CAMPAIGN_LIST = 100,
+  TESTS_PER_HOUR = 20,
   FIVE_YEARS = 5 * 365.25 * 86400000;
+const CAMPAIGN_MISSING = 'Campanha não encontrada.';
+const locked = () =>
+  new DomainError('CAMPAIGN_LOCKED', 'Esta campanha já foi agendada ou enviada.', 422);
+const invalidState = (message: string) => new DomainError('CAMPAIGN_STATE', message, 422);
 /** Paid orders only: the same "comprador" rule for legitimate interest and purchase rules. */
 const purchases = Prisma.sql`
   SELECT o.id, o."totalCents", o."createdAt", o."groupBuyId",
@@ -69,14 +85,35 @@ const purchases = Prisma.sql`
 const uniqueTags = (tags: string[]) => [...new Set(tags.map(normalizeTag))];
 const iso = (value: Date | null) => (value ? value.toISOString() : null);
 
+function campaignDto(c: CampaignRow, metrics: CampaignMetrics): AdminMarketingCampaign {
+  return {
+    id: c.id,
+    name: c.name,
+    subject: c.subject,
+    previewText: c.previewText,
+    segment: data<AdminMarketingCampaign['segment']>(c.segment),
+    blocks: data<AdminMarketingCampaign['blocks']>(c.blocks),
+    state: c.state as CampaignState,
+    ...(c.scheduledAt ? { scheduledAt: c.scheduledAt.toISOString() } : {}),
+    ...(c.startedAt ? { startedAt: c.startedAt.toISOString() } : {}),
+    ...(c.finishedAt ? { finishedAt: c.finishedAt.toISOString() } : {}),
+    createdAt: c.createdAt.toISOString(),
+    metrics,
+  };
+}
+
 /** E-mail marketing contacts (LGPD consent and unsubscribe), import, tags and audience. */
 export class CrmService {
-  constructor(private ctx: Context) {}
+  private catalog: CatalogService;
+  private mail: Notifications;
+  constructor(private ctx: Context) {
+    this.catalog = new CatalogService(ctx);
+    this.mail = new Notifications(ctx);
+  }
 
-  /** AppSetting `crm` over the defaults; a missing row means the defaults. */
-  async settings(db: Db = this.ctx.db): Promise<CrmSettings> {
-    const row = await db.appSetting.findUnique({ where: { key: 'crm' } });
-    return { ...defaultCrmSettings, ...(row ? data<Partial<CrmSettings>>(row.data) : {}) };
+  /** AppSetting `crm` over the defaults, validated field by field (see `crmSettings`). */
+  settings(db: Db = this.ctx.db): Promise<CrmSettings> {
+    return crmSettings(db);
   }
 
   async saveSettings(actor: Actor | null, value: unknown): Promise<void> {
@@ -435,11 +472,11 @@ export class CrmService {
     }
   }
 
-  /** Settings, tags and totals for the admin snapshot (campaigns come later). */
-  async snapshot(): Promise<Omit<AdminCrm, 'campaigns'>> {
+  /** Admin snapshot: settings, the latest campaigns with metrics, tags and totals. */
+  async snapshot(): Promise<AdminCrm> {
     const settings = await this.settings(),
       db = this.ctx.db,
-      [contacts, eligible, unsubscribed, tags] = await Promise.all([
+      [contacts, eligible, unsubscribed, tags, campaigns] = await Promise.all([
         db.marketingContact.count(),
         db.marketingContact.count({
           where: {
@@ -455,8 +492,417 @@ export class CrmService {
           SELECT t.tag, count(*)::int AS count
           FROM "MarketingContact" mc, unnest(mc.tags) AS t(tag)
           GROUP BY t.tag ORDER BY count(*) DESC, t.tag LIMIT 200`,
+        db.marketingCampaign.findMany({ orderBy: { createdAt: 'desc' }, take: CAMPAIGN_LIST }),
+      ]),
+      metrics = await this.metrics(campaigns.map((c) => c.id));
+    return {
+      settings,
+      campaigns: campaigns.map((c) => campaignDto(c, metrics[c.id]!)),
+      tags,
+      totals: { contacts, eligible, unsubscribed },
+    };
+  }
+
+  // ------------------------------------------------------------------ campanhas
+
+  /** Creates a draft, or edits one that is still a draft. */
+  async saveCampaign(actor: Actor | null, value: unknown): Promise<void> {
+    const a = permit(actor, 'marketing'),
+      input = marketingCampaignInputSchema.parse(value),
+      fields = {
+        name: input.name,
+        subject: input.subject,
+        previewText: input.previewText,
+        segment: json(input.segment),
+        blocks: json(input.blocks),
+      };
+    await transaction(this.ctx.db, async (tx) => {
+      if (input.id) {
+        await lock(tx, 'crm-campaign/' + input.id);
+        const current = requireValue(
+          await tx.marketingCampaign.findUnique({ where: { id: input.id } }),
+          CAMPAIGN_MISSING,
+        );
+        if (current.state !== 'Rascunho') throw locked();
+        await tx.marketingCampaign.update({ where: { id: input.id }, data: fields });
+        await audit(tx, a.id, 'Campanha de e-mail salva', input.id);
+        return;
+      }
+      const saved = await tx.marketingCampaign.create({ data: { ...fields, createdBy: a.id } });
+      await audit(tx, a.id, 'Campanha de e-mail salva', saved.id);
+    });
+  }
+
+  async deleteCampaign(actor: Actor | null, id: string): Promise<void> {
+    const a = permit(actor, 'marketing');
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'crm-campaign/' + id);
+      const current = requireValue(
+        await tx.marketingCampaign.findUnique({ where: { id } }),
+        CAMPAIGN_MISSING,
+      );
+      if (current.state !== 'Rascunho') throw locked();
+      await tx.marketingCampaign.delete({ where: { id } });
+      await audit(tx, a.id, 'Campanha de e-mail excluída', id);
+    });
+  }
+
+  /**
+   * Schedules a draft (or a campaign cancelled before any send) for `at`, or now. The audience
+   * must not be empty and every block must resolve (product visible, image ready, coupon active).
+   */
+  async scheduleCampaign(actor: Actor | null, id: string, at: string | null): Promise<void> {
+    const a = permit(actor, 'marketing'),
+      now = Date.now(),
+      when = at ? new Date(at) : new Date(now);
+    if (!Number.isFinite(when.getTime()) || when.getTime() < now - 60000)
+      throw new DomainError('SCHEDULE_PAST', 'Escolha um horário futuro.', 422);
+    const campaign = requireValue(
+      await this.ctx.db.marketingCampaign.findUnique({ where: { id } }),
+      CAMPAIGN_MISSING,
+    );
+    await this.assertSchedulable(this.ctx.db, campaign);
+    if (!(await this.preview(a, campaign.segment)).total)
+      throw new DomainError('EMPTY_AUDIENCE', 'Nenhum contato pode receber esta campanha.', 422);
+    await this.resolveBlocks(campaign.blocks, { strict: true });
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'crm-campaign/' + id);
+      const current = requireValue(
+        await tx.marketingCampaign.findUnique({ where: { id } }),
+        CAMPAIGN_MISSING,
+      );
+      await this.assertSchedulable(tx, current);
+      if (current.updatedAt.getTime() !== campaign.updatedAt.getTime())
+        throw invalidState('A campanha mudou enquanto era conferida. Agende de novo.');
+      await tx.marketingCampaign.update({
+        where: { id },
+        data: {
+          state: 'Agendada',
+          scheduledAt: when,
+          startedAt: null,
+          preparedAt: null,
+          finishedAt: null,
+          audienceCount: 0,
+          sent: 0,
+        },
+      });
+      await audit(tx, a.id, 'Campanha de e-mail agendada', id);
+    });
+  }
+
+  /** Stops a scheduled or sending campaign; whatever is still waiting in the queue is dropped. */
+  async cancelCampaign(actor: Actor | null, id: string): Promise<void> {
+    const a = permit(actor, 'marketing');
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'crm-campaign/' + id);
+      const current = requireValue(
+        await tx.marketingCampaign.findUnique({ where: { id } }),
+        CAMPAIGN_MISSING,
+      );
+      if (current.state !== 'Agendada' && current.state !== 'Enviando')
+        throw invalidState('Só uma campanha agendada ou em envio pode ser cancelada.');
+      await tx.marketingCampaign.update({
+        where: { id },
+        data: { state: 'Cancelada', finishedAt: new Date() },
+      });
+      await tx.outboxEvent.updateMany({
+        where: { aggregateId: id, state: 'pending' },
+        data: { state: 'cancelled', errorCode: 'CAMPAIGN_CANCELLED' },
+      });
+      await audit(tx, a.id, 'Campanha de e-mail cancelada', id);
+    });
+  }
+
+  /**
+   * Sends the campaign as it is to the actor and up to 3 more addresses. It never touches the
+   * campaign: the outbox is not tied to it (aggregate `crm-test/<id>`) and the unsubscribe link
+   * uses the fixed id `test`, which matches no contact.
+   */
+  async testCampaign(actor: Actor | null, id: string, extra: string[]): Promise<void> {
+    const a = permit(actor, 'marketing'),
+      others = z.array(z.email().max(254)).max(CRM_LIMITS.testRecipients).parse(extra),
+      recipients = [...new Set([a.email, ...others].map(normalizeEmail))];
+    await rateLimit(this.ctx, 'crm-test/' + a.id, TESTS_PER_HOUR, 3600000);
+    const campaign = requireValue(
+        await this.ctx.db.marketingCampaign.findUnique({ where: { id } }),
+        CAMPAIGN_MISSING,
+      ),
+      [blocks, settings] = await Promise.all([
+        this.resolveBlocks(campaign.blocks, { strict: true }),
+        this.settings(),
+      ]),
+      key = 'crm-test/' + id + '/' + Date.now(),
+      message = this.message(campaign, blocks, settings, 'teste', this.unsubscribeLinks('test'));
+    await transaction(this.ctx.db, async (tx) => {
+      for (const to of recipients)
+        await this.mail.email(tx, key, 'crm-test/' + id, to, message, { marketingTest: true });
+    });
+  }
+
+  /**
+   * Blocks as the e-mail renders them. Images must be ready, products visible in the store
+   * (same rule as the catalog) and coupons active. `strict` (scheduling, tests) throws on the
+   * first invalid item; otherwise (the send) it drops it, and drops a products block left empty.
+   */
+  async resolveBlocks(blocks: unknown, { strict }: { strict: boolean }): Promise<RenderedBlock[]> {
+    const input = z.array(marketingBlockInputSchema).parse(blocks),
+      base = this.ctx.config.PUBLIC_WEB_URL,
+      assetIds = input.flatMap((b) => (b.type === 'image' ? [b.assetId] : [])),
+      codes = input.flatMap((b) => (b.type === 'coupon' ? [b.code] : [])),
+      [assets, products, coupons] = await Promise.all([
+        assetIds.length
+          ? this.ctx.db.mediaAsset.findMany({
+              where: { id: { in: assetIds }, kind: 'image', state: 'ready' },
+            })
+          : [],
+        this.catalog.visible([
+          ...new Set(input.flatMap((b) => (b.type === 'products' ? b.productIds : []))),
+        ]),
+        codes.length
+          ? this.ctx.db.coupon.findMany({
+              where: { code: { in: codes }, active: true },
+              select: { code: true },
+            })
+          : [],
       ]);
-    return { settings, tags, totals: { contacts, eligible, unsubscribed } };
+    const images = new Map(assets.map((a) => [a.id, data<Partial<MediaAsset>>(a.data).url])),
+      active = new Set(coupons.map((c) => c.code)),
+      invalid = (code: string, message: string): RenderedBlock[] => {
+        if (strict) throw new DomainError(code, message, 422);
+        return [];
+      };
+    return input.flatMap((block): RenderedBlock[] => {
+      switch (block.type) {
+        case 'text':
+          return [{ type: 'text', style: block.style, text: block.text }];
+        case 'image': {
+          const url = images.get(block.assetId);
+          if (!url) return invalid('INVALID_IMAGE', 'Envie uma imagem pronta.');
+          return [
+            {
+              type: 'image',
+              src: new URL(url, base).href,
+              alt: block.alt,
+              ...(block.href ? { href: block.href } : {}),
+            },
+          ];
+        }
+        case 'products': {
+          const items = block.productIds.flatMap((id) => {
+            const p = products.get(id);
+            return p
+              ? [
+                  {
+                    name: p.name,
+                    priceCents: p.priceCents,
+                    imageUrl: new URL(p.image || '/', base).href,
+                    url: base + '/produto/' + p.id,
+                  },
+                ]
+              : [];
+          });
+          if (items.length < block.productIds.length && strict)
+            return invalid('INVALID_PRODUCT', 'Escolha peças existentes e visíveis na loja.');
+          return items.length ? [{ type: 'products', items }] : [];
+        }
+        case 'button':
+          return [{ type: 'button', label: block.label, href: block.href }];
+        case 'coupon':
+          return active.has(block.code)
+            ? [{ type: 'coupon', code: block.code, text: block.text }]
+            : invalid('INVALID_COUPON', 'Cupom inexistente ou inativo.');
+      }
+    });
+  }
+
+  /**
+   * Outbox job `crm-campaign`: one e-mail per audience line, spaced by the hourly limit from
+   * `startedAt`. The index of a line is its position in the e-mail order, so a repeated run
+   * computes the same times, and the outbox key keeps it from creating anything twice.
+   */
+  async fanout(id: string): Promise<void> {
+    const db = this.ctx.db,
+      campaign = requireValue(
+        await db.marketingCampaign.findUnique({ where: { id } }),
+        CAMPAIGN_MISSING,
+      ),
+      startedAt = campaign.startedAt ?? new Date();
+    const started = await db.marketingCampaign.updateMany({
+      where: { id, state: { in: ['Agendada', 'Enviando'] } },
+      data: { state: 'Enviando', startedAt },
+    });
+    if (!started.count) return;
+    const settings = await this.settings(),
+      blocks = await this.resolveBlocks(campaign.blocks, { strict: false });
+    if (!blocks.length) {
+      const now = new Date();
+      await db.marketingCampaign.updateMany({
+        where: { id, state: 'Enviando' },
+        data: { state: 'Parcial', preparedAt: now, finishedAt: now },
+      });
+      return;
+    }
+    const audience = this.audienceSql(segmentSchema.parse(campaign.segment), settings),
+      spacing = 3600000 / settings.hourlyLimit;
+    let index = 0;
+    for (let after: string | null = null; ;) {
+      const current = await db.marketingCampaign.findUnique({
+        where: { id },
+        select: { state: true },
+      });
+      if (current?.state !== 'Enviando') return;
+      // Renews the job's 2-minute lease, so a large audience is not prepared twice at once.
+      await db.outboxEvent.updateMany({
+        where: { key: 'crm-campaign/' + id, state: 'processing' },
+        data: { availableAt: new Date(Date.now() + 120000) },
+      });
+      const page = await this.audiencePage(db, audience, after, FANOUT_PAGE);
+      for (const row of page.rows) {
+        const availableAt = new Date(startedAt.getTime() + index++ * spacing);
+        await transaction(db, async (tx) => {
+          const contactId = await this.audienceContact(tx, row);
+          await this.mail.email(
+            tx,
+            'crm/' + id + '/' + contactId,
+            id,
+            row.email,
+            this.message(
+              campaign,
+              blocks,
+              settings,
+              row.name,
+              this.unsubscribeLinks(contactId, id),
+            ),
+            { contactId, marketingCampaignId: id },
+            { availableAt },
+          );
+        });
+      }
+      if (!page.next) break;
+      after = page.next;
+    }
+    await db.marketingCampaign.updateMany({
+      where: { id, state: 'Enviando' },
+      data: { audienceCount: index, preparedAt: new Date() },
+    });
+  }
+
+  /** Per campaign: audience, sent, delivery outcome, unique opens/clicks and unsubscribes. */
+  async metrics(ids: string[]): Promise<Record<string, CampaignMetrics>> {
+    if (!ids.length) return {};
+    const db = this.ctx.db,
+      [states, engagement, unsubscribed, campaigns] = await Promise.all([
+        db.outboxEvent.groupBy({
+          by: ['aggregateId', 'state'],
+          where: { kind: 'email', aggregateId: { in: ids } },
+          _count: { _all: true },
+        }),
+        db.$queryRaw<{ id: string; type: string; count: number }[]>`
+          SELECT o."aggregateId" AS id, e.type, count(DISTINCT e."providerId")::int AS count
+          FROM "EmailDeliveryEvent" e JOIN "OutboxEvent" o ON o."providerId" = e."providerId"
+          WHERE o.kind = 'email' AND o."aggregateId" IN (${Prisma.join(ids)})
+            AND e.type IN ('email.opened', 'email.clicked')
+          GROUP BY 1, 2`,
+        db.marketingContact.groupBy({
+          by: ['unsubscribedCampaignId'],
+          where: { unsubscribedCampaignId: { in: ids } },
+          _count: { _all: true },
+        }),
+        db.marketingCampaign.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, audienceCount: true, sent: true },
+        }),
+      ]);
+    const result: Record<string, CampaignMetrics> = Object.fromEntries(
+      campaigns.map((c) => [
+        c.id,
+        {
+          audience: c.audienceCount,
+          sent: c.sent,
+          delivered: 0,
+          opened: 0,
+          clicked: 0,
+          bounced: 0,
+          unsubscribed: 0,
+          cancelled: 0,
+        },
+      ]),
+    );
+    for (const row of states) {
+      const m = result[row.aggregateId];
+      if (!m) continue;
+      if (row.state === 'delivered') m.delivered += row._count._all;
+      else if (['bounced', 'complained', 'suppressed'].includes(row.state))
+        m.bounced += row._count._all;
+      else if (row.state === 'cancelled') m.cancelled += row._count._all;
+    }
+    for (const row of engagement) {
+      const m = result[row.id];
+      if (m) m[row.type === 'email.opened' ? 'opened' : 'clicked'] += row.count;
+    }
+    for (const row of unsubscribed) {
+      const m = row.unsubscribedCampaignId ? result[row.unsubscribedCampaignId] : undefined;
+      if (m) m.unsubscribed += row._count._all;
+    }
+    return result;
+  }
+
+  private async assertSchedulable(db: Db, campaign: CampaignRow) {
+    if (
+      (campaign.state !== 'Rascunho' && campaign.state !== 'Cancelada') ||
+      (await db.outboxEvent.findFirst({
+        where: { aggregateId: campaign.id },
+        select: { id: true },
+      }))
+    )
+      throw invalidState('Esta campanha não pode ser agendada de novo.');
+  }
+
+  /**
+   * The contact behind an audience line. A legitimate-interest buyer without contact gets one,
+   * and a contact without basis gets the legitimate-interest basis; the unsubscribe is never
+   * touched, so the worker still drops anyone who left meanwhile.
+   */
+  private async audienceContact(tx: Transaction, row: AudienceRow): Promise<string> {
+    if (row.contactId && row.basis !== 'legitimate-interest') return row.contactId;
+    const id =
+      row.contactId ??
+      (
+        await tx.marketingContact.upsert({
+          where: { email: row.email },
+          create: {
+            email: row.email,
+            name: row.name.slice(0, 100),
+            legalBasis: 'legitimate-interest',
+          },
+          update: {},
+          select: { id: true },
+        })
+      ).id;
+    await tx.marketingContact.updateMany({
+      where: { id, legalBasis: null },
+      data: { legalBasis: 'legitimate-interest' },
+    });
+    return id;
+  }
+
+  private message(
+    campaign: CampaignRow,
+    blocks: RenderedBlock[],
+    settings: CrmSettings,
+    name: string,
+    links: { unsubscribeUrl: string; oneClickUnsubscribeUrl: string },
+  ): EmailMessage {
+    return {
+      kind: 'marketing',
+      name: name.replace(/[\r\n]+/g, ' ').trim() || 'pessoa querida',
+      actionUrl: this.ctx.config.PUBLIC_WEB_URL,
+      subject: campaign.subject,
+      previewText: campaign.previewText,
+      blocks,
+      footerText: settings.footerText,
+      ...links,
+    };
   }
 
   private ruleSql(rule: SegmentRule): Prisma.Sql {

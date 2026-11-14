@@ -1,7 +1,13 @@
 import { Redis } from 'ioredis';
 import { createDatabase, type PrismaClient, type Transaction } from '@maos-em-oracao/database';
 import { createPayments, createShipping, createMedia } from '@maos-em-oracao/integrations';
-import type { StoreSettings, WorkspaceSettings } from '@maos-em-oracao/contracts';
+import {
+  crmSettingsSchema,
+  defaultCrmSettings,
+  type CrmSettings,
+  type StoreSettings,
+  type WorkspaceSettings,
+} from '@maos-em-oracao/contracts';
 import { loadConfig, type BackendConfig } from './config';
 import { data, DomainError } from './shared';
 export interface Context {
@@ -42,6 +48,29 @@ export async function settings(db: PrismaClient | Transaction) {
   return {
     store: data<StoreSettings>(store.data),
     workspace: data<WorkspaceSettings>(workspace.data),
+  };
+}
+/**
+ * E-mail marketing settings (AppSetting `crm`). A missing row is the defaults; a stored value
+ * that fails the schema falls back to the default field by field, so one bad field never
+ * breaks the senders.
+ */
+export async function crmSettings(db: PrismaClient | Transaction): Promise<CrmSettings> {
+  const row = await db.appSetting.findUnique({ where: { key: 'crm' } }),
+    stored: Record<string, unknown> =
+      row?.data && typeof row.data === 'object' && !Array.isArray(row.data)
+        ? (row.data as Record<string, unknown>)
+        : {},
+    field = <K extends keyof CrmSettings>(key: K): CrmSettings[K] => {
+      const parsed = crmSettingsSchema.shape[key].safeParse(stored[key]);
+      return parsed.success ? (parsed.data as CrmSettings[K]) : defaultCrmSettings[key];
+    };
+  return {
+    senderName: field('senderName'),
+    replyTo: field('replyTo'),
+    footerText: field('footerText'),
+    hourlyLimit: field('hourlyLimit'),
+    legitimateInterest: field('legitimateInterest'),
   };
 }
 export async function rateLimit(ctx: Context, key: string, limit: number, windowMs: number) {

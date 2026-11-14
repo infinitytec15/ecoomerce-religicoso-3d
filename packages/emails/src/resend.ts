@@ -127,6 +127,10 @@ const states = {
   'email.suppressed': 'suppressed',
 } as const;
 export type EmailDeliveryState = (typeof states)[keyof typeof states];
+/** Open/click signals: stored for campaign metrics only, never a delivery state. */
+export function isEngagementEvent(type: string): boolean {
+  return type === 'email.opened' || type === 'email.clicked';
+}
 /** Called after verification. Open/click signals do not establish delivery or alter consent. */
 export function classifyEmailEvent(
   type: string,

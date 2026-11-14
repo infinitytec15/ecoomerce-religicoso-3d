@@ -8,6 +8,7 @@ import {
   classifyEmailEvent,
   createEmailProvider,
   emailIdempotencyKey,
+  isEngagementEvent,
   resendTag,
 } from '@maos-em-oracao/emails/resend';
 
@@ -285,5 +286,11 @@ describe('adaptador Resend sem envio real', () => {
     expect(classifyEmailEvent('email.complained')?.suppress).toBe(true);
     expect(classifyEmailEvent('email.opened')).toBeNull();
     expect(classifyEmailEvent('toString')).toBeNull();
+  });
+  it('reconhece abertura e clique só como engajamento', () => {
+    expect(isEngagementEvent('email.opened')).toBe(true);
+    expect(isEngagementEvent('email.clicked')).toBe(true);
+    expect(isEngagementEvent('email.delivered')).toBe(false);
+    expect(isEngagementEvent('toString')).toBe(false);
   });
 });

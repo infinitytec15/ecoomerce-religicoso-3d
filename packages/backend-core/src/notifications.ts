@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 import { renderEmail, type EmailMessage } from '@maos-em-oracao/emails';
 import { emailIdempotencyKey } from '@maos-em-oracao/emails/resend';
 import { z } from 'zod';
-import { settings } from './context';
+import { crmSettings, settings } from './context';
 import type { Permission } from '@maos-em-oracao/contracts';
 import type { Transaction } from '@maos-em-oracao/database';
 import type { Context } from './context';
@@ -24,6 +24,11 @@ export interface EmailEnvelope {
   subscriberVersion?: number;
   campaignId?: string;
   adminToken?: string;
+  /** E-mail marketing: the contact and campaign re-checked by the worker at send time. */
+  contactId?: string;
+  marketingCampaignId?: string;
+  /** A test send of a campaign: no contact or campaign check, no campaign counters. */
+  marketingTest?: boolean;
 }
 export class Notifications {
   async orderUrl(tx: Transaction, orderId: string, ttlDays = 7) {
@@ -106,8 +111,15 @@ export class Notifications {
     message: EmailMessage,
     metadata: Pick<
       EmailEnvelope,
-      'subscriberId' | 'subscriberVersion' | 'campaignId' | 'adminToken'
+      | 'subscriberId'
+      | 'subscriberVersion'
+      | 'campaignId'
+      | 'adminToken'
+      | 'contactId'
+      | 'marketingCampaignId'
+      | 'marketingTest'
     > = {},
+    options: { availableAt?: Date } = {},
   ) {
     const c = this.ctx.config;
     const recipient = normalizeEmail(to),
@@ -117,8 +129,9 @@ export class Notifications {
     const devotional = ['daily-prayer', 'devotional-opt-in'].includes(message.kind)
       ? (await settings(tx)).workspace
       : null;
-    const replyTo = devotional?.prayerReplyTo || c.EMAIL_REPLY_TO;
-    const senderName = (devotional?.prayerSenderName || 'Mãos em Oração')
+    const marketing = message.kind === 'marketing' ? await crmSettings(tx) : null;
+    const replyTo = devotional?.prayerReplyTo || marketing?.replyTo || c.EMAIL_REPLY_TO;
+    const senderName = (devotional?.prayerSenderName || marketing?.senderName || 'Mãos em Oração')
       .replace(/[\r\n<>"]/g, '')
       .slice(0, 120);
     const rendered = renderEmail(message, {
@@ -149,6 +162,7 @@ export class Notifications {
         kind: 'email',
         aggregateId,
         payloadEncrypted: seal(envelope, c),
+        ...(options.availableAt ? { availableAt: options.availableAt } : {}),
       },
       update: {},
     });

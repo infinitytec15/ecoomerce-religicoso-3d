@@ -386,7 +386,7 @@ export class AdminService {
       groupBuys,
       stories,
       crm: can('marketing')
-        ? { ...(await this.crm.snapshot()), campaigns: [] }
+        ? await this.crm.snapshot()
         : {
             settings: defaultCrmSettings,
             campaigns: [],
@@ -768,6 +768,16 @@ export class AdminService {
         return this.stories.removeVideo(a, c.id);
       case 'crm.settings':
         return this.crm.saveSettings(a, c.settings);
+      case 'crm.campaign.save':
+        return this.crm.saveCampaign(a, c.campaign);
+      case 'crm.campaign.schedule':
+        return this.crm.scheduleCampaign(a, c.id, c.at);
+      case 'crm.campaign.cancel':
+        return this.crm.cancelCampaign(a, c.id);
+      case 'crm.campaign.delete':
+        return this.crm.deleteCampaign(a, c.id);
+      case 'crm.campaign.test':
+        return this.crm.testCampaign(a, c.id, c.extra);
       case 'crm.contact.save':
         return this.crm.saveContact(a, c);
       case 'crm.contact.unsubscribe':

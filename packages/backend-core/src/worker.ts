@@ -5,9 +5,9 @@ import { dirname } from 'node:path';
 import { transaction, lock } from '@maos-em-oracao/database';
 import { ProviderError } from '@maos-em-oracao/integrations';
 import type { Context } from './context';
-import { settings } from './context';
+import { crmSettings, settings } from './context';
 import { brasiliaDay, prayerForDay } from './daily-prayers';
-import { defaultReviewSettings } from '@maos-em-oracao/contracts';
+import { canReceiveMarketing, defaultReviewSettings } from '@maos-em-oracao/contracts';
 import { Notifications, type EmailEnvelope } from './notifications';
 import { PaymentsService } from './payments';
 import { SubscriptionsService } from './subscriptions';
@@ -16,9 +16,10 @@ import { ShippingService } from './shipping';
 import { MediaService } from './media';
 import { ReportsService } from './reports';
 import { GroupBuysService } from './group-buys';
+import { CrmService } from './crm';
 import { unseal, recipientHash, normalizeEmail } from './security';
 import { data, requireValue, DomainError, audit } from './shared';
-import { classifyEmailEvent, resendTag } from '@maos-em-oracao/emails/resend';
+import { classifyEmailEvent, isEngagementEvent, resendTag } from '@maos-em-oracao/emails/resend';
 export interface WorkItem {
   source: 'outbox' | 'webhook';
   id: string;
@@ -255,6 +256,9 @@ export class WorkerEngine {
         case 'campaign':
           await new ContentService(this.ctx).fanoutCampaign(String(payload.campaignId));
           break;
+        case 'crm-campaign':
+          await new CrmService(this.ctx).fanout(String(payload.campaignId));
+          break;
         case 'report-export':
           await new ReportsService(this.ctx).generate(String(payload.exportId));
           break;
@@ -355,6 +359,34 @@ export class WorkerEngine {
         return;
       }
     }
+    if (envelope.category === 'marketing' && !envelope.marketingTest) {
+      // Consent is checked again at send time: an unsubscribe, a switched-off legitimate
+      // interest or a cancelled campaign drops what is still in the queue.
+      const [contact, campaign, crm] = await Promise.all([
+        envelope.contactId
+          ? this.ctx.db.marketingContact.findUnique({ where: { id: envelope.contactId } })
+          : null,
+        envelope.marketingCampaignId
+          ? this.ctx.db.marketingCampaign.findUnique({
+              where: { id: envelope.marketingCampaignId },
+              select: { state: true },
+            })
+          : null,
+        crmSettings(this.ctx.db),
+      ]);
+      if (
+        !contact ||
+        contact.email !== recipient ||
+        !canReceiveMarketing(contact, crm) ||
+        campaign?.state === 'Cancelada'
+      ) {
+        await this.ctx.db.outboxEvent.update({
+          where: { id },
+          data: { state: 'cancelled', errorCode: 'CONSENT_REVOKED' },
+        });
+        return;
+      }
+    }
     if (
       row.firstAttemptAt &&
       row.attempts > 0 &&
@@ -416,6 +448,11 @@ export class WorkerEngine {
         await tx.campaign.update({
           where: { id: envelope.campaignId },
           data: { recipients: { increment: 1 } },
+        });
+      if (updated.count && envelope.marketingCampaignId && !envelope.marketingTest)
+        await tx.marketingCampaign.updateMany({
+          where: { id: envelope.marketingCampaignId },
+          data: { sent: { increment: 1 } },
         });
     });
     await this.reconcileDelivery(providerId);
@@ -529,7 +566,19 @@ export class WorkerEngine {
             payload,
           ),
           classified = classifyEmailEvent(body.type);
-        if (classified) {
+        if (isEngagementEvent(body.type))
+          // Opens and clicks only feed campaign metrics; the outbox state stays as it is.
+          await this.ctx.db.emailDeliveryEvent.upsert({
+            where: { inboxKey: inbox.id },
+            create: {
+              inboxKey: inbox.id,
+              providerId: body.data.email_id,
+              type: body.type,
+              occurredAt: new Date(body.created_at),
+            },
+            update: {},
+          });
+        else if (classified) {
           await transaction(this.ctx.db, async (tx) => {
             await tx.emailDeliveryEvent.upsert({
               where: { inboxKey: inbox.id },
@@ -778,6 +827,45 @@ export class WorkerEngine {
       }
     return closed;
   }
+  /**
+   * E-mail marketing: starts the fan-out job of each due campaign, and closes a sending
+   * campaign once it is prepared and nothing of it is left in the queue.
+   */
+  async marketingCampaigns(now = new Date()) {
+    const mail = new Notifications(this.ctx),
+      due = await this.ctx.db.marketingCampaign.findMany({
+        where: { state: 'Agendada', scheduledAt: { lte: now } },
+        orderBy: { scheduledAt: 'asc' },
+        select: { id: true },
+        take: 20,
+      });
+    for (const { id } of due)
+      await transaction(this.ctx.db, (tx) =>
+        mail.event(tx, 'crm-campaign/' + id, 'crm-campaign', id, { campaignId: id }),
+      );
+    const sending = await this.ctx.db.marketingCampaign.findMany({
+      where: { state: 'Enviando', preparedAt: { not: null } },
+      select: { id: true },
+      take: 20,
+    });
+    let closed = 0;
+    for (const { id } of sending) {
+      const waiting = await this.ctx.db.outboxEvent.count({
+        where: { aggregateId: id, state: { in: ['pending', 'enqueued', 'processing'] } },
+      });
+      if (waiting) continue;
+      const failed = await this.ctx.db.outboxEvent.count({
+        where: { aggregateId: id, state: { in: ['failed', 'blocked', 'unknown'] } },
+      });
+      closed += (
+        await this.ctx.db.marketingCampaign.updateMany({
+          where: { id, state: 'Enviando' },
+          data: { state: failed ? 'Parcial' : 'Enviada', finishedAt: now },
+        })
+      ).count;
+    }
+    return closed;
+  }
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
@@ -787,6 +875,7 @@ export class WorkerEngine {
       await this.scheduleDailyPrayer(now).catch(() => null);
       await this.scheduleReviewRequests(now).catch(() => 0);
       await this.closeGroupBuys(now).catch(() => 0);
+      await this.marketingCampaigns(now).catch(() => 0);
       const campaigns = await this.ctx.db.campaign.findMany({
         where: { state: 'Agendada', scheduledAt: { lte: now } },
         take: 20,

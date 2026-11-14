@@ -13,6 +13,8 @@ import {
   storyVideoInputSchema,
   STORY_LIMITS,
   crmSettingsSchema,
+  marketingCampaignInputSchema,
+  CRM_LIMITS,
 } from '@maos-em-oracao/contracts';
 import { contactInputSchema } from './crm';
 const id = z.string().min(1).max(100),
@@ -182,6 +184,20 @@ export const commandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('story.video.delete'), id: z.string().uuid() }),
   z.object({ type: z.literal('crm.settings'), settings: crmSettingsSchema }),
+  // The campaign input (with its refinements) is parsed again by CrmService.saveCampaign.
+  z.object({ type: z.literal('crm.campaign.save'), campaign: marketingCampaignInputSchema }),
+  z.object({
+    type: z.literal('crm.campaign.schedule'),
+    id: z.string().uuid(),
+    at: date.nullable(),
+  }),
+  z.object({ type: z.literal('crm.campaign.cancel'), id: z.string().uuid() }),
+  z.object({ type: z.literal('crm.campaign.delete'), id: z.string().uuid() }),
+  z.object({
+    type: z.literal('crm.campaign.test'),
+    id: z.string().uuid(),
+    extra: z.array(z.email().max(254)).max(CRM_LIMITS.testRecipients),
+  }),
   z.object({ type: z.literal('crm.contact.save'), ...contactInputSchema.shape }),
   z.object({ type: z.literal('crm.contact.unsubscribe'), email: z.email().max(254) }),
   z.object({

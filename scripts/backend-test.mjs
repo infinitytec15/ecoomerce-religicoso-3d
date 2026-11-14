@@ -3381,11 +3381,14 @@ try {
   Object.assign(crmProduct, { active: true, archived: false, stock: 80 });
   await owner.command({ type: 'product.save', product: crmProduct });
   /** A real checkout of the CRM product, then forced to a purchase status/total/date. */
-  const crmBuy = async (email, { status = 'Confirmado', cents, days, marketingOptIn } = {}) => {
+  const crmBuy = async (
+      email,
+      { status = 'Confirmado', cents, days, marketingOptIn, item = crmProduct } = {},
+    ) => {
       const buyer = new Client(),
-        q = await quote(buyer, crmProduct),
+        q = await quote(buyer, item),
         r = await buy(buyer, {
-          ...checkout(crmProduct, q, email),
+          ...checkout(item, q, email),
           ...(marketingOptIn ? { marketingOptIn } : {}),
         });
       assert.equal(r.status, 200, r.body?.error?.code);
@@ -3712,6 +3715,450 @@ try {
     assert.equal((await customer.call('admin/crm/contacts')).status, 403);
     const staffFlip = await crmSend(support, { type: 'crm.contact.unsubscribe', email });
     assert.equal(staffFlip.status, 403);
+  });
+  // ------------------------------------------------------- CRM: campanhas e disparo
+  const { CrmService } = await import('@maos-em-oracao/backend-core/crm');
+  // Campaign work goes through a marketing-only member, which also keeps the owner under the
+  // API's per-user request limit.
+  const crm = new CrmService(ctx),
+    crmTeam = await marketingMember(owner, 'crm-campanhas'),
+    crmTeamEmail = 'crm-campanhas-' + runId + '@example.test',
+    crmBlocks = [
+      { type: 'text', style: 'paragraph', text: 'Novidades da semana na loja.' },
+      { type: 'products', productIds: [crmProduct.id] },
+    ],
+    crmSave = (name, segment, blocks, id) =>
+      crmSend(crmTeam, {
+        type: 'crm.campaign.save',
+        campaign: {
+          ...(id ? { id } : {}),
+          name,
+          subject: 'Assunto ' + name,
+          previewText: '',
+          segment,
+          blocks,
+        },
+      }),
+    crmCreate = async (label, rules, blocks = crmBlocks) => {
+      const name = 'Campanha ' + label + ' ' + runId,
+        r = await crmSave(name, { rules }, blocks);
+      assert.equal(r.status, 204, r.body?.error?.code);
+      return ctx.db.marketingCampaign.findFirstOrThrow({ where: { name } });
+    },
+    crmCampaign = (id) => ctx.db.marketingCampaign.findUniqueOrThrow({ where: { id } }),
+    crmSchedule = (id, at = null) => crmSend(crmTeam, { type: 'crm.campaign.schedule', id, at }),
+    crmLater = () => new Date(Date.now() + 3600000).toISOString(),
+    crmImport = async (tag, emails) => {
+      const r = await crmTeam.call('admin/crm/contacts/import', 'POST', {
+        tag,
+        consent: true,
+        rows: emails.map((email) => ({ email, name: '' })),
+      });
+      assert.equal(r.status, 200, r.body?.error?.code);
+    },
+    crmOutbox = (id) =>
+      ctx.db.outboxEvent.findMany({
+        where: { aggregateId: id, kind: 'email' },
+        orderBy: { availableAt: 'asc' },
+      }),
+    crmPrepared = (id) =>
+      until(async () => {
+        const row = await crmCampaign(id);
+        return row.preparedAt ? row : null;
+      }, 'campanha preparada'),
+    /**
+     * Runs the due e-mails matched by `where` with the worker code in this process, then waits
+     * until none is left in the queue. The shared e-mail queue sends 1 per second and still holds
+     * the e-mails of earlier flows, so waiting for it would take minutes.
+     */
+    crmSettle = async (where) => {
+      const due = await ctx.db.outboxEvent.findMany({
+        where: {
+          ...where,
+          state: { in: ['pending', 'enqueued'] },
+          availableAt: { lte: new Date() },
+        },
+        select: { id: true },
+      });
+      // A row the real worker already claimed fails here with WORK_LEASE_BUSY and ends there.
+      for (const { id } of due) await engine.process({ source: 'outbox', id }).catch(() => {});
+      await until(
+        async () =>
+          !(await ctx.db.outboxEvent.count({
+            where: { ...where, state: { in: ['pending', 'enqueued', 'processing'] } },
+          })),
+        'fila da campanha',
+      );
+    },
+    crmError = (r, status, code) => {
+      assert.equal(r.status, status, JSON.stringify(r.body));
+      assert.equal(r.body.error.code, code);
+    },
+    crmWebhook = async (type, emailId, n) => {
+      const body = JSON.stringify({
+          type,
+          created_at: new Date().toISOString(),
+          data: { email_id: emailId },
+        }),
+        id = 'msg_crm_' + runId + '_' + n,
+        timestamp = String(Math.floor(Date.now() / 1000)),
+        signature =
+          'v1,' +
+          createHmac('sha256', signingKey).update(`${id}.${timestamp}.${body}`).digest('base64');
+      const response = await fetch(base + '/webhooks/resend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'svix-id': id,
+          'svix-timestamp': timestamp,
+          'svix-signature': signature,
+        },
+        body,
+      });
+      assert.equal(response.status, 200);
+    };
+  await check('CRM: configuração gravada inválida volta ao padrão campo a campo', async () => {
+    const saved = await ctx.db.appSetting.findUnique({ where: { key: 'crm' } }),
+      write = (value) =>
+        ctx.db.appSetting.upsert({
+          where: { key: 'crm' },
+          create: { key: 'crm', data: value },
+          update: { data: value },
+        });
+    try {
+      await write({
+        senderName: 'Loja de teste',
+        replyTo: 'não é e-mail',
+        hourlyLimit: 'muitos',
+        legitimateInterest: false,
+      });
+      assert.deepEqual(await crm.settings(), {
+        senderName: 'Loja de teste',
+        replyTo: '',
+        footerText: 'Você recebe este e-mail porque autorizou novidades da Mãos em Oração.',
+        hourlyLimit: 100,
+        legitimateInterest: false,
+      });
+      await write(['lixo']);
+      assert.equal((await crm.settings()).senderName, 'Mãos em Oração');
+      assert.equal((await crm.settings()).hourlyLimit, 100);
+    } finally {
+      if (saved) await write(saved.data);
+      else await ctx.db.appSetting.delete({ where: { key: 'crm' } });
+    }
+  });
+  await check('CRM: agendamento valida público e peças e trava a edição', async () => {
+    const tag = 'Agenda ' + runId,
+      empty = await crmCreate('vazia', [{ type: 'tag', tag: 'Ninguém ' + runId }]);
+    let r = await crmSchedule(empty.id);
+    crmError(r, 422, 'EMPTY_AUDIENCE');
+    assert.equal(r.body.error.message, 'Nenhum contato pode receber esta campanha.');
+    await crmImport(tag, [crmEmail('agenda')]);
+    const archived = {
+      ...crmProduct,
+      id: randomUUID(),
+      sku: 'CRM-ARQ-' + runId,
+      name: 'Peça arquivada do CRM',
+    };
+    await owner.command({ type: 'product.save', product: archived });
+    await owner.command({ type: 'product.archive', id: archived.id });
+    const withArchived = await crmCreate(
+      'arquivada',
+      [{ type: 'tag', tag }],
+      [{ type: 'products', productIds: [crmProduct.id, archived.id] }],
+    );
+    crmError(await crmSchedule(withArchived.id), 422, 'INVALID_PRODUCT');
+    assert.equal((await crmCampaign(withArchived.id)).state, 'Rascunho');
+    const c = await crmCreate('agendada', [{ type: 'tag', tag }]);
+    r = await crmSchedule(c.id, new Date(Date.now() - 5 * 60000).toISOString());
+    crmError(r, 422, 'SCHEDULE_PAST');
+    assert.equal(r.body.error.message, 'Escolha um horário futuro.');
+    r = await crmSchedule(c.id, crmLater());
+    assert.equal(r.status, 204, r.body?.error?.code);
+    const scheduled = await crmCampaign(c.id);
+    assert.equal(scheduled.state, 'Agendada');
+    assert(scheduled.scheduledAt > new Date());
+    r = await crmSave(c.name, { rules: [] }, crmBlocks, c.id);
+    crmError(r, 422, 'CAMPAIGN_LOCKED');
+    assert.equal(r.body.error.message, 'Esta campanha já foi agendada ou enviada.');
+    crmError(
+      await crmSend(crmTeam, { type: 'crm.campaign.delete', id: c.id }),
+      422,
+      'CAMPAIGN_LOCKED',
+    );
+    crmError(await crmSchedule(c.id, crmLater()), 422, 'CAMPAIGN_STATE');
+    // Cancelled before any send (no outbox yet): it can be scheduled again.
+    assert.equal((await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: c.id })).status, 204);
+    const cancelled = await crmCampaign(c.id);
+    assert.equal(cancelled.state, 'Cancelada');
+    assert(cancelled.finishedAt);
+    assert.equal((await crmSchedule(c.id, crmLater())).status, 204);
+    assert.equal((await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: c.id })).status, 204);
+    crmError(
+      await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: c.id }),
+      422,
+      'CAMPAIGN_STATE',
+    );
+    // Drafts can be edited and deleted; unknown ids are 404.
+    r = await crmSave(empty.name, { rules: [{ type: 'tag', tag }] }, crmBlocks, empty.id);
+    assert.equal(r.status, 204, r.body?.error?.code);
+    assert.deepEqual((await crmCampaign(empty.id)).segment, { rules: [{ type: 'tag', tag }] });
+    assert.equal(
+      (await crmSend(crmTeam, { type: 'crm.campaign.delete', id: empty.id })).status,
+      204,
+    );
+    assert.equal(await ctx.db.marketingCampaign.count({ where: { id: empty.id } }), 0);
+    crmError(
+      await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: randomUUID() }),
+      404,
+      'NOT_FOUND',
+    );
+  });
+  await check('CRM: disparo espaça os envios pelo limite por hora e não duplica', async () => {
+    const tag = 'Disparo ' + runId,
+      emails = ['h-a', 'h-b', 'h-c'].map(crmEmail);
+    await crmImport(tag, emails);
+    const c = await crmCreate('disparo', [{ type: 'tag', tag }]),
+      senderName = (await crm.settings()).senderName;
+    assert.equal((await crmSchedule(c.id, crmLater())).status, 204);
+    // A start in the future keeps the real worker away, so the computed times stay intact.
+    const startedAt = new Date(Date.now() + 600000);
+    await ctx.db.marketingCampaign.update({ where: { id: c.id }, data: { startedAt } });
+    await crm.fanout(c.id);
+    const prepared = await crmCampaign(c.id);
+    assert.equal(prepared.state, 'Enviando');
+    assert.equal(prepared.audienceCount, 3);
+    assert(prepared.preparedAt);
+    const rows = await crmOutbox(c.id);
+    assert.equal(rows.length, 3);
+    assert.deepEqual(
+      rows.map((r) => r.availableAt.getTime() - startedAt.getTime()),
+      [0, 36000, 72000],
+    );
+    for (const [i, row] of rows.entries()) {
+      const envelope = unseal(row.payloadEncrypted, ctx.config),
+        contact = await crmContact(emails[i]);
+      assert.equal(envelope.to, emails[i]);
+      assert.equal(envelope.subject, c.subject);
+      assert.equal(envelope.category, 'marketing');
+      assert.equal(envelope.from.startsWith(senderName + ' <'), true);
+      assert.equal(envelope.contactId, contact.id);
+      assert.equal(envelope.marketingCampaignId, c.id);
+      assert.equal(envelope.campaignId, undefined);
+      assert(
+        envelope.headers['List-Unsubscribe'].startsWith(
+          '<' + env.PUBLIC_WEB_URL + '/api/email/marketing-unsubscribe?token=',
+        ),
+      );
+      assert.equal(envelope.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+      assert(envelope.html.includes(env.PUBLIC_WEB_URL + '/produto/' + crmProduct.id));
+      assert(envelope.text.includes('Descadastrar: ' + env.PUBLIC_WEB_URL + '/email/descadastro'));
+    }
+    await crm.fanout(c.id);
+    assert.deepEqual(
+      (await crmOutbox(c.id)).map((r) => [r.id, r.availableAt.getTime()]),
+      rows.map((r) => [r.id, r.availableAt.getTime()]),
+    );
+    assert.equal((await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: c.id })).status, 204);
+  });
+  let crmQueued, crmAccepted;
+  await check('CRM: fila confere o aceite e o legítimo interesse na hora do envio', async () => {
+    const shelf = {
+      ...crmProduct,
+      id: randomUUID(),
+      sku: 'CRM-FILA-' + runId,
+      name: 'Peça da fila do CRM',
+    };
+    await owner.command({ type: 'product.save', product: shelf });
+    const [a, b, gone, buyer] = ['i-a', 'i-b', 'i-c', 'i-d'].map(crmEmail);
+    for (const email of [a, b, gone]) await crmBuy(email, { item: shelf, marketingOptIn: true });
+    await crmBuy(buyer, { item: shelf });
+    await crmSettings({ legitimateInterest: true });
+    const c = await crmCreate(
+      'fila',
+      [{ type: 'product', productId: shelf.id }],
+      [
+        { type: 'text', style: 'heading', text: 'Chegou peça nova' },
+        { type: 'products', productIds: [shelf.id] },
+        { type: 'coupon', code: 'NAOEXISTE' + runId },
+      ],
+    );
+    // The coupon is checked when scheduling; a draft keeps whatever the team typed.
+    crmError(await crmSchedule(c.id), 422, 'INVALID_COUPON');
+    assert.equal(
+      (
+        await crmSave(
+          c.name,
+          c.segment,
+          [
+            { type: 'text', style: 'heading', text: 'Chegou peça nova' },
+            { type: 'products', productIds: [shelf.id] },
+          ],
+          c.id,
+        )
+      ).status,
+      204,
+    );
+    assert.equal((await crmSchedule(c.id)).status, 204);
+    await engine.tick();
+    await engine.dispatch();
+    const prepared = await crmPrepared(c.id);
+    assert.equal(prepared.audienceCount, 4);
+    // The buyer without consent now has a legitimate-interest contact for the links.
+    const buyerContact = await crmContact(buyer);
+    assert.equal(buyerContact.legalBasis, 'legitimate-interest');
+    assert.equal(buyerContact.unsubscribedAt, null);
+    await crmTeam.command({ type: 'crm.contact.unsubscribe', email: gone });
+    await crmSettings({ legitimateInterest: false });
+    await ctx.db.outboxEvent.updateMany({
+      where: { aggregateId: c.id, state: 'pending' },
+      data: { availableAt: new Date() },
+    });
+    await crmSettle({ aggregateId: c.id });
+    const byEmail = new Map(
+      (await crmOutbox(c.id)).map((r) => [unseal(r.payloadEncrypted, ctx.config).to, r]),
+    );
+    assert.deepEqual(
+      [a, b, gone, buyer].map((e) => [byEmail.get(e).state, byEmail.get(e).errorCode]),
+      [
+        ['accepted', null],
+        ['accepted', null],
+        ['cancelled', 'CONSENT_REVOKED'],
+        ['cancelled', 'CONSENT_REVOKED'],
+      ],
+    );
+    await engine.tick();
+    const done = await until(async () => {
+      const row = await crmCampaign(c.id);
+      return row.state === 'Enviada' ? row : null;
+    }, 'campanha enviada');
+    assert.equal(done.sent, 2);
+    assert(done.finishedAt);
+    crmQueued = c;
+    crmAccepted = byEmail.get(a);
+  });
+  await check(
+    'CRM: e-mail de senha passa à frente da campanha e cancelar limpa a fila',
+    async () => {
+      const tag = 'Espaçada ' + runId;
+      await crmImport(tag, ['j-a', 'j-b'].map(crmEmail));
+      await crmSettings({ hourlyLimit: 10 });
+      try {
+        const c = await crmCreate('espaçada', [{ type: 'tag', tag }]);
+        assert.equal((await crmSchedule(c.id, crmLater())).status, 204);
+        await crm.fanout(c.id);
+        const { startedAt } = await crmCampaign(c.id),
+          [, later] = await crmOutbox(c.id);
+        assert.equal(later.availableAt.getTime() - startedAt.getTime(), 360000);
+        assert.equal(
+          (await other.call('auth/recover', 'POST', { email: second.email, kind: 'customer' }))
+            .status,
+          200,
+        );
+        const reset = await mail(second.user.id, 'password-reset');
+        await engine.dispatch();
+        await until(
+          async () =>
+            (await ctx.db.outboxEvent.findUnique({ where: { id: reset.row.id } })).state !==
+            'pending',
+          'e-mail de senha despachado',
+        );
+        assert.equal(
+          (await ctx.db.outboxEvent.findUnique({ where: { id: later.id } })).state,
+          'pending',
+        );
+        // Cancelling while sending empties what is still waiting in the queue.
+        assert.equal(
+          (await crmSend(crmTeam, { type: 'crm.campaign.cancel', id: c.id })).status,
+          204,
+        );
+        const cancelled = await crmCampaign(c.id);
+        assert.equal(cancelled.state, 'Cancelada');
+        assert(cancelled.finishedAt);
+        const row = await ctx.db.outboxEvent.findUnique({ where: { id: later.id } });
+        assert.deepEqual([row.state, row.errorCode], ['cancelled', 'CAMPAIGN_CANCELLED']);
+        crmError(await crmSchedule(c.id, crmLater()), 422, 'CAMPAIGN_STATE');
+      } finally {
+        await crmSettings({ hourlyLimit: 100 });
+      }
+    },
+  );
+  await check('CRM: métricas contam entrega, abertura, clique e descadastro', async () => {
+    const c = crmQueued,
+      providerId = crmAccepted.providerId;
+    for (const [n, type] of [
+      'email.delivered',
+      'email.opened',
+      'email.opened',
+      'email.clicked',
+    ].entries())
+      await crmWebhook(type, providerId, n);
+    // Same worker code, run here: the operations queue may still be busy with earlier flows.
+    for (const row of await ctx.db.webhookInbox.findMany({
+      where: { provider: 'resend', eventId: { startsWith: 'msg_crm_' + runId } },
+      orderBy: { createdAt: 'asc' },
+    }))
+      await engine.webhook(row.id);
+    assert.equal(await ctx.db.emailDeliveryEvent.count({ where: { providerId } }), 4);
+    assert.equal(
+      (await ctx.db.outboxEvent.findUnique({ where: { id: crmAccepted.id } })).state,
+      'delivered',
+    );
+    const envelope = unseal(crmAccepted.payloadEncrypted, ctx.config),
+      token = new URL(envelope.headers['List-Unsubscribe'].slice(1, -1)).searchParams.get('token');
+    const r = await guest.call('marketing/unsubscribe', 'POST', { token, campaignId: c.id });
+    assert.equal(r.status, 204, r.body?.error?.code);
+    const metrics = (await crm.metrics([c.id]))[c.id];
+    assert.deepEqual(metrics, {
+      audience: 4,
+      sent: 2,
+      delivered: 1,
+      opened: 1,
+      clicked: 1,
+      bounced: 0,
+      unsubscribed: 1,
+      cancelled: 2,
+    });
+    const snapshot = operationsSchema.parse(await crmTeam.data('admin/operations')).crm;
+    const listed = snapshot.campaigns.find((x) => x.id === c.id);
+    assert.equal(listed.state, 'Enviada');
+    assert.deepEqual(listed.metrics, metrics);
+    assert(listed.startedAt && listed.finishedAt);
+  });
+  await check('CRM: envio de teste sai sem contato e tem limite por hora', async () => {
+    const c = await crmCreate('teste', [{ type: 'tag', tag: 'Teste ' + runId }]),
+      extra = crmEmail('teste-extra');
+    const r = await crmSend(crmTeam, { type: 'crm.campaign.test', id: c.id, extra: [extra] });
+    assert.equal(r.status, 204, r.body?.error?.code);
+    const rows = await ctx.db.outboxEvent.findMany({
+      where: { kind: 'email', key: { startsWith: 'email/crm-test/' + c.id + '/' } },
+    });
+    const envelopes = rows.map((row) => unseal(row.payloadEncrypted, ctx.config));
+    assert.deepEqual(envelopes.map((e) => e.to).sort(), [crmTeamEmail, extra].sort());
+    assert(envelopes.every((e) => e.marketingTest === true && !e.marketingCampaignId));
+    assert(envelopes.every((e) => e.subject === c.subject && e.category === 'marketing'));
+    assert.equal(await crmContact(extra), null);
+    await crmSettle({ id: { in: rows.map((row) => row.id) } });
+    assert.deepEqual(
+      (await ctx.db.outboxEvent.findMany({ where: { id: { in: rows.map((row) => row.id) } } })).map(
+        (row) => row.state,
+      ),
+      ['accepted', 'accepted'],
+    );
+    for (let i = 1; i < 20; i++)
+      assert.equal(
+        (await crmSend(crmTeam, { type: 'crm.campaign.test', id: c.id, extra: [] })).status,
+        204,
+      );
+    crmError(
+      await crmSend(crmTeam, { type: 'crm.campaign.test', id: c.id, extra: [] }),
+      429,
+      'RATE_LIMIT',
+    );
+    const after = await crmCampaign(c.id);
+    assert.deepEqual([after.state, after.sent, after.startedAt], ['Rascunho', 0, null]);
+    // Tests never count as the campaign's queue, so it can still be scheduled.
+    assert.equal(await ctx.db.outboxEvent.count({ where: { aggregateId: c.id } }), 0);
   });
   operationsSchema.parse(await owner.data('admin/operations'));
   accountSchema.parse(await customer.data('account'));
