@@ -771,6 +771,17 @@ export class DemoGateway implements CommerceGateway {
         }
         case 'order.update': {
           const order = requireValue(s.orders.find((o) => o.id === command.id));
+          // Only the group closing (or a cancellation) takes an order out of this status.
+          if (
+            command.status !== 'Cancelado' &&
+            command.status !== order.status &&
+            (order.status === 'Aguardando grupo' || command.status === 'Aguardando grupo')
+          )
+            throw new ApiError(
+              'GROUP_PENDING',
+              'O pedido aguarda o fechamento da compra coletiva.',
+              409,
+            );
           Object.assign(order, {
             status: command.status,
             priority: command.priority,

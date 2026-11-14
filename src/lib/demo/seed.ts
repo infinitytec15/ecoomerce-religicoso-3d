@@ -95,7 +95,8 @@ function demoGroupBuy(products: InventoryProduct[], now = new Date()): AdminGrou
     goalReached: false,
     status: 'Aberta',
     initials,
-    endsAt: new Date(now.getTime() + 2 * 86400000).toISOString(),
+    // 2 days + 6 hours, so the store still reads "termina em 2 dias" a while after the seed.
+    endsAt: new Date(now.getTime() + (2 * 24 + 6) * 3600000).toISOString(),
     active: true,
     startsAt: now.toISOString(),
     createdAt: now.toISOString(),

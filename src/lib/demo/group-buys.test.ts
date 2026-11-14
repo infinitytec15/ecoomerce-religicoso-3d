@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { CheckoutInput } from '@/lib/domain/types';
 import { demoAddress } from '@/lib/domain/schemas';
 import { DemoGateway } from './gateway';
-import { MemoryDemoStorage } from './storage';
-import { DEMO_EMAIL, DEMO_PASSWORD } from './seed';
+import { BrowserDemoStorage, MemoryDemoStorage } from './storage';
+import { createSeed, DEMO_EMAIL, DEMO_PASSWORD } from './seed';
+import { endsInLabel } from '@maos-em-oracao/contracts';
 
 const staff = { email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' as const };
 const joinInput = (
@@ -272,5 +273,41 @@ describe('demo group buys', () => {
     });
     await g.adminCommand({ type: 'groupbuy.close', id: 'grupo-demo' });
     expect(await g.groupBuys()).toHaveLength(0);
+  });
+
+  it('restores the demo campaign when a browser persisted an empty list', () => {
+    localStorage.clear();
+    localStorage.setItem('meo-commerce-v2', JSON.stringify({ ...createSeed(), groupBuys: [] }));
+    expect(new BrowserDemoStorage().load().groupBuys.map((g) => g.id)).toEqual(['grupo-demo']);
+    localStorage.clear();
+  });
+
+  it('shows "termina em 2 dias" for the fresh seed', async () => {
+    const gb = (await new DemoGateway().groupBuys())[0];
+    expect(endsInLabel(gb.endsAt, new Date(Date.now() + 60_000))).toBe('termina em 2 dias');
+  });
+
+  it('refuses to move a held order out of "Aguardando grupo", except to cancel it', async () => {
+    const storage = new MemoryDemoStorage(),
+      g = new DemoGateway(storage);
+    await g.login(staff);
+    const product = (await g.groupBuys())[0].productId;
+    await g.adminCommand({ type: 'groupbuy.close', id: 'grupo-demo' });
+    await g.adminCommand(saveInput(product, { goal: 5, mode: 'hold' }));
+    const held = await g.checkout(joinInput(product, (await g.groupBuys())[0].id));
+    await g.login(staff);
+    const update = (status: string) =>
+      g.adminCommand({
+        type: 'order.update',
+        id: held.orderId,
+        status,
+        priority: 'Normal',
+        due: '2026-12-01',
+        notes: '',
+      } as never);
+    for (const status of ['Em produção', 'Confirmado', 'Enviado'])
+      await expect(update(status)).rejects.toMatchObject({ code: 'GROUP_PENDING', status: 409 });
+    await update('Cancelado');
+    expect(storage.load().orders.find((o) => o.id === held.orderId)?.status).toBe('Cancelado');
   });
 });
