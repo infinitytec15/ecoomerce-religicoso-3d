@@ -54,18 +54,24 @@ const placesLabel = (h: AdminStoryHighlight) =>
 /** Runs an admin command and keeps the failure message for the caller to show. */
 function useGuardedRun() {
   const action = useAdminAction(),
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    [pending, setPending] = useState(false);
   return {
     error,
+    pending,
     clear: () => setError(''),
     go: async (command: AdminCommand, message: string) => {
+      if (pending) return false;
       setError('');
+      setPending(true);
       try {
         await action.run(command, message);
         return true;
       } catch (e) {
         setError(errorMessage(e));
         return false;
+      } finally {
+        setPending(false);
       }
     },
   };
@@ -191,7 +197,7 @@ export function StoriesManager() {
                     variant="text"
                     className="small"
                     aria-label={`Subir ${s.title}`}
-                    disabled={index === 0}
+                    disabled={guarded.pending || index === 0}
                     onClick={() => void reorder(-1)}
                   >
                     Subir
@@ -201,7 +207,7 @@ export function StoriesManager() {
                     variant="text"
                     className="small"
                     aria-label={`Descer ${s.title}`}
-                    disabled={index === stories.length - 1}
+                    disabled={guarded.pending || index === stories.length - 1}
                     onClick={() => void reorder(1)}
                   >
                     Descer
@@ -518,7 +524,7 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
                     variant="text"
                     className="small"
                     aria-label={`Subir ${labelOf(v)}`}
-                    disabled={index === 0}
+                    disabled={guarded.pending || index === 0}
                     onClick={() => void reorder(-1)}
                   >
                     Subir
@@ -528,7 +534,7 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
                     variant="text"
                     className="small"
                     aria-label={`Descer ${labelOf(v)}`}
-                    disabled={index === videos.length - 1}
+                    disabled={guarded.pending || index === videos.length - 1}
                     onClick={() => void reorder(1)}
                   >
                     Descer
@@ -629,7 +635,7 @@ function VideoAdder({
           {error}
         </p>
       )}
-      <Button type="button" variant="secondary" onClick={onCancel}>
+      <Button type="button" variant="secondary" disabled={progress !== null} onClick={onCancel}>
         Voltar
       </Button>
     </div>

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AdminStoryHighlight } from '@maos-em-oracao/contracts';
 import { StoriesManager } from './stories-manager';
+import { uploadMedia } from '@/lib/media/upload';
 
 const { run } = vi.hoisted(() => ({ run: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./shared', async (importOriginal) => ({
@@ -13,6 +14,10 @@ const adminData = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('./admin-frame', () => ({ useAdminData: () => adminData.value }));
 vi.mock('@/lib/media/cover', () => ({ squareCover: vi.fn(async (file: File) => file) }));
 vi.mock('@/lib/media/upload', () => ({ uploadMedia: vi.fn() }));
+vi.mock('@/lib/api/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/config')>()),
+  IS_DEMO: false,
+}));
 vi.mock('@/lib/media/assets', () => ({ saveAsset: vi.fn() }));
 vi.mock('@/lib/media/use-asset', () => ({ useAssetUrl: (source?: string) => source }));
 
@@ -184,5 +189,54 @@ describe('stories manager', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Excluir destaque' }));
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
     expect(run.mock.calls[0][0]).toEqual({ type: 'story.delete', id: 'h1' });
+  });
+
+  it('disables reorder buttons while a reorder is in flight', async () => {
+    let finish: () => void = () => {};
+    run.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Descer Bastidores' }));
+    expect(screen.getByRole('button', { name: 'Subir Presentes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Descer Bastidores' })).toBeDisabled();
+    finish();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Subir Presentes' })).toBeEnabled(),
+    );
+  });
+
+  describe('video adder', () => {
+    const openAdder = async () => {
+      const user = userEvent.setup();
+      render(<StoriesManager />);
+      await user.click(screen.getByRole('button', { name: 'Vídeos de Bastidores' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Adicionar vídeo' }));
+      return { user, dialog };
+    };
+    const video = () => new File(['x'], 'v.mp4', { type: 'video/mp4' });
+
+    it('shows progress, locks Voltar, then the form', async () => {
+      let report: (n: number) => void = () => {};
+      let resolve: (v: Awaited<ReturnType<typeof uploadMedia>>) => void = () => {};
+      vi.mocked(uploadMedia).mockImplementationOnce((_f, _k, onProgress) => {
+        report = onProgress!;
+        return new Promise((r) => (resolve = r));
+      });
+      const { user, dialog } = await openAdder();
+      await user.upload(within(dialog).getByLabelText('Vídeo'), video());
+      act(() => report(42));
+      expect(await within(dialog).findByText('Enviando… 42%')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Voltar' })).toBeDisabled();
+      await act(async () => resolve({ id: 'asset-9' } as Awaited<ReturnType<typeof uploadMedia>>));
+      expect(await within(dialog).findByLabelText(/Legenda/)).toBeInTheDocument();
+    });
+
+    it('shows the error when the upload fails', async () => {
+      vi.mocked(uploadMedia).mockRejectedValueOnce(new Error('Falha no envio.'));
+      const { user, dialog } = await openAdder();
+      await user.upload(within(dialog).getByLabelText('Vídeo'), video());
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Falha no envio.');
+    });
   });
 });

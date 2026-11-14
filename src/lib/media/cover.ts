@@ -28,8 +28,10 @@ export async function squareCover(file: File, size = 320): Promise<File> {
       canvas.toBlob(resolve, 'image/webp', 0.85),
     );
     if (!blob) throw new Error('Não foi possível preparar a capa.');
-    const base = file.name.replace(/\.[^.]+$/, '') || 'capa';
-    return new File([blob], `${base}.webp`, { type: 'image/webp' });
+    const base = file.name.replace(/\.[^.]+$/, '') || 'capa',
+      type = blob.type || 'image/webp',
+      extension = type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : 'webp';
+    return new File([blob], `${base}.${extension}`, { type });
   } finally {
     bitmap.close?.();
   }
