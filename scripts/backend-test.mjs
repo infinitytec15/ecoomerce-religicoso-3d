@@ -2032,6 +2032,156 @@ try {
     assert.equal(manual.status, 422, JSON.stringify(manual.body));
     assert.equal(manual.body.error.code, 'KIT_NOT_ALLOWED');
   });
+  await check('kit: compra reserva e baixa componentes, custo congelado e produção', async () => {
+    ops = await owner.data('admin/operations');
+    const policy = ops.workspace,
+      template = ops.products.find((p) => p.id === product.id),
+      part = (n, packagingCents = 0) => ({
+        materialCents: n,
+        packagingCents,
+        energyCents: 0,
+        laborCents: 0,
+        otherCents: 0,
+      }),
+      base = {
+        ...template,
+        active: true,
+        archived: false,
+        stock: 5,
+        colors: ['Branco', 'Preto'],
+        sizes: ['Pequeno', 'Médio'],
+        sizePrices: [5000, 8000],
+        costBySize: [part(1000), part(1800)],
+      },
+      A = { ...base, id: randomUUID(), sku: 'KB-A-' + runId, name: 'Peça A' },
+      B = { ...base, id: randomUUID(), sku: 'KB-B-' + runId, name: 'Peça B', stock: 4 };
+    delete A.kit;
+    delete B.kit;
+    await owner.command({ type: 'product.save', product: A });
+    await owner.command({ type: 'product.save', product: B });
+    const kit = {
+      ...base,
+      id: randomUUID(),
+      sku: 'KB-' + runId,
+      name: 'Kit de compra',
+      priceCents: 17990,
+      stock: 0,
+      sizes: ['Kit completo'],
+      colors: ['Padrão'],
+      sizePrices: undefined,
+      costBySize: undefined,
+      costBreakdown: part(0, 300),
+      kit: {
+        components: [
+          { productId: A.id, sizeIndex: 0, color: 'Branco', quantity: 2 },
+          { productId: B.id, sizeIndex: 1, color: null, quantity: 1 },
+        ],
+      },
+    };
+    const kitCost = 2 * 1000 + 1800 + 300;
+    await owner.command({ type: 'product.save', product: kit });
+    await owner.command({
+      type: 'workspace.save',
+      settings: { ...policy, inventoryPolicy: 'stock' },
+    });
+    const kitLine = (quantity = 1) => ({
+        productId: kit.id,
+        quantity,
+        color: 'Padrão',
+        sizeIndex: 0,
+        dedication: '',
+      }),
+      lineA = { productId: A.id, quantity: 1, color: 'Branco', sizeIndex: 0, dedication: '' },
+      quoteItems = async (client, items) => {
+        const r = await client.call('shipping/quotes', 'POST', {
+          cep: '01001-000',
+          items: items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            sizeIndex: i.sizeIndex,
+          })),
+        });
+        assert.equal(r.status, 200, r.body?.error?.code);
+        return r.body.data[0];
+      },
+      body = (q, items, email) => ({ ...checkout(product, q, email), items }),
+      stockOf = async (id) => ctx.db.product.findUniqueOrThrow({ where: { id } });
+    try {
+      const items = [kitLine(), lineA],
+        q = await quoteItems(customer, items),
+        r = await buy(customer, body(q, items, first.email));
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      const orderKit = r.body.data.orderId;
+      assert.equal((await stockOf(A.id)).reserved, 3);
+      assert.equal((await stockOf(B.id)).reserved, 1);
+      assert.equal((await stockOf(kit.id)).reserved, 0);
+      const reservations = await ctx.db.stockReservation.findMany({ where: { orderId: orderKit } });
+      assert.equal(reservations.length, 2);
+      assert.equal(reservations.find((x) => x.productId === A.id).quantity, 3);
+      assert.equal(reservations.find((x) => x.productId === B.id).quantity, 1);
+      const rows = await ctx.db.orderItem.findMany({ where: { orderId: orderKit } }),
+        kitRow = rows.find((x) => x.productId === kit.id);
+      assert.equal(kitRow.costCents, kitCost);
+      assert.equal(kitRow.data.size, 'Kit completo');
+      assert.deepEqual(kitRow.data.kit.items, [
+        {
+          productId: A.id,
+          name: 'Peça A',
+          size: 'Pequeno',
+          sizeIndex: 0,
+          color: 'Branco',
+          quantity: 2,
+        },
+        { productId: B.id, name: 'Peça B', size: 'Médio', sizeIndex: 1, color: null, quantity: 1 },
+      ]);
+      // A second buyer needs 4 of A (2 kits) but only 2 are available: nothing is reserved.
+      const reservedBefore = await ctx.db.stockReservation.count(),
+        q2 = await quoteItems(other, [kitLine(2)]),
+        over = await buy(other, body(q2, [kitLine(2)], second.email));
+      assert.equal(over.status, 409, JSON.stringify(over.body));
+      assert.equal(over.body.error.code, 'OUT_OF_STOCK');
+      assert.equal(await ctx.db.stockReservation.count(), reservedBefore);
+      assert.equal((await stockOf(A.id)).reserved, 3);
+      assert.equal((await stockOf(B.id)).reserved, 1);
+      // Payment consumes the component reservations and releases production once.
+      ops = await owner.data('admin/operations');
+      const charge = ops.charges.find((c) => c.orderId === orderKit);
+      await owner.command({ type: 'charge.pay', id: charge.id });
+      const a = await stockOf(A.id),
+        b = await stockOf(B.id);
+      assert.deepEqual([a.stock, a.reserved, b.stock, b.reserved], [2, 0, 3, 0]);
+      assert.equal(await ctx.db.productionJob.count({ where: { orderId: orderKit } }), 1);
+      ops = await owner.data('admin/operations');
+      const adminItem = ops.orders
+        .find((o) => o.id === orderKit)
+        .items.find((i) => i.productId === kit.id);
+      assert.equal(adminItem.kit.items.length, 2);
+      // A component edit invalidates an old quote of the kit.
+      const stale = await quoteItems(customer, [kitLine()]);
+      await owner.command({
+        type: 'product.save',
+        product: { ...A, priceCents: 5100, sizePrices: [5100, 8000] },
+      });
+      const expired = await buy(customer, body(stale, [kitLine()], first.email));
+      assert.equal(expired.status, 409, JSON.stringify(expired.body));
+      assert.equal(expired.body.error.code, 'QUOTE_EXPIRED');
+      // An archived component makes the kit unavailable.
+      const fresh = await quoteItems(customer, [kitLine()]);
+      await owner.command({ type: 'product.save', product: { ...B, stock: 3, archived: true } });
+      try {
+        const gone = await buy(customer, body(fresh, [kitLine()], first.email));
+        assert.equal(gone.status, 409, JSON.stringify(gone.body));
+        assert.equal(gone.body.error.code, 'KIT_UNAVAILABLE');
+      } finally {
+        await owner.command({ type: 'product.save', product: { ...B, stock: 3 } });
+      }
+    } finally {
+      await owner.command({
+        type: 'workspace.save',
+        settings: { ...policy, inventoryPolicy: 'on-demand' },
+      });
+    }
+  });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

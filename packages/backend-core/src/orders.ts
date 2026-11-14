@@ -12,6 +12,10 @@ import {
   unitCostCents,
   type CostBreakdown,
   type ReviewStatus,
+  type Kit,
+  KIT_COLOR,
+  KIT_SIZE,
+  kitCostCents,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -38,21 +42,57 @@ export async function productCosts(
     where: { id: { in: [...new Set(items.map((i) => i.productId))] } },
     select: { id: true, costCents: true, data: true },
   });
+  type CostData = {
+    sizes: string[];
+    costBreakdown?: CostBreakdown;
+    costBySize?: CostBreakdown[];
+    kit?: Kit;
+  };
   const byId = new Map(rows.map((r) => [r.id, r]));
+  // Kits are costed from the current cost of their components (one extra read at most).
+  const componentIds = [
+    ...new Set(
+      rows.flatMap((r) => data<CostData>(r.data).kit?.components.map((c) => c.productId) ?? []),
+    ),
+  ];
+  const components = new Map(
+    (componentIds.length
+      ? await tx.product.findMany({
+          where: { id: { in: componentIds } },
+          select: { id: true, costCents: true, data: true },
+        })
+      : []
+    ).map((r) => [r.id, { ...data<CostData>(r.data), costCents: r.costCents }]),
+  );
   const costs = new Map<string, number>();
   for (const i of items) {
     const row = byId.get(i.productId);
     if (!row) continue;
-    const d = data<{ costBreakdown?: CostBreakdown; costBySize?: CostBreakdown[] }>(row.data);
+    const d = data<CostData>(row.data);
     costs.set(
       i.productId + '/' + i.sizeIndex,
-      unitCostCents(
-        { costCents: row.costCents, costBreakdown: d.costBreakdown, costBySize: d.costBySize },
-        i.sizeIndex,
-      ),
+      d.kit
+        ? kitCostCents(d.kit, components, d.costBreakdown?.packagingCents ?? 0)
+        : unitCostCents(
+            { costCents: row.costCents, costBreakdown: d.costBreakdown, costBySize: d.costBySize },
+            i.sizeIndex,
+          ),
     );
   }
   return costs;
+}
+/**
+ * Stock units each product must provide for the cart lines. A kit line asks its components for
+ * `component.quantity x line.quantity` and nothing of the kit itself; standalone lines add up.
+ */
+export function expandStockQuantities(items: CartItem[]) {
+  const quantities = new Map<string, number>();
+  const add = (id: string, n: number) => quantities.set(id, (quantities.get(id) || 0) + n);
+  for (const i of items) {
+    if (i.kit) for (const c of i.kit.items) add(c.productId, c.quantity * i.quantity);
+    else add(i.productId, i.quantity);
+  }
+  return quantities;
 }
 export class OrdersService {
   readonly payments: PaymentsService;
@@ -78,9 +118,42 @@ export class OrdersService {
         image: string;
         imageIndex: number;
         sizePrices?: number[];
+        kit?: Kit;
       }>(product.data);
       if (!p.colors.includes(item.color) || !p.sizes[item.sizeIndex])
         throw new DomainError('INVALID_VARIANT', 'Confira a cor e o tamanho do produto.');
+      let kit: CartItem['kit'];
+      if (p.kit) {
+        if (item.color !== KIT_COLOR || item.sizeIndex !== 0)
+          throw new DomainError('INVALID_VARIANT', 'Confira a cor e o tamanho do produto.');
+        const rows = new Map(
+          (
+            await tx.product.findMany({
+              where: { id: { in: [...new Set(p.kit.components.map((c) => c.productId))] } },
+            })
+          ).map((r) => [r.id, r]),
+        );
+        kit = {
+          items: p.kit.components.map((c) => {
+            const row = rows.get(c.productId);
+            if (!row || !row.active || row.archived)
+              throw new DomainError(
+                'KIT_UNAVAILABLE',
+                'Este kit está indisponível no momento.',
+                409,
+              );
+            const sizes = data<{ sizes: string[] }>(row.data).sizes;
+            return {
+              productId: row.id,
+              name: row.name,
+              size: sizes[c.sizeIndex] ?? '',
+              sizeIndex: c.sizeIndex,
+              color: c.color,
+              quantity: c.quantity,
+            };
+          }),
+        };
+      }
       result.push({
         key: [product.id, item.color, item.sizeIndex, item.dedication].join('|'),
         productId: product.id,
@@ -88,7 +161,7 @@ export class OrdersService {
         image: p.image,
         imageIndex: p.imageIndex,
         color: item.color,
-        size: p.sizes[item.sizeIndex],
+        size: kit ? KIT_SIZE : p.sizes[item.sizeIndex],
         sizeIndex: item.sizeIndex,
         unitCents: unitPriceCents(
           { priceCents: product.priceCents, sizePrices: p.sizePrices },
@@ -96,6 +169,7 @@ export class OrdersService {
         ),
         quantity: item.quantity,
         dedication: item.dedication,
+        ...(kit ? { kit } : {}),
       });
     }
     return result;
@@ -121,7 +195,21 @@ export class OrdersService {
     const products = [];
     for (const i of groups) {
       const p = requireValue(await tx.product.findUnique({ where: { id: i.productId } }));
-      products.push({ ...i, price: p.priceCents, version: p.version });
+      // A component edit must also invalidate the quote of the kits that contain it.
+      const kit = data<{ kit?: Kit }>(p.data).kit,
+        components = kit
+          ? await tx.product.findMany({
+              where: { id: { in: [...new Set(kit.components.map((c) => c.productId))] } },
+              select: { id: true, version: true },
+              orderBy: { id: 'asc' },
+            })
+          : undefined;
+      products.push({
+        ...i,
+        price: p.priceCents,
+        version: p.version,
+        ...(components ? { components } : {}),
+      });
     }
     const s = await settings(tx);
     return digest(
@@ -386,9 +474,7 @@ export class OrdersService {
             });
       if (!customer.active)
         throw new DomainError('CUSTOMER_INACTIVE', 'Entre em contato com o atendimento.', 403);
-      const quantities = new Map<string, number>();
-      for (const i of items)
-        quantities.set(i.productId, (quantities.get(i.productId) || 0) + i.quantity);
+      const quantities = expandStockQuantities(items);
       for (const [id, quantity] of [...quantities.entries()].sort()) {
         await lock(tx, 'stock/' + id);
         const p = requireValue(await tx.product.findUnique({ where: { id } }));
