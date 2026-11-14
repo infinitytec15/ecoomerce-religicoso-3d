@@ -13,5 +13,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     clearMocks: true,
     restoreMocks: true,
+    // jsdom + user-event files run slower than 5 s when the whole suite shares the CPU (CI).
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 });

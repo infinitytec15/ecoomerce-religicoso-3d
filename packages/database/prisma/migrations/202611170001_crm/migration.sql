@@ -49,3 +49,6 @@ CREATE INDEX "MarketingContact_tags_idx" ON "MarketingContact" USING GIN ("tags"
 
 -- CreateIndex
 CREATE INDEX "MarketingCampaign_state_scheduledAt_idx" ON "MarketingCampaign"("state", "scheduledAt");
+
+-- CreateIndex (OutboxEvent is live: IF NOT EXISTS lets a manual CREATE INDEX CONCURRENTLY run first)
+CREATE INDEX IF NOT EXISTS "OutboxEvent_aggregateId_idx" ON "OutboxEvent"("aggregateId");
