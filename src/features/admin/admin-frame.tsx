@@ -29,6 +29,7 @@ export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['avaliacoes', 'Avaliações', 'spark', 'community'],
   ['marketing', 'Oração diária', 'mail', 'marketing'],
   ['compra-coletiva', 'Compra coletiva', 'gift', 'marketing'],
+  ['stories', 'Stories', 'video', 'marketing'],
   ['relatorios', 'Relatórios', 'filter', 'reports'],
   ['equipe', 'Equipe e perfis', 'user', 'team'],
   ['configuracoes', 'Configurações', 'filter', 'settings'],
