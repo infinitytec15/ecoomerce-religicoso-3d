@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   adminGroupBuySchema,
   adminReviewSchema,
+  adminStoryHighlightSchema,
   httpsUrlSchema,
   myReviewSchema,
 } from '@maos-em-oracao/contracts';
@@ -215,6 +216,7 @@ export const operationsSchema = z.object({
   stockMovements: z.array(stockMovementSchema),
   reviews: z.array(adminReviewSchema).default([]),
   groupBuys: z.array(adminGroupBuySchema).default([]),
+  stories: z.array(adminStoryHighlightSchema).default([]),
   products: z.array(inventoryProductSchema),
   clients: z.array(customerSchema),
   orders: z.array(orderSchema),

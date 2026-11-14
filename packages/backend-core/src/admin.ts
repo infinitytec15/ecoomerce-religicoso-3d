@@ -373,6 +373,7 @@ export class AdminService {
       })),
       reviews: reviews.map((r) => reviewDto(r, true)),
       groupBuys,
+      stories: [],
     };
   }
   async execute(actor: Actor | null, value: unknown) {

@@ -11,6 +11,7 @@ import type {
 } from './admin-types';
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
 import type { AdminGroupBuy, GroupBuyInput, GroupBuySummary } from './group-buys';
+import type { AdminStoryHighlight } from './stories';
 import type { Kit, KitSummary } from './kits';
 export type {
   MediaAsset,
@@ -355,6 +356,7 @@ export interface Operations {
   stockMovements: StockMovement[];
   reviews: AdminReview[];
   groupBuys: AdminGroupBuy[];
+  stories: AdminStoryHighlight[];
 }
 export interface AccountSnapshot {
   customer: Customer;
