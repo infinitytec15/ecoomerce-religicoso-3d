@@ -72,11 +72,15 @@ export default function StoryViewer({
   }
 
   function trapFocus(event: KeyboardEvent) {
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button, a[href]');
-    if (!focusable?.length) return;
+    const dialog = dialogRef.current,
+      focusable = dialog?.querySelectorAll<HTMLElement>('button, a[href]');
+    if (!dialog || !focusable?.length) return;
     const first = focusable[0],
       last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    if (!dialog.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && document.activeElement === last) {
@@ -115,9 +119,14 @@ export default function StoryViewer({
   useEffect(() => {
     const element = videoRef.current;
     if (!element || !src) return;
+    const controller = new AbortController();
     let active = true,
       cleanup: (() => void) | undefined;
-    void attachSource(element, sourceType === 'hls' ? { type: 'hls', src } : { type: 'file', src })
+    void attachSource(
+      element,
+      sourceType === 'hls' ? { type: 'hls', src } : { type: 'file', src },
+      controller.signal,
+    )
       .then((release) => {
         if (active) cleanup = release;
         else release();
@@ -135,6 +144,7 @@ export default function StoryViewer({
       });
     return () => {
       active = false;
+      controller.abort();
       cleanup?.();
     };
   }, [src, sourceType, videoId]);
@@ -177,6 +187,7 @@ export default function StoryViewer({
       role="dialog"
       aria-modal="true"
       aria-label={highlight.title}
+      tabIndex={-1}
       style={
         drag ? { transform: `translateY(${drag}px)`, opacity: 1 - Math.min(drag / 400, 0.5) } : {}
       }
@@ -207,7 +218,11 @@ export default function StoryViewer({
               void gateway.storyEvent({ videoId: video.id, type: 'view' });
             }}
           />
-          {failed && <p className="story-error">Não foi possível carregar este vídeo.</p>}
+          {failed && (
+            <p className="story-error" role="status">
+              Não foi possível carregar este vídeo.
+            </p>
+          )}
         </div>
         <div className="story-top">
           <div className="story-bars">

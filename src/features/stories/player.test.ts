@@ -74,6 +74,19 @@ describe('attachSource', () => {
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
+  it('abortado durante o import do hls.js não anexa nada', async () => {
+    const video = videoWith(''),
+      controller = new AbortController(),
+      pending = attachSource(video, { type: 'hls', src: playlist }, controller.signal);
+    controller.abort();
+    const cleanup = await pending;
+    expect(h.Hls).not.toHaveBeenCalled();
+    expect(h.instance.loadSource).not.toHaveBeenCalled();
+    expect(h.instance.attachMedia).not.toHaveBeenCalled();
+    expect(video.hasAttribute('src')).toBe(false);
+    expect(cleanup).not.toThrow();
+  });
+
   it('sem suporte a HLS dispara error', async () => {
     h.state.supported = false;
     const video = videoWith(''),

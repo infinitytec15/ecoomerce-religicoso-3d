@@ -12,9 +12,9 @@ import StoryViewer from './story-viewer';
 
 const h = vi.hoisted(() => ({
   storyEvent: vi.fn<(event: StoryEvent) => Promise<void>>(async () => {}),
-  attachSource: vi.fn<(video: HTMLVideoElement, source: StorySource) => Promise<() => void>>(
-    async () => () => {},
-  ),
+  attachSource: vi.fn<
+    (video: HTMLVideoElement, source: StorySource, signal?: AbortSignal) => Promise<() => void>
+  >(async () => () => {}),
 }));
 vi.mock('@/lib/api/query', () => ({ useGateway: () => ({ storyEvent: h.storyEvent }) }));
 vi.mock('@/lib/media/use-asset', () => ({ useAssetUrl: (s?: string) => s }));
@@ -75,7 +75,11 @@ describe('StoryViewer', () => {
     expect(screen.getByRole('button', { name: 'Fechar' })).toHaveFocus();
     expect(document.body.style.overflow).toBe('hidden');
     expect(screen.getAllByRole('progressbar')).toHaveLength(2);
-    expect(h.attachSource).toHaveBeenCalledWith(videoEl(), highlightA.videos[0].source);
+    expect(h.attachSource).toHaveBeenCalledWith(
+      videoEl(),
+      highlightA.videos[0].source,
+      expect.any(AbortSignal),
+    );
     unmount();
     expect(document.body.style.overflow).toBe('');
   });
@@ -103,7 +107,11 @@ describe('StoryViewer', () => {
     expect(bars[1]).toHaveAttribute('aria-valuenow', '0');
     await next();
     expect(screen.getByRole('dialog', { name: 'Oficina' })).toBeInTheDocument();
-    expect(h.attachSource).toHaveBeenLastCalledWith(videoEl(), highlightB.videos[0].source);
+    expect(h.attachSource).toHaveBeenLastCalledWith(
+      videoEl(),
+      highlightB.videos[0].source,
+      expect.any(AbortSignal),
+    );
     expect(onClose).not.toHaveBeenCalled();
     await next();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -173,11 +181,41 @@ describe('StoryViewer', () => {
   });
 
   it('dois playing do mesmo vídeo geram uma única visualização', () => {
-    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    // A video id no other test plays, since views are deduped per page load.
+    const once = { ...highlightA, videos: [video('visto-uma-vez')] };
+    render(<StoryViewer highlights={[once]} start={0} onClose={vi.fn()} />);
     fireEvent.playing(videoEl());
     fireEvent.playing(videoEl());
     expect(h.storyEvent).toHaveBeenCalledTimes(1);
-    expect(h.storyEvent).toHaveBeenCalledWith({ videoId: 'a1', type: 'view' });
+    expect(h.storyEvent).toHaveBeenCalledWith({ videoId: 'visto-uma-vez', type: 'view' });
+  });
+
+  it('fechar antes dos 3 s cancela o avanço do erro', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn(),
+      { unmount } = render(<StoryViewer highlights={highlights} start={1} onClose={onClose} />);
+    fireEvent.error(videoEl());
+    expect(screen.getByRole('status')).toHaveTextContent('Não foi possível carregar este vídeo.');
+    const clear = vi.spyOn(globalThis, 'clearTimeout'),
+      errors = vi.spyOn(console, 'error');
+    unmount();
+    expect(clear).toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('Tab com o foco fora do diálogo traz o foco para dentro', async () => {
+    const user = userEvent.setup();
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('tabindex', '-1');
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await user.tab();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    await user.tab({ shift: true });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
   });
 
   it('"Ver peça" leva à peça e registra o clique do vídeo atual', async () => {

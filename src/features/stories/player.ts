@@ -13,11 +13,13 @@ function detach(video: HTMLVideoElement) {
 /**
  * Puts a story source on the video. Files and native HLS (Safari/iOS) go straight to `src`;
  * other browsers load `hls.js` on demand. Any failure surfaces as the video's `error` event.
- * Resolves to the cleanup for this source.
+ * Resolves to the cleanup for this source. Once `signal` aborts (the viewer moved on while
+ * `hls.js` was loading), nothing is attached and the cleanup is a no-op.
  */
 export async function attachSource(
   video: HTMLVideoElement,
   source: StorySource,
+  signal?: AbortSignal,
 ): Promise<() => void> {
   if (source.type === 'file' || video.canPlayType(HLS_MIME) !== '') {
     video.src = source.src;
@@ -27,9 +29,10 @@ export async function attachSource(
   try {
     ({ default: Hls } = await import('hls.js'));
   } catch {
-    fail(video);
+    if (!signal?.aborted) fail(video);
     return () => {};
   }
+  if (signal?.aborted) return () => {};
   if (!Hls.isSupported()) {
     fail(video);
     return () => {};
