@@ -335,7 +335,6 @@ describe('Bunny e transporte', () => {
         BUNNY_STREAM_CDN_HOST: 'vz-test.b-cdn.net',
       }).videoUrls(guid);
     expect(urls.hlsUrl).toBe('https://vz-test.b-cdn.net/' + guid + '/playlist.m3u8');
-    expect(urls.hlsUrl.endsWith('/' + guid + '/playlist.m3u8')).toBe(true);
   });
   it('rejeita traversal e webhook adulterado', async () => {
     const service = createMedia({

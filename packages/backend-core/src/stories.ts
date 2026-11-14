@@ -112,6 +112,8 @@ export class StoriesService {
     const a = permit(actor, 'marketing');
     await transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'stories');
+      // Also the per-highlight lock: a concurrent video save or reorder must not see it vanish.
+      await lock(tx, 'stories/' + id);
       requireValue(
         await tx.storyHighlight.findUnique({ where: { id } }),
         'Destaque não encontrado.',
@@ -256,7 +258,7 @@ export class StoriesService {
         coverUrl = cover?.kind === 'image' ? data<Partial<MediaAsset>>(cover.data).url : undefined,
         videos = h.videos.flatMap((v): StoryVideoPublic[] => {
           const asset = assets.get(v.assetId),
-            source = asset?.kind === 'video' ? this.source(asset) : null;
+            source = asset?.kind === 'video' ? this.playable(v.id, asset) : null;
           return source
             ? [
                 {
@@ -354,6 +356,20 @@ export class StoriesService {
     }
     const url = data<Partial<MediaAsset>>(asset.data).url;
     return url ? { type: 'file', src: url } : null;
+  }
+
+  /** The source of one video, or null when it cannot be built: only that video leaves the list. */
+  private playable(videoId: string, asset: AssetRow): StorySource | null {
+    try {
+      return this.source(asset);
+    } catch (error) {
+      console.warn(
+        'Stories: vídeo sem origem reproduzível:',
+        videoId,
+        (error as { code?: string } | null)?.code ?? (error as Error | null)?.name ?? 'erro',
+      );
+      return null;
+    }
   }
 
   private async position(tx: Transaction, kind: 'highlight' | 'video', ids: string[]) {

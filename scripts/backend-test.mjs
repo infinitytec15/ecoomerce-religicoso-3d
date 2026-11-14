@@ -3105,6 +3105,24 @@ try {
       list = await admin();
       assert.equal(list[0].videos[0].views, 2);
       assert.equal(list[0].videos[0].clicks, 1);
+      // A video whose Stream URLs cannot be built (here: Stream not configured) leaves only itself.
+      const streamId = await upload(owner, 'video');
+      await owner.command({ ...video, assetId: streamId, caption: 'Do Stream', productIds: [] });
+      assert.equal((await stories())[0].videos.length, 2);
+      await ctx.db.mediaAsset.update({
+        where: { id: streamId },
+        data: { storage: 'bunny-stream', providerId: randomUUID() },
+      });
+      pub = await stories();
+      assert.deepEqual(
+        pub[0].videos.map((v) => v.id),
+        [storyVideoId],
+      );
+      await owner.command({
+        type: 'story.video.delete',
+        id: (await admin())[0].videos.find((v) => v.assetId === streamId).id,
+      });
+      assert.equal((await admin())[0].videos.length, 1);
       // 9. Reorder needs every highlight, then follows the new order.
       await owner.command({ ...highlight, title: 'Medalhas' });
       list = await admin();
@@ -3133,6 +3151,25 @@ try {
       assert.equal(model.status, 403);
       assert.equal(model.body.error.code, 'FORBIDDEN');
       const marketingCover = await upload(marketing, 'image');
+      const ownStatus = await marketing.call('admin/media/' + marketingCover + '/status');
+      assert.equal(ownStatus.status, 200, ownStatus.body?.error?.code);
+      assert.equal(ownStatus.body.data.status, 'ready');
+      const ownerModel = await owner.call('admin/media/uploads', 'POST', {
+        name: 'modelo.stl',
+        mime: 'application/octet-stream',
+        size: 100,
+        kind: 'model',
+      });
+      assert.equal(ownerModel.status, 200, ownerModel.body?.error?.code);
+      const modelStatus = await marketing.call(
+        'admin/media/' + ownerModel.body.data.id + '/status',
+      );
+      assert.equal(modelStatus.status, 403);
+      assert.equal(modelStatus.body.error.code, 'FORBIDDEN');
+      assert.equal(
+        (await owner.call('admin/media/' + ownerModel.body.data.id + '/status')).status,
+        200,
+      );
       const byMarketing = await send(marketing, {
         ...highlight,
         title: 'Do marketing',

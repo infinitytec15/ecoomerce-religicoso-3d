@@ -283,10 +283,13 @@ export class MediaService {
       throw new DomainError('UPLOAD_INCOMPLETE', 'Finalize o envio antes de concluir.', 409);
     return this.dto(fresh);
   }
-  /** Admin: current state of an upload. */
+  /** Admin: current state of an upload, for the kinds the member may upload. */
   async status(actor: Actor | null, id: string): Promise<MediaAsset> {
-    adminUploader(actor);
-    return this.dto(requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } })));
+    const { kinds } = adminUploader(actor),
+      asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
+    if (!kinds.includes(asset.kind as MediaKind))
+      throw new DomainError('FORBIDDEN', 'Seu perfil não permite consultar este arquivo.', 403);
+    return this.dto(asset);
   }
   dto(asset: Awaited<ReturnType<Context['db']['mediaAsset']['findUniqueOrThrow']>>): MediaAsset {
     const extra = data<Partial<MediaAsset>>(asset.data);
