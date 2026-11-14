@@ -13,6 +13,7 @@ import type {
 } from '@/lib/domain/types';
 import { addressSchema, type LoginInput } from '@/lib/domain/schemas';
 import { z } from 'zod';
+import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
 import { calculateTotals, validateSplit } from '@/lib/domain/commerce';
 import { centsFromInput, money } from '@/lib/domain/format';
 import { useCartStore } from '@/lib/store/cart';
@@ -75,6 +76,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
     [quoteError, setQuoteError] = useState(''),
     [prefilled, setPrefilled] = useState(false),
     key = useRef<string>(''),
+    marketingOptIn = useRef(false),
     gateway = useGateway(),
     session = useSession(),
     account = useAccount(),
@@ -177,6 +179,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
               : 0,
         installments: paymentToken?.installments || installments,
         consent: true,
+        marketingOptIn: marketingOptIn.current,
         paymentToken,
         shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
         shippingServiceId: rates.find((r) => r.id === shipping)?.serviceId,
@@ -403,6 +406,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
               className="stack"
               onSubmit={async (d) => {
                 if (!d.has('consent')) throw new Error('Confirme os dados para continuar.');
+                marketingOptIn.current = d.has('marketingOptIn');
                 if (!IS_DEMO) await refreshEstimate();
                 if (!IS_DEMO && payment !== 'pix') {
                   setCardRequested(true);
@@ -503,6 +507,10 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
                     {IS_DEMO
                       ? 'Entendi que esta compra é uma simulação e não cria cobrança real.'
                       : 'Revisei meus dados, os itens e o valor deste pedido.'}
+                  </label>
+                  <label className="check-line">
+                    <input type="checkbox" name="marketingOptIn" />
+                    {MARKETING_CONSENT_TEXT}
                   </label>
                   {create.isPending && !IS_DEMO && (
                     <PrayingWait

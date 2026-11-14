@@ -3,7 +3,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Address, Order, SubscriptionChange } from '@/lib/domain/types';
-import { useAccount, useCommand } from '@/lib/api/query';
+import { useQuery } from '@tanstack/react-query';
+import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
+import { useAccount, useCommand, useGateway } from '@/lib/api/query';
 import { errorMessage } from '@/lib/api/contracts';
 import { IS_DEMO } from '@/lib/api/config';
 import { dateLabel, money } from '@/lib/domain/format';
@@ -550,6 +552,46 @@ function ProfileView({ customer, addressOnly }: { customer: Address; addressOnly
           </>
         )}
       </Form>
+      {!addressOnly && <MarketingPreference />}
     </>
+  );
+}
+function MarketingPreference() {
+  const gateway = useGateway(),
+    status = useQuery({ queryKey: ['marketing-status'], queryFn: () => gateway.marketingStatus() }),
+    save = useCommand((g, subscribed: boolean) => g.setMarketing(subscribed)),
+    [message, setMessage] = useState(''),
+    subscribed = status.data?.subscribed ?? false;
+  async function toggle() {
+    const next = !subscribed;
+    try {
+      await save.mutateAsync(next);
+      setMessage(
+        next ? MARKETING_CONSENT_TEXT : 'Pronto. Você não vai mais receber nossas novidades.',
+      );
+    } catch (error) {
+      setMessage(errorMessage(error));
+    }
+  }
+  return (
+    <section className="admin-panel" aria-labelledby="marketing-title">
+      <h2 id="marketing-title">E-mails de novidades</h2>
+      <p id="marketing-help">
+        {MARKETING_CONSENT_TEXT} Pedidos e avisos da sua conta continuam chegando normalmente.
+      </p>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={subscribed}
+        aria-labelledby="marketing-title"
+        aria-describedby="marketing-help"
+        className={subscribed ? 'btn' : 'btn secondary'}
+        disabled={status.isLoading || save.isPending}
+        onClick={toggle}
+      >
+        {subscribed ? 'Ligado' : 'Desligado'}
+      </button>
+      {message && <p role="status">{message}</p>}
+    </section>
   );
 }

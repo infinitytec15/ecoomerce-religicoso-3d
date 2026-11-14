@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { CartItem } from '@/lib/domain/types';
 import { ApiError } from '@/lib/api/contracts';
 import { useCartStore } from '@/lib/store/cart';
+import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
 import { CheckoutView } from './checkout-view';
 
 const h = vi.hoisted(() => {
@@ -125,6 +126,31 @@ describe('CheckoutView', () => {
     await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
     expect(h.gateway.checkout.mock.calls[0][0].groupBuyId).toBeUndefined();
     expect(clear).toHaveBeenCalled();
+  });
+
+  it('envia marketingOptIn false quando a caixa de novidades fica desmarcada', async () => {
+    const user = userEvent.setup();
+    useCartStore.setState({ items: [line] });
+    render(<CheckoutView />);
+    await toPayment(user);
+    const box = screen.getByRole('checkbox', { name: MARKETING_CONSENT_TEXT });
+    expect(box).not.toBeChecked();
+    expect(box).not.toBeRequired();
+    await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+    await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+    expect(h.gateway.checkout.mock.calls[0][0].marketingOptIn).toBe(false);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('envia marketingOptIn true quando a caixa de novidades é marcada', async () => {
+    const user = userEvent.setup();
+    useCartStore.setState({ items: [line] });
+    render(<CheckoutView />);
+    await toPayment(user);
+    await user.click(screen.getByRole('checkbox', { name: MARKETING_CONSENT_TEXT }));
+    await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+    await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+    expect(h.gateway.checkout.mock.calls[0][0].marketingOptIn).toBe(true);
   });
 });
 

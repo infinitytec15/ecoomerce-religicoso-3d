@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
 import { Logo } from '@/components/layout/logo';
 import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,14 @@ export function AuthScreen({
       setRecoveryMessage(result.message);
       return;
     }
-    await login.mutateAsync({ email, password, kind, name: register ? name : undefined, register });
+    await login.mutateAsync({
+      email,
+      password,
+      kind,
+      name: register ? name : undefined,
+      register,
+      ...(register ? { marketingOptIn: data.has('marketingOptIn') } : {}),
+    });
     writePreference(
       'auth-email-' + (staff ? 'admin' : 'customer'),
       data.has('remember') ? email : '',
@@ -276,6 +284,12 @@ export function AuthScreen({
                         <p className="auth-caption">
                           Esta é uma simulação. Nenhum e-mail será enviado.
                         </p>
+                      )}
+                      {register && (
+                        <label className="auth-remember">
+                          <input type="checkbox" name="marketingOptIn" />
+                          {MARKETING_CONSENT_TEXT}
+                        </label>
                       )}
                       <Button
                         className="auth-submit"
