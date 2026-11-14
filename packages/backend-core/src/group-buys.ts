@@ -39,6 +39,13 @@ const MAX_INITIALS = 8;
 
 /** What the payment flow does with a paid group order. */
 export type GroupPaidOutcome = 'hold' | 'release' | 'fail';
+/** A validated group checkout: the campaign, the unit price to charge and the order snapshot. */
+export interface GroupCheckout {
+  groupBuy: Prisma.GroupBuyGetPayload<object>;
+  unitCents: number;
+  snapshot: GroupBuyOrderSnapshot;
+}
+type GroupCheckoutInput = { groupBuyId: string; items: OrderItemInput[]; coupon: string };
 
 export class GroupBuysService {
   private mail: Notifications;
@@ -265,23 +272,32 @@ export class GroupBuysService {
   }
 
   /**
-   * Validates a group checkout under the campaign lock and prices its single line. The caller must
-   * create the order in this same transaction. Without an e-mail (estimate) the per-person limit and
-   * the participant cap are not checked.
+   * Validates a group checkout and prices its single line. With the buyer's e-mail (checkout) it runs
+   * under the campaign lock, and the caller must create the order in this same transaction. Without
+   * one (the public estimate) it only reads: no lock, no per-person limit, no participant cap.
    */
   async context(
     tx: Transaction,
-    input: { groupBuyId: string; items: OrderItemInput[]; coupon: string },
+    input: GroupCheckoutInput,
+    email: string,
+    now: Date,
+  ): Promise<GroupCheckout>;
+  async context(
+    db: PrismaClient | Transaction,
+    input: GroupCheckoutInput,
+    email: null,
+    now: Date,
+  ): Promise<GroupCheckout>;
+  async context(
+    db: PrismaClient | Transaction,
+    input: GroupCheckoutInput,
     email: string | null,
     now: Date,
-  ): Promise<{
-    groupBuy: Prisma.GroupBuyGetPayload<object>;
-    unitCents: number;
-    snapshot: GroupBuyOrderSnapshot;
-  }> {
+  ): Promise<GroupCheckout> {
     const id = input.groupBuyId;
-    await lock(tx, 'group-buy/' + id);
-    const found = await tx.groupBuy.findUnique({ where: { id }, include: { product: true } });
+    // The overloads guarantee a transaction whenever an e-mail is given.
+    if (email !== null) await lock(db as Transaction, 'group-buy/' + id);
+    const found = await db.groupBuy.findUnique({ where: { id }, include: { product: true } });
     if (!found || !groupBuyJoinable(found, now))
       throw new DomainError('GROUP_BUY_CLOSED', 'Esta compra coletiva não está aberta.', 409);
     const { product, ...groupBuy } = found,
@@ -302,7 +318,7 @@ export class GroupBuysService {
           status: { not: 'Cancelado' },
           customer: { email: { equals: email.trim(), mode: 'insensitive' as const } },
         },
-        bought = await tx.orderItem.aggregate({
+        bought = await db.orderItem.aggregate({
           where: { order: mine },
           _sum: { quantity: true },
         });
@@ -314,8 +330,8 @@ export class GroupBuysService {
         );
       if (
         groupBuy.maxParticipants !== null &&
-        (await this.participants(tx, id)) >= groupBuy.maxParticipants &&
-        !(await tx.order.count({ where: { ...mine, payment: { status: 'Pago' } } }))
+        (await this.participants(db, id)) >= groupBuy.maxParticipants &&
+        !(await db.order.count({ where: { ...mine, payment: { status: 'Pago' } } }))
       )
         throw new DomainError(
           'GROUP_BUY_FULL',
@@ -365,6 +381,8 @@ export class GroupBuysService {
     await lock(tx, 'group-buy/' + id);
     let gb = await tx.groupBuy.findUniqueOrThrow({ where: { id } });
     if (gb.status === 'Não fechou') {
+      // A difference-mode buyer paid the normal price: a failed campaign owes them nothing.
+      if (gb.mode !== 'hold') return 'release';
       await this.mail.event(tx, 'group-fail/' + orderId, 'group-buy-fail-order', orderId, {
         orderId,
       });

@@ -2393,6 +2393,10 @@ try {
     assert.equal(batch.status, 409, JSON.stringify(batch.body));
     assert.equal(batch.body.error.code, 'GROUP_PENDING');
     assert.equal(await ctx.db.productionJob.count({ where: { orderId: first.id } }), 0);
+    const ship = await send({ type: 'shipping.label', id: first.id, action: 'prepare' });
+    assert.equal(ship.status, 409, JSON.stringify(ship.body));
+    assert.equal(ship.body.error.code, 'GROUP_PENDING');
+    assert.equal(await ctx.db.shipment.count({ where: { orderId: first.id } }), 0);
 
     const again = await paid(buyerA, a.email);
     assert.equal(again.status, 'Aguardando grupo');
@@ -2423,6 +2427,80 @@ try {
     });
     assert.equal(estimate.status, 200, JSON.stringify(estimate.body));
     assert.equal(estimate.body.data.subtotalCents, campaign.groupPriceCents * 2);
+
+    // A payment approved after the campaign ended without the goal, on two other products.
+    const adminOps = await owner.data('admin/operations'),
+      [holdProduct, differenceProduct] = (await guest.data('catalog/products')).filter(
+        (p) => p.id !== product.id && !p.kit && !p.kitSummary && !p.groupBuy,
+      ),
+      latePayment = async (p, mode, label) => {
+        const current = adminOps.products.find((row) => row.id === p.id);
+        await owner.command({
+          type: 'groupbuy.save',
+          title: 'Campanha que não fechou ' + label,
+          description: '',
+          productId: p.id,
+          sizeIndex: 0,
+          groupPriceCents: (current.sizePrices?.[0] ?? current.priceCents) - 100,
+          goal: 2,
+          maxParticipants: null,
+          perPersonLimit: 1,
+          mode,
+          endsAt: new Date(Date.now() + 86400000).toISOString(),
+          active: true,
+        });
+        const gb = await ctx.db.groupBuy.findFirstOrThrow({
+            where: { productId: p.id, status: 'Aberta' },
+          }),
+          client = new Client(),
+          email = 'grupo-' + label + '-' + runId + '@example.test',
+          q = await quote(client, p),
+          r = await buy(
+            client,
+            checkout(p, q, email, 'pix', {
+              groupBuyId: gb.id,
+              items: [
+                { productId: p.id, quantity: 1, color: p.colors[0], sizeIndex: 0, dedication: '' },
+              ],
+            }),
+          );
+        assert.equal(r.status, 200, JSON.stringify(r.body));
+        const pending = await ctx.db.order.findUniqueOrThrow({
+          where: { id: r.body.data.orderId },
+          include: { payment: true },
+        });
+        assert.equal(pending.payment.status, 'Pendente');
+        await ctx.db.groupBuy.update({
+          where: { id: gb.id },
+          data: { status: 'Não fechou', closedAt: new Date() },
+        });
+        await owner.command({ type: 'charge.pay', id: pending.payment.id });
+        return ctx.db.order.findUniqueOrThrow({
+          where: { id: pending.id },
+          include: { payment: true, job: true },
+        });
+      };
+    assert(holdProduct && differenceProduct, 'há dois outros produtos sem campanha');
+    const failed = await latePayment(holdProduct, 'hold', 'hold');
+    assert.equal(failed.payment.status, 'Pago');
+    assert.equal(failed.status, 'Aguardando grupo');
+    assert.equal(failed.job, null);
+    assert.equal(
+      await ctx.db.outboxEvent.count({
+        where: { key: 'group-fail/' + failed.id, kind: 'group-buy-fail-order' },
+      }),
+      1,
+    );
+    const failedKinds = await kinds(failed.id);
+    assert(!failedKinds.includes('group-joined'));
+    assert(!failedKinds.includes('payment-approved'));
+    const late = await latePayment(differenceProduct, 'difference', 'diferenca');
+    assert.equal(late.status, 'Confirmado');
+    assert(late.job, 'pedido pago pelo preço normal vai para a produção');
+    assert.equal(late.data.groupBuy.paidUnitCents, late.data.groupBuy.normalUnitCents);
+    assert.equal(await ctx.db.outboxEvent.count({ where: { key: 'group-diff/' + late.id } }), 0);
+    assert.equal(await ctx.db.outboxEvent.count({ where: { key: 'group-fail/' + late.id } }), 0);
+    assert((await kinds(late.id)).includes('payment-approved'));
     operationsSchema.parse(await owner.data('admin/operations'));
   });
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {

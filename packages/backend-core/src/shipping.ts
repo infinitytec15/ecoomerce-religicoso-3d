@@ -29,6 +29,9 @@ const systemActor: Actor = {
   owner: true,
 };
 const orderNumber = (n: number) => 'MEO-' + String(n).padStart(6, '0');
+/** A held group order is neither produced nor shipped until its campaign closes. */
+const groupPending = () =>
+  new DomainError('GROUP_PENDING', 'O pedido aguarda o fechamento da compra coletiva.', 409);
 export class ShippingService {
   private mail: Notifications;
   constructor(private ctx: Context) {
@@ -90,6 +93,7 @@ export class ShippingService {
         ['Cancelado', 'Enviado', 'Entregue'].includes(order.status)
       )
         throw new DomainError('ORDER_NOT_READY', 'O pedido não permite preparar o envio.', 409);
+      if (order.status === 'Aguardando grupo') throw groupPending();
       const current = await this.ctx.db.shipment.findUnique({ where: { orderId: id } });
       if (current && !['prepared', 'cancelled'].includes(current.state)) return;
       const options = await new OrdersService(this.ctx).quote({
@@ -121,6 +125,7 @@ export class ShippingService {
         );
       if (['Enviado', 'Entregue', 'Cancelado'].includes(o.status))
         throw new DomainError('ORDER_CLOSED', 'Este pedido não permite alterar a etiqueta.', 409);
+      if (action !== 'cancel' && o.status === 'Aguardando grupo') throw groupPending();
       const d = data<{ shippingQuoteId?: string; shippingServiceId?: string }>(o.data);
       const shipment = await tx.shipment.upsert({
         where: { orderId: id },

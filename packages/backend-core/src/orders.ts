@@ -376,16 +376,13 @@ export class OrdersService {
       })
       .parse(value);
     const items = await this.cart(this.ctx.db, input.items);
-    const { groupBuyId } = input;
-    if (groupBuyId)
+    if (input.groupBuyId)
       items[0]!.unitCents = (
-        await transaction(this.ctx.db, (tx) =>
-          this.groupBuys.context(
-            tx,
-            { groupBuyId, items: input.items, coupon: input.coupon },
-            null,
-            new Date(),
-          ),
+        await this.groupBuys.context(
+          this.ctx.db,
+          { groupBuyId: input.groupBuyId, items: input.items, coupon: input.coupon },
+          null,
+          new Date(),
         )
       ).unitCents;
     const subtotalCents = items.reduce((n, i) => n + i.unitCents * i.quantity, 0);
@@ -463,20 +460,17 @@ export class OrdersService {
             where: { id: input.shippingQuoteId || input.shipping },
           }),
           'Selecione uma cotação válida.',
-        );
+        ),
+        account =
+          actor?.userId && actor.customerId
+            ? requireValue(await tx.customer.findUnique({ where: { id: actor.customerId } }))
+            : null;
       // Group rules run under the campaign lock, before the quote check, so their errors come first.
       const group = input.groupBuyId
         ? await this.groupBuys.context(
             tx,
             { groupBuyId: input.groupBuyId, items: input.items, coupon: input.coupon },
-            actor?.userId && actor.customerId
-              ? requireValue(
-                  await tx.customer.findUnique({
-                    where: { id: actor.customerId },
-                    select: { email: true },
-                  }),
-                ).email
-              : input.address.email,
+            account?.email ?? input.address.email,
             new Date(),
           )
         : null;
@@ -504,15 +498,14 @@ export class OrdersService {
       if (input.payment !== 'pix' && !input.paymentToken?.token)
         throw new DomainError('CARD_TOKEN_REQUIRED', 'Preencha o cartão no formulário seguro.');
       const customer =
-        actor?.userId && actor.customerId
-          ? requireValue(await tx.customer.findUnique({ where: { id: actor.customerId } }))
-          : await tx.customer.create({
-              data: {
-                name: input.address.name,
-                email: input.address.email,
-                address: json(input.address),
-              },
-            });
+        account ??
+        (await tx.customer.create({
+          data: {
+            name: input.address.name,
+            email: input.address.email,
+            address: json(input.address),
+          },
+        }));
       if (!customer.active)
         throw new DomainError('CUSTOMER_INACTIVE', 'Entre em contato com o atendimento.', 403);
       const quantities = expandStockQuantities(items);
