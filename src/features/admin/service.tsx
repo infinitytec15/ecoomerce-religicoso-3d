@@ -1,5 +1,6 @@
 'use client';
 import { PrayerManager } from './prayer-manager';
+import { GroupBuyManager } from './group-buy-manager';
 import { ReviewManager } from './review-manager';
 import { CampaignManager } from './campaign-manager';
 import { ReportCenter } from './report-center';
@@ -197,6 +198,9 @@ export function AdminCommunity() {
 }
 export function AdminReviews() {
   return <ReviewManager />;
+}
+export function AdminGroupBuys() {
+  return <GroupBuyManager />;
 }
 export function AdminMarketing() {
   return <CampaignManager />;

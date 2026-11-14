@@ -28,6 +28,7 @@ export const adminNavigation: [string, string, IconName, Permission?][] = [
   ['comunidade', 'Mural de orações', 'heart', 'community'],
   ['avaliacoes', 'Avaliações', 'spark', 'community'],
   ['marketing', 'Oração diária', 'mail', 'marketing'],
+  ['compra-coletiva', 'Compra coletiva', 'gift', 'marketing'],
   ['relatorios', 'Relatórios', 'filter', 'reports'],
   ['equipe', 'Equipe e perfis', 'user', 'team'],
   ['configuracoes', 'Configurações', 'filter', 'settings'],
