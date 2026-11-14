@@ -159,6 +159,34 @@ async function register(client, label) {
   assert.equal(r.status, 200, r.body?.error?.code);
   return { email, password, user: r.body.data };
 }
+/** A signed-in team member whose only permission is marketing (invited and accepted by the owner). */
+async function marketingMember(owner, label) {
+  const email = label + '-' + runId + '@example.test',
+    password = 'EquipeHomologacao!2026',
+    member = new Client();
+  await owner.command({
+    type: 'invite.create',
+    name: 'Marketing teste',
+    email,
+    role: 'production',
+    permissions: ['marketing'],
+  });
+  const invite = (await owner.data('admin/operations')).invitations.find((i) => i.email === email);
+  assert.equal(
+    (
+      await member.call('team/invitations/' + invite.token + '/accept', 'POST', {
+        name: 'Marketing teste',
+        password,
+      })
+    ).status,
+    204,
+  );
+  assert.equal(
+    (await member.call('auth/login', 'POST', { email, password, kind: 'staff' })).status,
+    200,
+  );
+  return member;
+}
 function address(email) {
   return {
     name: 'Cliente de Homologação',
@@ -2908,37 +2936,7 @@ try {
     // Owner sees full e-mails and the cost; a marketing-only member sees neither.
     assert(earlyRow.orders.some((o) => o.email === 'grupo-i-' + runId + '@example.test'));
     assert.equal(earlyRow.costCents, 1234);
-    const marketingEmail = 'marketing-' + runId + '@example.test';
-    await owner.command({
-      type: 'invite.create',
-      name: 'Marketing teste',
-      email: marketingEmail,
-      role: 'production',
-      permissions: ['marketing'],
-    });
-    const invite = (await owner.data('admin/operations')).invitations.find(
-        (i) => i.email === marketingEmail,
-      ),
-      marketing = new Client();
-    assert.equal(
-      (
-        await marketing.call('team/invitations/' + invite.token + '/accept', 'POST', {
-          name: 'Marketing teste',
-          password: 'EquipeHomologacao!2026',
-        })
-      ).status,
-      204,
-    );
-    assert.equal(
-      (
-        await marketing.call('auth/login', 'POST', {
-          email: marketingEmail,
-          password: 'EquipeHomologacao!2026',
-          kind: 'staff',
-        })
-      ).status,
-      200,
-    );
+    const marketing = await marketingMember(owner, 'marketing');
     const scoped = operationsSchema.parse(await marketing.data('admin/operations')),
       scopedRow = scoped.groupBuys.find((g) => g.id === early.id);
     assert.equal(scopedRow.costCents, 0);
@@ -2969,6 +2967,194 @@ try {
     assert.equal((await load(iId)).status, 'Confirmado');
     operationsSchema.parse(await owner.data('admin/operations'));
   });
+  await check(
+    'stories: admin monta destaque, loja mostra só o pronto e conta métricas',
+    async () => {
+      const send = (client, command) =>
+          client.call('admin/commands', 'POST', command, {
+            headers: { 'idempotency-key': randomUUID() },
+          }),
+        upload = async (client, kind, { complete = true } = {}) => {
+          const bytes =
+              kind === 'image'
+                ? await sharp({
+                    create: { width: 8, height: 8, channels: 3, background: '#7a5c3e' },
+                  })
+                    .png()
+                    .toBuffer()
+                : Buffer.from('story-video-' + randomUUID()),
+            u = await client.call('admin/media/uploads', 'POST', {
+              name: kind === 'image' ? 'capa.png' : 'story.mp4',
+              mime: kind === 'image' ? 'image/png' : 'video/mp4',
+              size: bytes.length,
+              kind,
+            });
+          assert.equal(u.status, 200, u.body?.error?.code);
+          if (!complete) return u.body.data.id;
+          const id = u.body.data.id;
+          assert.equal(
+            (
+              await client.call('admin/media/uploads/' + id + '/content', 'PUT', undefined, {
+                bytes,
+              })
+            ).status,
+            204,
+          );
+          const done = await client.call('admin/media/uploads/' + id + '/complete', 'POST', {});
+          assert.equal(done.status, 200, done.body?.error?.code);
+          assert.equal(done.body.data.status, 'ready');
+          return id;
+        },
+        stories = () => guest.data('stories'),
+        admin = async () => (await owner.data('admin/operations')).stories,
+        template = (await owner.data('admin/operations')).products.find((p) => p.id === product.id),
+        [p1, p2, p3, p4] = [1, 2, 3, 4].map((n) => {
+          const p = {
+            ...template,
+            id: randomUUID(),
+            sku: 'STORY-' + n + '-' + runId,
+            name: 'Peça do story ' + n,
+            active: true,
+            archived: false,
+            stock: 5,
+          };
+          delete p.kit;
+          return p;
+        });
+      for (const p of [p1, p2, p3, p4]) await owner.command({ type: 'product.save', product: p });
+      const coverId = await upload(owner, 'image'),
+        videoId = await upload(owner, 'video'),
+        coverUrl = (await ctx.db.mediaAsset.findUniqueOrThrow({ where: { id: coverId } })).data.url,
+        highlight = {
+          type: 'story.save',
+          title: 'Terços',
+          coverAssetId: coverId,
+          active: true,
+          placements: ['home', 'product'],
+          categories: [],
+        };
+      // 1-2. Category placement needs a category; the cover must be a ready image.
+      const noCategory = await send(owner, { ...highlight, placements: ['category'] });
+      assert.equal(noCategory.status, 422);
+      assert.equal(noCategory.body.error.code, 'CATEGORY_REQUIRED');
+      const videoCover = await send(owner, { ...highlight, coverAssetId: videoId });
+      assert.equal(videoCover.status, 422);
+      assert.equal(videoCover.body.error.code, 'INVALID_COVER');
+      // 3. A highlight without videos is kept in the admin and hidden in the store.
+      await owner.command(highlight);
+      let list = await admin();
+      assert.equal(list.length, 1);
+      const highlightId = list[0].id;
+      assert.deepEqual(list[0].videos, []);
+      assert.equal(list[0].coverUrl, coverUrl);
+      assert.deepEqual(await stories(), []);
+      // 4. The video must be a video; at most 3 products.
+      const video = {
+        type: 'story.video.save',
+        highlightId,
+        assetId: videoId,
+        caption: 'Terço de madeira feito à mão',
+        productIds: [p1.id],
+        active: true,
+      };
+      const imageVideo = await send(owner, { ...video, assetId: coverId });
+      assert.equal(imageVideo.status, 422);
+      assert.equal(imageVideo.body.error.code, 'INVALID_VIDEO');
+      const tooMany = await send(owner, { ...video, productIds: [p1.id, p2.id, p3.id, p4.id] });
+      assert(tooMany.status >= 400 && tooMany.status < 500, String(tooMany.status));
+      // 5. A ready video shows up with the public product projection only.
+      await owner.command(video);
+      let pub = await stories();
+      assert.equal(pub.length, 1);
+      assert.equal(pub[0].id, highlightId);
+      assert.equal(pub[0].coverUrl, coverUrl);
+      assert.deepEqual(pub[0].placements, ['home', 'product']);
+      assert.equal(pub[0].videos.length, 1);
+      const storyVideoId = pub[0].videos[0].id;
+      assert.equal(pub[0].videos[0].caption, video.caption);
+      assert.deepEqual(pub[0].videos[0].source, {
+        type: 'file',
+        src: '/api/media/public/' + videoId + '/video',
+      });
+      const shown = await guest.data('catalog/products/' + p1.id);
+      assert.deepEqual(pub[0].videos[0].products, [
+        { id: p1.id, name: shown.name, priceCents: shown.priceCents, image: shown.image },
+      ]);
+      assert(
+        !/costCents|assetId|uploaderId|"views"|"clicks"/.test(JSON.stringify(pub)),
+        'payload público sem custo, asset nem métricas',
+      );
+      // 6. A video still processing hides the whole highlight (no empty bubble).
+      await ctx.db.mediaAsset.update({ where: { id: videoId }, data: { state: 'processing' } });
+      assert.deepEqual(await stories(), []);
+      assert.equal((await admin())[0].videos[0].status, 'processing');
+      await ctx.db.mediaAsset.update({ where: { id: videoId }, data: { state: 'ready' } });
+      // 7. An archived product leaves the video; the video stays.
+      await owner.command({ type: 'product.archive', id: p1.id });
+      pub = await stories();
+      assert.equal(pub[0].videos.length, 1);
+      assert.deepEqual(pub[0].videos[0].products, []);
+      // 8. Views and clicks; unknown ids are a silent no-op; other event types are refused.
+      const event = (body) => guest.call('stories/events', 'POST', body);
+      for (const type of ['view', 'view', 'click'])
+        assert.equal((await event({ videoId: storyVideoId, type })).status, 204);
+      assert.equal((await event({ videoId: randomUUID(), type: 'view' })).status, 204);
+      assert.equal((await event({ videoId: 'nao-e-uuid', type: 'click' })).status, 204);
+      const like = await event({ videoId: storyVideoId, type: 'like' });
+      assert(like.status >= 400 && like.status < 500, String(like.status));
+      list = await admin();
+      assert.equal(list[0].videos[0].views, 2);
+      assert.equal(list[0].videos[0].clicks, 1);
+      // 9. Reorder needs every highlight, then follows the new order.
+      await owner.command({ ...highlight, title: 'Medalhas' });
+      list = await admin();
+      assert.deepEqual(
+        list.map((h) => h.title),
+        ['Terços', 'Medalhas'],
+      );
+      const secondId = list[1].id;
+      const partial = await send(owner, { type: 'story.reorder', ids: [secondId] });
+      assert.equal(partial.status, 422);
+      assert.equal(partial.body.error.code, 'INVALID_ORDER');
+      await owner.command({ type: 'story.reorder', ids: [secondId, highlightId] });
+      assert.deepEqual(
+        (await admin()).map((h) => h.id),
+        [secondId, highlightId],
+      );
+      // 10. Marketing alone uploads images and videos (not models) and edits stories.
+      const marketing = await marketingMember(owner, 'stories-marketing');
+      await upload(marketing, 'video', { complete: false });
+      const model = await marketing.call('admin/media/uploads', 'POST', {
+        name: 'modelo.stl',
+        mime: 'application/octet-stream',
+        size: 100,
+        kind: 'model',
+      });
+      assert.equal(model.status, 403);
+      assert.equal(model.body.error.code, 'FORBIDDEN');
+      const marketingCover = await upload(marketing, 'image');
+      const byMarketing = await send(marketing, {
+        ...highlight,
+        title: 'Do marketing',
+        coverAssetId: marketingCover,
+      });
+      assert.equal(byMarketing.status, 204, byMarketing.body?.error?.code);
+      assert.equal(
+        operationsSchema.parse(await marketing.data('admin/operations')).stories.length,
+        3,
+      );
+      const denied = await send(customer, { type: 'story.delete', id: highlightId });
+      assert.equal(denied.status, 403);
+      // 11. Deleting a highlight removes its videos.
+      await owner.command({ type: 'story.delete', id: highlightId });
+      assert(!(await stories()).some((h) => h.id === highlightId));
+      assert.equal(await ctx.db.storyVideo.count({ where: { highlightId } }), 0);
+      const missing = await send(owner, { type: 'story.delete', id: highlightId });
+      assert.equal(missing.status, 404);
+      // 12. The admin snapshot keeps its contract.
+      operationsSchema.parse(await owner.data('admin/operations'));
+    },
+  );
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {
     const mailer = new (await import('@maos-em-oracao/backend-core/notifications')).Notifications(
       ctx,

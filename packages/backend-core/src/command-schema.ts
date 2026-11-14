@@ -9,6 +9,9 @@ import {
   permissionSchema,
   addressSchema,
   groupBuyInputSchema,
+  storyHighlightInputSchema,
+  storyVideoInputSchema,
+  STORY_LIMITS,
 } from '@maos-em-oracao/contracts';
 const id = z.string().min(1).max(100),
   text = z.string().max(2000),
@@ -163,6 +166,19 @@ export const commandSchema = z.discriminatedUnion('type', [
     id: z.string().uuid(),
     endsAt: z.string().datetime(),
   }),
+  z.object({ type: z.literal('story.save'), ...storyHighlightInputSchema.shape }),
+  z.object({
+    type: z.literal('story.reorder'),
+    ids: z.array(z.string().uuid()).max(STORY_LIMITS.highlights),
+  }),
+  z.object({ type: z.literal('story.delete'), id: z.string().uuid() }),
+  z.object({ type: z.literal('story.video.save'), ...storyVideoInputSchema.shape }),
+  z.object({
+    type: z.literal('story.video.reorder'),
+    highlightId: z.string().uuid(),
+    ids: z.array(z.string().uuid()).max(STORY_LIMITS.videosPerHighlight),
+  }),
+  z.object({ type: z.literal('story.video.delete'), id: z.string().uuid() }),
   z.object({
     type: z.literal('prayer.review'),
     id,

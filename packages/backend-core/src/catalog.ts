@@ -16,6 +16,7 @@ import {
   type ProductMedia,
   type ProductModel,
   type CatalogQuery,
+  type Product,
   roundRating,
 } from '@maos-em-oracao/contracts';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
@@ -95,6 +96,22 @@ export class CatalogService {
       ...productDto(p, false, (await this.ratings([p.id])).get(p.id), kits.get(p.id) || undefined),
       ...(groupBuy ? { groupBuy } : {}),
     };
+  }
+  /**
+   * Public cards of the given products that the storefront shows (the `list` rule: active, not
+   * archived, kit with usable components), by id. Missing and hidden ids are absent.
+   */
+  async visible(ids: string[]): Promise<Map<string, Product>> {
+    if (!ids.length) return new Map();
+    const products = await this.ctx.db.product.findMany({
+        where: { id: { in: ids }, active: true, archived: false },
+      }),
+      kits = await this.kitExtras(products);
+    return new Map(
+      products
+        .filter((p) => !kits.has(p.id) || kits.get(p.id))
+        .map((p) => [p.id, productDto(p, false, undefined, kits.get(p.id) || undefined)]),
+    );
   }
   /**
    * Derived data of the kits among `products`, from one batched read of their components.

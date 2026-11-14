@@ -24,6 +24,7 @@ import { SubscriptionsService } from '@maos-em-oracao/backend-core/subscriptions
 import { ContentService } from '@maos-em-oracao/backend-core/content';
 import { ReviewsService } from '@maos-em-oracao/backend-core/reviews';
 import { GroupBuysService } from '@maos-em-oracao/backend-core/group-buys';
+import { StoriesService } from '@maos-em-oracao/backend-core/stories';
 import { MediaService } from '@maos-em-oracao/backend-core/media';
 import { DomainError } from '@maos-em-oracao/backend-core/shared';
 import { sessionHash } from '@maos-em-oracao/backend-core/security';
@@ -336,7 +337,26 @@ class GroupBuysController {
     return result(await this.service.publicOne(id));
   }
 }
+@ApiTags('Stories')
+@Controller()
+class StoriesController {
+  private service: StoriesService;
+  constructor(@Inject(CONTEXT) ctx: Context) {
+    this.service = new StoriesService(ctx);
+  }
+  @Get('stories') async list() {
+    return result(await this.service.publicList());
+  }
+  @Post('stories/events') @HttpCode(204) async event(
+    @Req() req: ApiRequest,
+    @Body() body: unknown,
+  ) {
+    await this.service.event(body, req.clientKey);
+  }
+}
 @Module({ controllers: [ReviewsController] })
 export class ReviewsModule {}
 @Module({ controllers: [GroupBuysController] })
 export class GroupBuysModule {}
+@Module({ controllers: [StoriesController] })
+export class StoriesModule {}

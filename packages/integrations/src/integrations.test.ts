@@ -326,6 +326,17 @@ describe('Bunny e transporte', () => {
     expect(JSON.stringify(result)).not.toContain(key);
     expect(Number(result.headers.AuthorizationExpire)).toBeGreaterThan(Date.now() / 1000);
   });
+  it('monta a playlist HLS do vídeo no CDN do Stream', () => {
+    const guid = '65664c96-a2f0-47d4-a4e1-6d8483fd30b9',
+      urls = createMedia({
+        INTEGRATIONS_MODE: 'live',
+        BUNNY_STORAGE_HOST: 'storage.bunnycdn.com',
+        BUNNY_STREAM_LIBRARY_ID: '123',
+        BUNNY_STREAM_CDN_HOST: 'vz-test.b-cdn.net',
+      }).videoUrls(guid);
+    expect(urls.hlsUrl).toBe('https://vz-test.b-cdn.net/' + guid + '/playlist.m3u8');
+    expect(urls.hlsUrl.endsWith('/' + guid + '/playlist.m3u8')).toBe(true);
+  });
   it('rejeita traversal e webhook adulterado', async () => {
     const service = createMedia({
       INTEGRATIONS_MODE: 'live',

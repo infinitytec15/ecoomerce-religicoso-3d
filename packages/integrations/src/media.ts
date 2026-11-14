@@ -133,6 +133,7 @@ export function createMedia(config: MediaConfig, fetcher: Fetcher = fetch) {
       return {
         url: `https://iframe.mediadelivery.net/embed/${config.BUNNY_STREAM_LIBRARY_ID}/${id}`,
         thumbnailUrl: `https://${config.BUNNY_STREAM_CDN_HOST}/${id}/thumbnail.jpg`,
+        hlsUrl: `https://${config.BUNNY_STREAM_CDN_HOST}/${id}/playlist.m3u8`,
       };
     },
     verifyWebhook(raw: string, signature: string) {

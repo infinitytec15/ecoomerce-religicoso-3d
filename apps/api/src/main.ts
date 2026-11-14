@@ -31,7 +31,8 @@ import type { Context } from '@maos-em-oracao/backend-core/context';
 import { rateLimit } from '@maos-em-oracao/backend-core/context';
 import { AuthService } from '@maos-em-oracao/backend-core/auth';
 import { constantEqual, sessionHash, token } from '@maos-em-oracao/backend-core/security';
-import { DomainError, permit } from '@maos-em-oracao/backend-core/shared';
+import { DomainError } from '@maos-em-oracao/backend-core/shared';
+import { adminUploader } from '@maos-em-oracao/backend-core/media';
 import type { ApiRequest } from './request';
 import { CONTEXT, ContextModule } from './context.module';
 import { OperationsModule } from './operations.module';
@@ -44,6 +45,7 @@ import {
   CommunityModule,
   ReviewsModule,
   GroupBuysModule,
+  StoriesModule,
 } from './commerce.module';
 @Controller('health')
 class HealthController {
@@ -126,6 +128,7 @@ class ApiErrors implements ExceptionFilter {
     CommunityModule,
     ReviewsModule,
     GroupBuysModule,
+    StoriesModule,
     OperationsModule,
     WebhooksModule,
   ],
@@ -196,7 +199,7 @@ export async function bootstrap() {
           req.method === 'PUT' &&
           /^\/api\/v1\/admin\/media\/uploads\/[^/]+\/content$/.test(path)
         ) {
-          permit(req.actor, 'catalog');
+          adminUploader(req.actor);
           return raw({ type: () => true, limit: '32mb' })(req, res, next);
         }
         if (req.method === 'PUT' && /^\/api\/v1\/reviews\/uploads\/[^/]+\/content$/.test(path)) {

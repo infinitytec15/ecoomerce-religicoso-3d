@@ -22,7 +22,7 @@ import { ReportsService } from '@maos-em-oracao/backend-core/reports';
 import { MediaService } from '@maos-em-oracao/backend-core/media';
 import { TeamService } from '@maos-em-oracao/backend-core/team';
 import { ShippingCredentials } from '@maos-em-oracao/backend-core/credentials';
-import { ownerOnly, permit, requireValue, DomainError } from '@maos-em-oracao/backend-core/shared';
+import { ownerOnly, permit, DomainError } from '@maos-em-oracao/backend-core/shared';
 import { CONTEXT } from './context.module';
 import type { ApiRequest } from './request';
 @ApiTags('Gestão')
@@ -207,12 +207,7 @@ class MediaController {
     res.send(f.bytes);
   }
   @Get('admin/media/:id/status') async status(@Req() req: ApiRequest, @Param('id') id: string) {
-    permit(req.actor, 'catalog');
-    return {
-      data: this.service.dto(
-        requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } })),
-      ),
-    };
+    return { data: await this.service.status(req.actor, id) };
   }
   @Get('media/public/:id/:name') async publicFile(
     @Param('id') id: string,

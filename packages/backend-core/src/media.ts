@@ -8,18 +8,39 @@ import type { Context } from './context';
 import { rateLimit } from './context';
 import { Notifications } from './notifications';
 import { transaction } from '@maos-em-oracao/database';
-import { permit, requireValue, DomainError, type Actor, data, json, audit } from './shared';
+import {
+  permit,
+  requireActor,
+  requireValue,
+  DomainError,
+  type Actor,
+  data,
+  json,
+  audit,
+} from './shared';
 import type { MediaAsset, ModelStats } from '@maos-em-oracao/contracts';
 type MediaKind = 'image' | 'model' | 'video';
-/** Who is uploading: the admin team (catalog) or a customer attaching review photos. */
+/** Who is uploading: the admin team (catalog or marketing) or a customer attaching review photos. */
 type Uploader = {
   id: string;
   kinds: MediaKind[];
   maxBytes?: number;
   route: string;
+  /** Answers a reservation of a kind outside `kinds`. */
+  refuseKind: () => never;
   access: (asset: { uploaderId: string }) => void;
 };
 const REVIEW_PHOTO_BYTES = 8 * 1024 * 1024;
+/**
+ * Who may use admin/media: catalog (or the owner) uploads every kind; a member with marketing and
+ * without catalog uploads images and videos (stories) but never 3D models.
+ */
+export function adminUploader(actor: Actor | null): { actor: Actor; kinds: MediaKind[] } {
+  const a = requireActor(actor);
+  return a.owner || a.permissions.includes('catalog') || !a.permissions.includes('marketing')
+    ? { actor: permit(a, 'catalog'), kinds: ['image', 'model', 'video'] }
+    : { actor: permit(a, 'marketing'), kinds: ['image', 'video'] };
+}
 export class MediaService {
   private mail: Notifications;
   constructor(private ctx: Context) {
@@ -35,11 +56,18 @@ export class MediaService {
     return path;
   }
   private admin(actor: Actor | null): Uploader {
-    const a = permit(actor, 'catalog');
+    const { actor: a, kinds } = adminUploader(actor);
     return {
       id: a.id,
-      kinds: ['image', 'model', 'video'],
+      kinds,
       route: 'admin/media',
+      refuseKind: () => {
+        throw new DomainError(
+          'FORBIDDEN',
+          'Seu perfil não permite enviar este tipo de arquivo.',
+          403,
+        );
+      },
       access: (asset) => {
         if (!a.owner && asset.uploaderId !== a.id)
           throw new DomainError('FORBIDDEN', 'O upload pertence a outro integrante.', 403);
@@ -55,6 +83,9 @@ export class MediaService {
       kinds: ['image'],
       maxBytes: REVIEW_PHOTO_BYTES,
       route: 'reviews',
+      refuseKind: () => {
+        throw new DomainError('INVALID_IMAGE', 'Use JPG, PNG, WebP ou AVIF.');
+      },
       access: (asset) => {
         if (asset.uploaderId !== id)
           throw new DomainError('NOT_FOUND', 'Upload não encontrado.', 404);
@@ -79,8 +110,7 @@ export class MediaService {
         })
         .parse(value),
       extension = extname(input.name).toLowerCase();
-    if (!uploader.kinds.includes(input.kind))
-      throw new DomainError('INVALID_IMAGE', 'Use JPG, PNG, WebP ou AVIF.');
+    if (!uploader.kinds.includes(input.kind)) uploader.refuseKind();
     if (
       input.size >
       (uploader.maxBytes ?? { image: 12, model: 30, video: 150 }[input.kind] * 1024 * 1024)
@@ -203,7 +233,7 @@ export class MediaService {
     }
   }
   async renew(actor: Actor | null, id: string) {
-    const a = permit(actor, 'catalog'),
+    const a = adminUploader(actor).actor,
       asset = requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } }));
     if (
       (!a.owner && asset.uploaderId !== a.id) ||
@@ -252,6 +282,11 @@ export class MediaService {
     if (['reserved', 'uploading'].includes(fresh.state))
       throw new DomainError('UPLOAD_INCOMPLETE', 'Finalize o envio antes de concluir.', 409);
     return this.dto(fresh);
+  }
+  /** Admin: current state of an upload. */
+  async status(actor: Actor | null, id: string): Promise<MediaAsset> {
+    adminUploader(actor);
+    return this.dto(requireValue(await this.ctx.db.mediaAsset.findUnique({ where: { id } })));
   }
   dto(asset: Awaited<ReturnType<Context['db']['mediaAsset']['findUniqueOrThrow']>>): MediaAsset {
     const extra = data<Partial<MediaAsset>>(asset.data);

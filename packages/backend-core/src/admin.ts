@@ -8,6 +8,7 @@ import { CatalogService } from './catalog';
 import { ContentService } from './content';
 import { ReviewsService } from './reviews';
 import { GroupBuysService } from './group-buys';
+import { StoriesService } from './stories';
 import { OrdersService } from './orders';
 import { SubscriptionsService } from './subscriptions';
 import { ShippingService } from './shipping';
@@ -59,6 +60,7 @@ const permissionMap: Record<string, Permission> = {
   review: 'community',
   campaign: 'marketing',
   groupbuy: 'marketing',
+  story: 'marketing',
   team: 'team',
   invite: 'team',
   workspace: 'settings',
@@ -136,6 +138,7 @@ export class AdminService {
   readonly content: ContentService;
   readonly reviews: ReviewsService;
   readonly groupBuys: GroupBuysService;
+  readonly stories: StoriesService;
   readonly orders: OrdersService;
   readonly subscriptions: SubscriptionsService;
   readonly shipping: ShippingService;
@@ -146,6 +149,7 @@ export class AdminService {
     this.content = new ContentService(ctx);
     this.reviews = new ReviewsService(ctx);
     this.groupBuys = new GroupBuysService(ctx);
+    this.stories = new StoriesService(ctx);
     this.orders = new OrdersService(ctx);
     this.subscriptions = new SubscriptionsService(ctx);
     this.shipping = new ShippingService(ctx);
@@ -179,6 +183,7 @@ export class AdminService {
       movements,
       reviews,
       groupBuys,
+      stories,
     ] = await Promise.all([
       can('catalog') || can('production')
         ? this.ctx.db.product.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 })
@@ -265,6 +270,7 @@ export class AdminService {
             ].some((p) => can(p as Permission)),
           })
         : [],
+      can('marketing') ? this.stories.forAdmin() : [],
     ]);
     const names = new Map(users.map((u) => [u.id, u.name]));
     return {
@@ -373,7 +379,7 @@ export class AdminService {
       })),
       reviews: reviews.map((r) => reviewDto(r, true)),
       groupBuys,
-      stories: [],
+      stories,
     };
   }
   async execute(actor: Actor | null, value: unknown) {
@@ -735,6 +741,18 @@ export class AdminService {
         return this.groupBuys.extend(a, c.id, c.endsAt);
       case 'groupbuy.close':
         return this.groupBuys.close(a, c.id);
+      case 'story.save':
+        return this.stories.save(a, c);
+      case 'story.reorder':
+        return this.stories.reorder(a, c.ids);
+      case 'story.delete':
+        return this.stories.remove(a, c.id);
+      case 'story.video.save':
+        return this.stories.saveVideo(a, c);
+      case 'story.video.reorder':
+        return this.stories.reorderVideos(a, c.highlightId, c.ids);
+      case 'story.video.delete':
+        return this.stories.removeVideo(a, c.id);
       case 'prayer.moderate': {
         const p = requireValue(await this.ctx.db.prayer.findUnique({ where: { id: c.id } }));
         return this.content.moderate(

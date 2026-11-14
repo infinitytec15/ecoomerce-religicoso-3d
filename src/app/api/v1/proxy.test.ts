@@ -240,6 +240,36 @@ describe('same-origin backend proxy', () => {
     ).toBe(404);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+  it('forwards the public stories routes and nothing under them', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+    const fetcher = vi
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response(null, { status: 204 }));
+    expect(
+      (await GET(new NextRequest('http://localhost/api/v1/stories'), context('stories'))).status,
+    ).toBe(204);
+    expect(
+      (
+        await POST(
+          new NextRequest('http://localhost/api/v1/stories/events', {
+            method: 'POST',
+            headers: { origin: 'http://localhost', 'Content-Type': 'application/json' },
+            body: '{"videoId":"v1","type":"view"}',
+          }),
+          context('stories/events'),
+        )
+      ).status,
+    ).toBe(204);
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      'https://api.example.com/api/v1/stories',
+      'https://api.example.com/api/v1/stories/events',
+    ]);
+    for (const path of ['stories/abc', 'stories/events/extra'])
+      expect(
+        (await GET(new NextRequest('http://localhost/api/v1/' + path), context(path))).status,
+      ).toBe(404);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it('lets only the review photo content route stream, capped at 8 MB', async () => {
     vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
     const fetcher = vi

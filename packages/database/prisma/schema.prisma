@@ -228,6 +228,38 @@ model GroupBuy {
   @@index([productId, status])
 }
 
+model StoryHighlight {
+  id           String       @id @default(uuid())
+  title        String
+  coverAssetId String
+  position     Int          @default(0)
+  active       Boolean      @default(true)
+  placements   String[]
+  categories   String[]     @default([])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  videos       StoryVideo[]
+
+  @@index([active, position])
+}
+
+model StoryVideo {
+  id          String         @id @default(uuid())
+  highlightId String
+  highlight   StoryHighlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  assetId     String
+  position    Int            @default(0)
+  caption     String         @default("")
+  productIds  String[]       @default([])
+  active      Boolean        @default(true)
+  views       Int            @default(0)
+  clicks      Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([highlightId, position])
+}
+
 model OrderItem {
   id        String  @id @default(uuid())
   orderId   String
