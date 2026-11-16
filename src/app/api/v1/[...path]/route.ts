@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { CLIENT_IP_HEADER, trustedForwardedIp } from '@maos-em-oracao/contracts';
 /**
- * Mutations that change what the storefront renders (products, stock, settings, stories,
- * group buys). The server pages cache those reads under the `catalog` tag.
+ * Admin mutations change what the storefront renders (products, settings, stories, group buys);
+ * the server pages cache those reads under the `catalog` tag. Customer orders are left out on
+ * purpose: any visitor can place one, so a burst of checkouts would keep purging the cache and
+ * send every page view to the API. Stock and group-buy counts they move refresh within 60 s,
+ * and checkout re-checks stock anyway.
  */
-const catalogWrites = /^(admin\/|orders(\/|$))/;
+const catalogWrites = /^admin\//;
 /** The change already happened upstream: a cache failure must not turn it into an error. */
 function expireCatalog() {
   try {

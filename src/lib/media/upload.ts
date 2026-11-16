@@ -29,7 +29,9 @@ export async function uploadMedia(
     await new Promise<void>((resolve, reject) => {
       const upload = new Upload(file, {
         endpoint: session.url,
-        headers: session.headers,
+        // The authorization headers go only through onBeforeRequest (it renews them before they
+        // expire). Passing them also as `headers` sets each one twice, and the browser joins the
+        // values ("805676, 805676"): Bunny then answers "Library ID missing or invalid".
         retryDelays: [0, 1000, 3000, 5000],
         metadata: { filetype: file.type, title: file.name },
         onBeforeRequest: async (request) => {

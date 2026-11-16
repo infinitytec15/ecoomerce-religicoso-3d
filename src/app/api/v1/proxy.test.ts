@@ -316,11 +316,11 @@ describe('same-origin backend proxy', () => {
       expect((await post('admin/commands')).status).toBe(200);
       expect(revalidateTag).toHaveBeenCalledWith('catalog', { expire: 0 });
     });
-    it('expires it after an order, which moves stock and group-buy counts', async () => {
+    it('keeps it on customer orders, so a burst of checkouts cannot keep purging it', async () => {
       vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
       vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{"data":null}', { status: 201 }));
       await post('orders');
-      expect(revalidateTag).toHaveBeenCalledTimes(1);
+      expect(revalidateTag).not.toHaveBeenCalled();
     });
     it('still answers with the upstream result when the cache cannot be expired', async () => {
       vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
