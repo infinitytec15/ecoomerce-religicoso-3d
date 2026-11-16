@@ -78,8 +78,9 @@ export const storyVideoInputSchema = z.object({
   highlightId: z.string().uuid(),
   assetId: z.string().uuid(),
   caption: z.string().trim().max(STORY_LIMITS.caption).default(''),
+  // Product ids are slugs ("palavra-fe", "peca-e9a589cc"), not uuids: same pattern the API routes use.
   productIds: z
-    .array(z.string().uuid())
+    .array(z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/, 'Peça inválida'))
     .max(STORY_LIMITS.productsPerVideo)
     .refine(unique, 'Produtos repetidos')
     .default([]),

@@ -19,6 +19,7 @@ async function publicFetch<T>(
   schema: z.ZodType<T>,
   missing?: T,
   timeoutMs = 10000,
+  revalidateSeconds = 60,
 ): Promise<T> {
   await connection();
   const base = process.env.API_BASE_URL;
@@ -28,7 +29,7 @@ async function publicFetch<T>(
       Accept: 'application/json',
       ...(process.env.BFF_SHARED_SECRET ? { 'x-bff-secret': process.env.BFF_SHARED_SECRET } : {}),
     },
-    next: { revalidate: 60, tags: ['catalog'] },
+    next: { revalidate: revalidateSeconds, tags: ['catalog'] },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (response.status === 404 && missing !== undefined) return missing;
@@ -70,6 +71,11 @@ export const getServerGroupBuy = cache(async (id: string) =>
     : publicFetch('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema.nullable(), null),
 );
 const STORIES_TIMEOUT_MS = 2500;
+/**
+ * Admin changes expire the cache at once, but a video turns ready later (Bunny finishes processing
+ * and the worker updates it, outside the admin): a short cache shows it within seconds.
+ */
+const STORIES_REVALIDATE_SECONDS = 10;
 /** Stories feed; any failure yields an empty one, so stories never take a page down. */
 export const getServerStories = cache(async (): Promise<StoriesFeed> => {
   try {
@@ -81,7 +87,13 @@ export const getServerStories = cache(async (): Promise<StoriesFeed> => {
     });
     try {
       return await Promise.race([
-        publicFetch('stories', storiesFeedSchema, undefined, STORIES_TIMEOUT_MS),
+        publicFetch(
+          'stories',
+          storiesFeedSchema,
+          undefined,
+          STORIES_TIMEOUT_MS,
+          STORIES_REVALIDATE_SECONDS,
+        ),
         late,
       ]);
     } finally {

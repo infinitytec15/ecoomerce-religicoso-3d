@@ -26,6 +26,17 @@ describe('getServerStories', () => {
     await expect(getServerStories()).resolves.toEqual(EMPTY_STORIES_FEED);
   });
 
+  it('keeps the feed cached for only 10 s, so a video that just got ready shows up quickly', async () => {
+    vi.stubEnv('API_BASE_URL', 'https://api.test');
+    const fetcher = vi.fn().mockResolvedValue(new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetcher);
+    const { getServerStories } = await import('./server');
+    await getServerStories();
+    expect(fetcher.mock.calls[0][1]).toMatchObject({
+      next: { revalidate: 10, tags: ['catalog'] },
+    });
+  });
+
   it('gives up after 2.5 s when the API never answers', async () => {
     vi.useFakeTimers();
     try {

@@ -45,6 +45,17 @@ describe('story input schemas', () => {
       false,
     );
   });
+  it('accepts the store product ids, which are slugs like "palavra-fe", not uuids', () => {
+    const base = { highlightId: uuid, assetId: uuid, active: true };
+    expect(
+      storyVideoInputSchema.safeParse({ ...base, productIds: ['palavra-fe', 'peca-e9a589cc'] })
+        .success,
+    ).toBe(true);
+    expect(storyVideoInputSchema.safeParse({ ...base, productIds: ['', 'x'] }).success).toBe(false);
+    expect(storyVideoInputSchema.safeParse({ ...base, productIds: ['../admin'] }).success).toBe(
+      false,
+    );
+  });
   it('rejects more than 3 products on a video', () => {
     const base = { highlightId: uuid, assetId: uuid, active: true };
     const ids = [1, 2, 3, 4].map((n) => `${n}1111111-1111-4111-8111-111111111111`);
