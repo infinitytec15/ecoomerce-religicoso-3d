@@ -12,6 +12,7 @@ import { GroupBuysService } from './group-buys';
 import { StoriesService } from './stories';
 import { CrmService } from './crm';
 import { OrdersService } from './orders';
+import { releaseCoupon } from './payments';
 import { SubscriptionsService } from './subscriptions';
 import { ShippingService } from './shipping';
 import { TeamService, roleNames } from './team';
@@ -20,6 +21,7 @@ import {
   orderInclude,
   orderDto,
   customerDto,
+  customerSummaryDto,
   chargeDto,
   subscriptionDto,
   jobDto,
@@ -289,9 +291,19 @@ export class AdminService {
             costCents: can('catalog') ? p.costCents : 0,
           }) as Operations['products'][number],
       ),
-      clients: clients.map((c) => customerDto(c, can('customers'))),
+      // Contact, document and address of the whole customer base only for 'customers'; other
+      // roles get just enough to name the customer (orders carry their own address).
+      clients: clients.map((c) =>
+        can('customers') ? customerDto(c, true) : customerSummaryDto(c),
+      ),
       orders: orders.map((o) => {
         const dto = orderDto(o, can('orders') || can('shipping'));
+        // The CPF/CNPJ is needed to ship, invoice and reconcile, not to answer a ticket.
+        if (!['orders', 'shipping', 'finance'].some((p) => can(p as Permission))) {
+          const address = { ...dto.address };
+          Reflect.deleteProperty(address, 'document');
+          dto.address = address;
+        }
         if (
           !['orders', 'shipping', 'finance', 'support', 'subscriptions'].some((p) =>
             can(p as Permission),
@@ -947,7 +959,11 @@ export class AdminService {
           'Cancele o pedido primeiro. A exclusão fica disponível quando a cobrança for encerrada no Mercado Pago.',
           409,
         );
-      if (o.status !== 'Cancelado') await this.orders.payments.release(tx, id);
+      if (o.status !== 'Cancelado') {
+        await this.orders.payments.release(tx, id);
+        // Unpaid by now (checked above); guarded against a use already returned.
+        await releaseCoupon(tx, id);
+      }
       await tx.outboxEvent.updateMany({
         where: { aggregateId: id, state: { in: ['pending', 'enqueued'] } },
         data: { state: 'cancelled', errorCode: 'ORDER_DELETED' },
@@ -1033,8 +1049,8 @@ export class AdminService {
       await this.mail.event(tx, 'cancel-label/' + o.shipment.id, 'shipping-cancel', o.shipment.id, {
         shipmentId: o.shipment.id,
       });
-    if (o.couponId)
-      await tx.coupon.update({ where: { id: o.couponId }, data: { used: { decrement: 1 } } });
+    // Guarded: a use already returned by an expired or rejected payment is not returned again.
+    await releaseCoupon(tx, id);
     await audit(tx, a.id, 'Pedido cancelado', id);
   }
   private async advance(actor: Actor, id: string) {

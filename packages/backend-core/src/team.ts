@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { transaction, lock } from '@maos-em-oracao/database';
+import { transaction, lock, type Prisma } from '@maos-em-oracao/database';
 import { permissionSchema, type Role, type TeamInvitation } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { Notifications, type EmailEnvelope } from './notifications';
@@ -14,7 +14,7 @@ import {
   json,
 } from './shared';
 import { token, digest, hashPassword, normalizeEmail, unseal } from './security';
-import { passwordSchema } from './auth';
+import { passwordSchema, limitTokenAttempts } from './auth';
 export const roleNames: Record<string, string> = {
   admin: 'Administrador',
   support: 'Atendimento',
@@ -155,19 +155,26 @@ export class TeamService {
       expiresAt: instant(r.expiresAt),
     };
   }
-  async accept(raw: string, value: unknown) {
+  async accept(raw: string, value: unknown, clientKey: string) {
+    await limitTokenAttempts(this.ctx, clientKey);
     const input = z
-        .object({ name: z.string().trim().min(3).max(120), password: passwordSchema })
-        .parse(value),
-      passwordHash = await hashPassword(input.password);
+      .object({ name: z.string().trim().min(3).max(120), password: passwordSchema })
+      .parse(value);
+    const pending = (
+      r: Prisma.TeamInvitationGetPayload<object> | null,
+    ): Prisma.TeamInvitationGetPayload<object> => {
+      const found = requireValue(r, 'Convite inválido.');
+      if (found.status !== 'Pendente' || found.expiresAt < new Date())
+        throw new DomainError('INVITATION_EXPIRED', 'O convite expirou ou já foi utilizado.', 410);
+      return found;
+    };
+    // Cheap lookup first: argon2 only runs for an invitation that can still be accepted.
+    pending(await this.ctx.db.teamInvitation.findUnique({ where: { tokenHash: digest(raw) } }));
+    const passwordHash = await hashPassword(input.password);
     await transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'invitation/' + digest(raw));
-      const r = requireValue(
-        await tx.teamInvitation.findUnique({ where: { tokenHash: digest(raw) } }),
-        'Convite inválido.',
-      );
-      if (r.status !== 'Pendente' || r.expiresAt < new Date())
-        throw new DomainError('INVITATION_EXPIRED', 'O convite expirou ou já foi utilizado.', 410);
+      // Re-checked under the lock: a concurrent request may have accepted it meanwhile.
+      const r = pending(await tx.teamInvitation.findUnique({ where: { tokenHash: digest(raw) } }));
       const existing = await tx.user.findUnique({ where: { email: r.email } });
       if (existing?.owner)
         throw new DomainError('OWNER_PROTECTED', 'Este convite não pode alterar o responsável.');

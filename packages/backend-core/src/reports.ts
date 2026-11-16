@@ -67,10 +67,14 @@ export class ReportsService {
     if (!resourcePermission[resource])
       throw new DomainError('REPORT_NOT_FOUND', 'Relatório não encontrado.', 404);
     const a = permit(actor, resourcePermission[resource]);
-    if (resource === 'team' && !a.owner)
+    // The admin snapshot shows non-owners only their own audit entries; the full audit trail,
+    // like the team report, is the owner's alone.
+    if ((resource === 'team' || resource === 'audit') && !a.owner)
       throw new DomainError(
         'FORBIDDEN',
-        'Relatório de acessos disponível apenas ao responsável.',
+        resource === 'team'
+          ? 'Relatório de acessos disponível apenas ao responsável.'
+          : 'Relatório de auditoria disponível apenas ao responsável.',
         403,
       );
     return a;

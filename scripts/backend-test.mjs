@@ -3462,6 +3462,23 @@ try {
       // An unknown or malformed video id never blocks the checkout and is not stored.
       for (const videoId of [randomUUID(), 'nao-e-uuid'])
         assert.equal((await order(videoId)).storyVideoId, null);
+      // Only an active video that shows the bought product is credited.
+      const v2Row = await ctx.db.storyVideo.findUniqueOrThrow({ where: { id: v2 } });
+      assert(v2Row.active && v2Row.productIds.includes(pa.id));
+      try {
+        await ctx.db.storyVideo.update({ where: { id: v2 }, data: { active: false } });
+        assert.equal((await order(v2)).storyVideoId, null, 'vídeo inativo');
+        await ctx.db.storyVideo.update({
+          where: { id: v2 },
+          data: { active: true, productIds: v2Row.productIds.filter((id) => id !== pa.id) },
+        });
+        assert.equal((await order(v2)).storyVideoId, null, 'produto fora do vídeo');
+      } finally {
+        await ctx.db.storyVideo.update({
+          where: { id: v2 },
+          data: { active: v2Row.active, productIds: v2Row.productIds },
+        });
+      }
       // Deleting the video keeps the order and its attribution column.
       await team.command({ type: 'story.video.delete', id: v1 });
       assert.equal(
@@ -3557,6 +3574,266 @@ try {
         .status,
       204,
     );
+  });
+  const fromIp = (ip) => ({ headers: { 'x-meo-client-ip': ip } });
+  await check('frete e tentativas de cupom têm limite por cliente', async () => {
+    const p = (await new Client().data('catalog/products'))[0],
+      body = { cep: '01001-000', items: [{ productId: p.id, quantity: 1, sizeIndex: 0 }] };
+    for (let i = 0; i < 30; i++)
+      assert.equal(
+        (await new Client().call('shipping/quotes', 'POST', body, fromIp('198.51.100.91'))).status,
+        200,
+        'cotação ' + i,
+      );
+    // GET is not covered by the global limiter, so it must hit the quote limit too.
+    const blocked = await new Client().call(
+      'shipping/quotes?cep=01001-000&productId=' + p.id,
+      'GET',
+      undefined,
+      fromIp('198.51.100.91'),
+    );
+    assert.equal(blocked.status, 429);
+    assert.equal(
+      (await new Client().call('shipping/quotes', 'POST', body, fromIp('198.51.100.92'))).status,
+      200,
+    );
+    const item = { productId: p.id, quantity: 1, color: p.colors[0], sizeIndex: 0, dedication: '' },
+      estimate = (coupon) =>
+        new Client().call(
+          'checkout/estimate',
+          'POST',
+          { items: [item], coupon },
+          fromIp('198.51.100.93'),
+        );
+    for (let i = 0; i < 20; i++)
+      assert.equal((await estimate('NAOEXISTE' + i)).status, 422, 'cupom ' + i);
+    assert.equal((await estimate('NAOEXISTE')).status, 429);
+    // Estimates without a coupon are neither counted nor blocked.
+    assert.equal((await estimate('')).status, 200);
+  });
+  await check('links de token validam antes do Argon2 e têm limite por cliente', async () => {
+    const visitor = new Client(),
+      reg = await register(visitor, 'token-limite'),
+      verify = await mail(reg.user.id, 'verify-email'),
+      token = new URL(
+        verify.envelope.text.match(/https?:[^\s]+\/conta\/confirmar[^\s]+/)[0],
+      ).searchParams.get('token'),
+      before = await ctx.db.user.findUniqueOrThrow({ where: { id: reg.user.id } });
+    // A token of another purpose is refused and neither consumed nor turned into a password.
+    const wrong = await visitor.call('auth/reset', 'POST', {
+      token,
+      password: 'SenhaAtaqueHomologacao!2026',
+    });
+    assert.equal(wrong.status, 422);
+    assert.equal(wrong.body.error.code, 'INVALID_TOKEN');
+    assert.equal(
+      (await ctx.db.user.findUniqueOrThrow({ where: { id: reg.user.id } })).passwordHash,
+      before.passwordHash,
+    );
+    assert.equal((await visitor.call('auth/verify', 'POST', { token })).status, 204);
+    // One budget per client for every link-consuming endpoint, whatever cookie it sends.
+    const bogus = () => randomBytes(24).toString('hex');
+    for (let i = 0; i < 20; i++)
+      assert.equal(
+        (
+          await new Client().call(
+            'auth/reset',
+            'POST',
+            { token: bogus(), password: 'SenhaQualquerHomologacao!2026' },
+            fromIp('198.51.100.94'),
+          )
+        ).status,
+        404,
+        'token ' + i,
+      );
+    for (const [path, payload] of [
+      ['auth/verify', { token: bogus() }],
+      ['auth/email-change', { token: bogus() }],
+      ['auth/guest-order', { token: bogus() }],
+      [
+        'team/invitations/' + bogus() + '/accept',
+        { name: 'Ataque', password: 'SenhaQualquerHomologacao!2026' },
+      ],
+    ])
+      assert.equal(
+        (await new Client().call(path, 'POST', payload, fromIp('198.51.100.94'))).status,
+        429,
+        path,
+      );
+    assert.equal(
+      (await new Client().call('auth/verify', 'POST', { token: bogus() }, fromIp('198.51.100.95')))
+        .status,
+      404,
+    );
+  });
+  await check('troca de e-mail tem limite por conta e só o último link vale', async () => {
+    const client = new Client(),
+      reg = await register(client, 'troca-email'),
+      change = (i) =>
+        client.call('account/profile', 'PATCH', {
+          name: 'Cliente troca',
+          email: `novo-${i}-${runId}@example.test`,
+        });
+    for (let i = 0; i < 3; i++) assert.equal((await change(i)).status, 204, 'troca ' + i);
+    assert.equal((await change(3)).status, 429);
+    const open = await ctx.db.emailToken.findMany({
+      where: { userId: reg.user.id, purpose: 'email-change', usedAt: null },
+    });
+    assert.equal(open.length, 1);
+    assert.equal(open[0].data.email, `novo-2-${runId}@example.test`);
+    // Keeping the same e-mail is not a change and is not limited.
+    assert.equal(
+      (
+        await client.call('account/profile', 'PATCH', {
+          name: 'Cliente troca nome',
+          email: reg.email,
+        })
+      ).status,
+      204,
+    );
+  });
+  await check('cupom volta uma única vez quando o pagamento não acontece', async () => {
+    const p = (await new Client().data('catalog/products'))[0],
+      code = 'VOLTA' + runId.toUpperCase();
+    await owner.command({
+      type: 'coupon.save',
+      coupon: {
+        id: randomUUID(),
+        code,
+        active: true,
+        limit: 10,
+        used: 0,
+        kind: 'fixed',
+        amount: 500,
+        minimumCents: 0,
+        startsAt: '2020-01-01',
+        endsAt: '2099-12-31',
+      },
+    });
+    // Other orders already took 3 uses: a double release would show as 2.
+    await ctx.db.coupon.update({ where: { code }, data: { used: 3 } });
+    const used = async () => (await ctx.db.coupon.findUniqueOrThrow({ where: { code } })).used,
+      buyer = new Client(),
+      r = await buy(
+        buyer,
+        checkout(p, await quote(buyer, p), 'cupom-' + runId + '@example.test', 'pix', {
+          coupon: code,
+        }),
+      );
+    assert.equal(r.status, 200, r.body?.error?.code);
+    const id = r.body.data.orderId,
+      intent = await ctx.db.paymentIntent.findUniqueOrThrow({ where: { orderId: id } }),
+      service = new (await import('@maos-em-oracao/backend-core/payments')).PaymentsService(ctx);
+    assert.equal(await used(), 4);
+    await service.cancelPending(intent.id);
+    assert.equal(await used(), 3);
+    await service.cancelPending(intent.id);
+    assert.equal(await used(), 3, 'expiração repetida não devolve de novo');
+    // A renewed Pix keeps the discount, so it takes the use again.
+    const retry = await buyer.call(
+      'orders/' + id + '/payment',
+      'POST',
+      {},
+      { headers: { 'idempotency-key': randomUUID() } },
+    );
+    assert.equal(retry.status, 200, JSON.stringify(retry.body));
+    assert.equal(await used(), 4);
+    await service.cancelPending(intent.id);
+    assert.equal(await used(), 3);
+    await owner.command({ type: 'orders.batch', ids: [id], action: 'cancel' });
+    assert.equal((await ctx.db.order.findUniqueOrThrow({ where: { id } })).status, 'Cancelado');
+    assert.equal(await used(), 3, 'cancelamento pela loja não devolve de novo');
+    const order = (await owner.data('admin/operations')).orders.find((o) => o.id === id);
+    assert.equal(order.couponReleased, undefined);
+  });
+  await check('denúncia não devolve à análise uma oração oculta', async () => {
+    const author = new Client(),
+      title = 'Oração denúncia ' + runId;
+    assert.equal(
+      (
+        await author.call('community/prayers', 'POST', {
+          name: 'Autora',
+          title,
+          message: 'Pedido de oração fictício para o teste de denúncia.',
+          category: 'Família',
+          anonymous: false,
+          consent: true,
+        })
+      ).status,
+      204,
+    );
+    const p = (await owner.data('admin/operations')).prayers.find((v) => v.title === title),
+      review = (status) =>
+        owner.command({ type: 'prayer.review', id: p.id, status, note: 'Teste de denúncia.' }),
+      report = () =>
+        new Client().call('community/prayers/' + p.id + '/report', 'POST', {
+          reason: 'Conteúdo inadequado para o teste.',
+        });
+    await review('Publicado');
+    assert.equal((await report()).status, 204);
+    await review('Oculto');
+    for (let i = 0; i < 3; i++) {
+      const r = await report();
+      assert.equal(r.status, 409);
+      assert.equal(r.body.error.code, 'PRAYER_NOT_PUBLISHED');
+    }
+    assert.equal(
+      (await ctx.db.prayer.findUniqueOrThrow({ where: { id: p.id } })).moderation,
+      'Oculto',
+    );
+  });
+  await check('perfil sem clientes não recebe CPF nem telefone; auditoria só do dono', async () => {
+    const email = 'atendimento-' + runId + '@example.test',
+      password = 'EquipeHomologacao!2026',
+      member = new Client();
+    await owner.command({
+      type: 'invite.create',
+      name: 'Atendimento teste',
+      email,
+      role: 'production',
+      permissions: ['support', 'reports'],
+    });
+    const invite = (await owner.data('admin/operations')).invitations.find(
+      (i) => i.email === email,
+    );
+    assert.equal(
+      (
+        await member.call('team/invitations/' + invite.token + '/accept', 'POST', {
+          name: 'Atendimento teste',
+          password,
+        })
+      ).status,
+      204,
+    );
+    assert.equal(
+      (await member.call('auth/login', 'POST', { email, password, kind: 'staff' })).status,
+      200,
+    );
+    // A guest order stores the full delivery address, document included, on the customer.
+    const p = (await new Client().data('catalog/products'))[0],
+      buyerEmail = 'cpf-' + runId + '@example.test',
+      buyer = new Client(),
+      input = checkout(p, await quote(buyer, p), buyerEmail);
+    input.address = { ...input.address, document: '52998224725' };
+    const r = await buy(buyer, input);
+    assert.equal(r.status, 200, r.body?.error?.code);
+    const id = r.body.data.orderId,
+      full = await owner.data('admin/operations');
+    assert.equal(full.clients.find((c) => c.email === buyerEmail).document, '52998224725');
+    assert.equal(full.orders.find((o) => o.id === id).address.document, '52998224725');
+    const limited = operationsSchema.parse(await member.data('admin/operations')),
+      client = limited.clients.find((c) => c.email === buyerEmail);
+    assert(client, 'cliente nomeado para o atendimento');
+    assert.equal(client.document, undefined);
+    assert.equal(client.phone, '');
+    assert.equal(client.street, '');
+    const order = limited.orders.find((o) => o.id === id);
+    assert.equal(order.address.document, undefined);
+    assert.equal(order.address.phone, '11999990000');
+    assert(!JSON.stringify(limited).includes('52998224725'));
+    for (const prefix of ['admin/reports/', 'admin/resources/'])
+      assert.equal((await member.call(prefix + 'audit')).status, 403, prefix);
+    assert.equal((await member.call('admin/reports/support?limit=2')).status, 200);
   });
   await check('webhook Mercado Pago rejeita assinatura inválida e deduplica', async () => {
     const value = { id: 'event-test-' + runId, type: 'payment', data: { id: '123456789' } },

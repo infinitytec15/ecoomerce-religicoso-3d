@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
+import { transaction, lock, type Transaction, type Prisma } from '@maos-em-oracao/database';
 import type { Session, Address, Role } from '@maos-em-oracao/contracts';
 import { loginSchema, addressSchema } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
@@ -29,6 +29,15 @@ export const passwordSchema = z
   .string()
   .min(12, 'Use uma senha com pelo menos 12 caracteres.')
   .max(128);
+type EmailToken = Prisma.EmailTokenGetPayload<object>;
+/**
+ * Shared per-client budget for the unauthenticated endpoints that consume a link token
+ * (verify, reset, e-mail change, guest order, team invitation), so tokens cannot be guessed
+ * and argon2 cannot be driven at will from one client.
+ */
+export async function limitTokenAttempts(ctx: Context, clientKey: string) {
+  await rateLimit(ctx, 'token/' + clientKey, 20, 900000);
+}
 const emptyAddress = (name: string, email: string): Address => ({
   name,
   email,
@@ -42,7 +51,8 @@ const emptyAddress = (name: string, email: string): Address => ({
   state: '',
 });
 export class AuthService {
-  async guestOrder(value: unknown, actor: Actor | null) {
+  async guestOrder(value: unknown, actor: Actor | null, clientKey: string) {
+    await limitTokenAttempts(this.ctx, clientKey);
     const input = z.object({ token: z.string().min(20).max(200) }).parse(value);
     return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'guest-token/' + digest(input.token));
@@ -256,21 +266,37 @@ export class AuthService {
       message: 'Se houver uma conta válida, enviaremos as instruções para o e-mail informado.',
     };
   }
-  async consume(value: unknown, purpose: 'verify-email' | 'password-reset' | 'email-change') {
+  async consume(
+    value: unknown,
+    purpose: 'verify-email' | 'password-reset' | 'email-change',
+    clientKey: string,
+  ) {
+    await limitTokenAttempts(this.ctx, clientKey);
     const input = z
       .object({ token: z.string().min(20).max(200), password: passwordSchema.optional() })
       .parse(value);
     if (purpose === 'password-reset' && !input.password)
       throw new DomainError('PASSWORD_REQUIRED', 'Informe a nova senha.');
+    const usable = (t: EmailToken | null): EmailToken & { userId: string } => {
+      const found = requireValue(t, 'Link inválido ou expirado.');
+      if (
+        found.purpose !== purpose ||
+        found.usedAt ||
+        found.expiresAt < new Date() ||
+        !found.userId
+      )
+        throw new DomainError('INVALID_TOKEN', 'Link inválido ou expirado.');
+      return { ...found, userId: found.userId };
+    };
+    // Cheap lookup first: argon2 only runs for a token that can still be used.
+    usable(await this.ctx.db.emailToken.findUnique({ where: { tokenHash: digest(input.token) } }));
     const passwordHash = input.password ? await hashPassword(input.password) : undefined;
     await transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'token/' + digest(input.token));
-      const t = requireValue(
+      // Re-checked under the lock: a concurrent request may have used it meanwhile.
+      const t = usable(
         await tx.emailToken.findUnique({ where: { tokenHash: digest(input.token) } }),
-        'Link inválido ou expirado.',
       );
-      if (t.purpose !== purpose || t.usedAt || t.expiresAt < new Date() || !t.userId)
-        throw new DomainError('INVALID_TOKEN', 'Link inválido ou expirado.');
       const u = requireValue(await tx.user.findUnique({ where: { id: t.userId } }));
       if (!u.enabled) throw new DomainError('INVALID_TOKEN', 'Link inválido ou expirado.');
       if (purpose === 'password-reset') {
@@ -347,6 +373,9 @@ export class AuthService {
         address: addressSchema.optional(),
       })
       .parse(value);
+    const emailChanged = normalizeEmail(input.email) !== a.email;
+    // Each change mails a confirmation link to an address the caller picks.
+    if (emailChanged) await rateLimit(this.ctx, 'email-change/' + a.userId, 3, 3600000);
     await transaction(this.ctx.db, async (tx) => {
       const customer = requireValue(await tx.customer.findUnique({ where: { id: a.customerId } }));
       await tx.user.update({ where: { id: a.userId }, data: { name: input.name } });
@@ -357,7 +386,12 @@ export class AuthService {
           ...(input.address ? { address: json({ ...input.address, email: a.email }) } : {}),
         },
       });
-      if (normalizeEmail(input.email) !== a.email) {
+      if (emailChanged) {
+        // Only the latest requested address can be confirmed.
+        await tx.emailToken.updateMany({
+          where: { userId: a.userId, purpose: 'email-change', usedAt: null },
+          data: { usedAt: new Date() },
+        });
         const t = token();
         await tx.emailToken.create({
           data: {

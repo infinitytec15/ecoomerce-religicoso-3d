@@ -19,12 +19,12 @@ import {
   kitComponentUsable,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
-import { settings } from './context';
+import { settings, rateLimit } from './context';
 import { digest } from './security';
 import { ShippingCredentials } from './credentials';
 import { AuthService } from './auth';
 import { Notifications } from './notifications';
-import { PaymentsService } from './payments';
+import { PaymentsService, reclaimCoupon } from './payments';
 import { GroupBuysService } from './group-buys';
 import { CrmService } from './crm';
 import { data, json, requireValue, DomainError, type Actor, addDays, audit } from './shared';
@@ -186,19 +186,22 @@ export class OrdersService {
         quantity: item.quantity,
         dedication: item.dedication,
         ...(kit ? { kit } : {}),
-        ...(item.videoId && videos.has(item.videoId) ? { videoId: item.videoId } : {}),
+        ...(item.videoId && videos.get(item.videoId)?.includes(product.id)
+          ? { videoId: item.videoId }
+          : {}),
       });
     }
     return result;
   }
   /**
-   * Story videos the cart lines were bought from that still exist, read once for the whole cart.
-   * Attribution only: an invalid or deleted video id is dropped and never fails the order.
+   * Active story videos the cart lines were bought from, mapped to the products each one shows,
+   * read once for the whole cart. Attribution only: a line keeps its video id only when the video
+   * is active and shows that line's product; anything else is dropped and never fails the order.
    */
   private async storyVideos(
     tx: Transaction | Context['db'],
     items: { videoId?: string }[],
-  ): Promise<Set<string>> {
+  ): Promise<Map<string, string[]>> {
     const ids = [
       ...new Set(
         items.flatMap((i) =>
@@ -206,9 +209,12 @@ export class OrdersService {
         ),
       ),
     ];
-    if (!ids.length) return new Set();
-    const rows = await tx.storyVideo.findMany({ where: { id: { in: ids } }, select: { id: true } });
-    return new Set(rows.map((r) => r.id));
+    if (!ids.length) return new Map();
+    const rows = await tx.storyVideo.findMany({
+      where: { id: { in: ids }, active: true },
+      select: { id: true, productIds: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.productIds]));
   }
   async fingerprint(
     items: { productId: string; quantity: number; sizeIndex?: number }[],
@@ -257,7 +263,17 @@ export class OrdersService {
       }),
     );
   }
-  async quote(value: unknown) {
+  /**
+   * Shipping options for a cart. Every call hits the carrier API and stores quotes, so storefront
+   * calls (the only ones passing `clientKey`) are limited per client; internal callers such as
+   * labels and club renewals pass none and are not limited.
+   *
+   * `clientKey` is the hashed client IP the BFF forwards, else the visitor cookie (apps/api main.ts).
+   * Server-side fetches carry neither, so each one gets a fresh random visitor key: they are never
+   * pooled into a single bucket that could throttle the whole storefront.
+   */
+  async quote(value: unknown, clientKey?: string) {
+    if (clientKey) await rateLimit(this.ctx, 'quote/' + clientKey, 30, 60000);
     const input = z
         .object({
           cep: z.string().regex(/^\d{5}-?\d{3}$/),
@@ -389,7 +405,7 @@ export class OrdersService {
     if (consume) await tx.coupon.update({ where: { id: c.id }, data: { used: { increment: 1 } } });
     return { discount, couponId: c.id };
   }
-  async estimate(value: unknown) {
+  async estimate(value: unknown, clientKey?: string) {
     const input = checkoutSchema
       .pick({ items: true, coupon: true, shippingQuoteId: true, groupBuyId: true })
       .extend({
@@ -399,6 +415,10 @@ export class OrdersService {
           .optional(),
       })
       .parse(value);
+    // The estimate tells whether a code exists: limit coupon guessing per client (see `quote`
+    // for how the key is derived). Estimates without a coupon are not counted.
+    if (clientKey && input.coupon.trim())
+      await rateLimit(this.ctx, 'coupon/' + clientKey, 20, 900000);
     const items = await this.cart(this.ctx.db, input.items);
     if (input.groupBuyId)
       items[0]!.unitCents = (
@@ -688,7 +708,8 @@ export class OrdersService {
     const key = z.uuid().parse(rawKey),
       a = actor!;
     await transaction(this.ctx.db, async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'order/' + id}))`;
+      // Same key function as lock(): a raw hashtext() lock would not exclude apply()/cancelPending.
+      await lock(tx, 'order/' + id);
       const prior = await tx.idempotencyRecord.findUnique({ where: { key } });
       if (prior) {
         if (prior.actorId !== a.id || prior.scope !== 'retry-pix' || prior.resourceId !== id)
@@ -712,13 +733,16 @@ export class OrdersService {
           'A cobrança atual ainda precisa ser concluída ou conciliada.',
           409,
         );
+      // The expiry gave the coupon use back; the renewed charge keeps the discount, so take it
+      // again (coupon before stock, the checkout lock order).
+      await reclaimCoupon(tx, id, true);
       const due = new Date(Date.now() + 1800000),
         reservations = await tx.stockReservation.findMany({
           where: { orderId: id, state: 'released' },
           orderBy: { productId: 'asc' },
         });
       for (const reservation of reservations) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'stock/' + reservation.productId}))`;
+        await lock(tx, 'stock/' + reservation.productId);
         const product = requireValue(
           await tx.product.findUnique({ where: { id: reservation.productId } }),
         );

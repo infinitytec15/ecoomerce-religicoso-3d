@@ -6,6 +6,7 @@ import { IS_DEMO } from '@/lib/api/config';
 import { errorMessage } from '@/lib/api/contracts';
 import { useState } from 'react';
 import { useAdminData } from './admin-frame';
+import { useSession } from '@/lib/api/query';
 import { AdminHeading } from './shared';
 import { AdminAnalytics } from './analytics';
 import { downloadCsv } from '@/lib/domain/format';
@@ -17,13 +18,16 @@ type ReportRow = {
   status: string;
   values: (string | number | undefined)[];
 };
+/** Reports the API serves only to the store owner (team and change history). */
+const OWNER_ONLY_REPORTS = new Set(['equipe', 'atividade']);
 export function ReportCenter() {
   const data = useAdminData(),
+    session = useSession(),
     [from, setFrom] = useState(''),
     [to, setTo] = useState(''),
     [status, setStatus] = useState('Todas'),
     [preview, setPreview] = useState<string | null>(null);
-  const modules: {
+  const allModules: {
     id: string;
     name: string;
     description: string;
@@ -269,6 +273,7 @@ export function ReportCenter() {
       })),
     },
   ];
+  const modules = allModules.filter((m) => session.data?.owner || !OWNER_ONLY_REPORTS.has(m.id));
   const filtered = (rows: ReportRow[]) =>
       rows.filter(
         (r) =>

@@ -32,9 +32,12 @@ export class ContentService {
       })
     ).map((p) => prayerDto(p, actorKey));
   }
-  async postPrayer(actorKey: string, value: unknown) {
+  // Community limits run per actor (account or visitor cookie) and per client key (IP): a
+  // client can drop the visitor cookie to get a fresh actor key, but not its address.
+  async postPrayer(actorKey: string, value: unknown, clientKey: string) {
     const input = prayerSchema.parse(value);
     await rateLimit(this.ctx, 'prayer/' + actorKey, 5, 3600000);
+    await rateLimit(this.ctx, 'prayer-ip/' + clientKey, 20, 3600000);
     const s = await settings(this.ctx.db);
     await this.ctx.db.prayer.create({
       data: {
@@ -48,8 +51,9 @@ export class ContentService {
       },
     });
   }
-  async react(actorKey: string, id: string) {
+  async react(actorKey: string, id: string, clientKey: string) {
     await rateLimit(this.ctx, 'reaction/' + actorKey, 100, 3600000);
+    await rateLimit(this.ctx, 'reaction-ip/' + clientKey, 300, 3600000);
     await transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'reaction/' + id + '/' + actorKey);
       requireValue(await tx.prayer.findFirst({ where: { id, moderation: 'Publicado' } }));
@@ -67,18 +71,31 @@ export class ContentService {
     });
     if (!count.count) throw new DomainError('NOT_FOUND', 'Pedido de oração não encontrado.', 404);
   }
-  async report(actorKey: string, id: string, value: unknown) {
+  async report(actorKey: string, id: string, value: unknown, clientKey: string) {
     const input = z.object({ reason: z.string().trim().min(5).max(300) }).parse(value);
     await rateLimit(this.ctx, 'prayer-report/' + actorKey, 10, 3600000);
+    await rateLimit(this.ctx, 'prayer-report-ip/' + clientKey, 30, 3600000);
     await transaction(this.ctx.db, async (tx) => {
-      requireValue(await tx.prayer.findUnique({ where: { id } }));
+      const prayer = requireValue(await tx.prayer.findUnique({ where: { id } }));
+      // Only a published prayer can be reported: otherwise reports could move a prayer the
+      // team hid back to review.
+      if (prayer.moderation !== 'Publicado')
+        throw new DomainError(
+          'PRAYER_NOT_PUBLISHED',
+          'Este pedido de oração não está mais publicado.',
+          409,
+        );
       await tx.prayerReport.upsert({
         where: { prayerId_actorKey: { prayerId: id, actorKey } },
         create: { prayerId: id, actorKey, reason: input.reason },
         update: {},
       });
+      // Conditional, so a moderation that lands meanwhile is never overwritten.
       if ((await tx.prayerReport.count({ where: { prayerId: id } })) >= 3)
-        await tx.prayer.update({ where: { id }, data: { moderation: 'Em análise' } });
+        await tx.prayer.updateMany({
+          where: { id, moderation: 'Publicado' },
+          data: { moderation: 'Em análise' },
+        });
     });
   }
   async moderate(actor: Actor | null, id: string, status: string, note: string) {

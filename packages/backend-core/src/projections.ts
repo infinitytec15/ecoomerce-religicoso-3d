@@ -66,8 +66,33 @@ export function customerDto(c: Prisma.CustomerGetPayload<object>, privateData = 
     created: day(c.createdAt),
   };
 }
+/**
+ * Customer row for team members without the 'customers' permission: enough to name the
+ * customer of an order, ticket or subscription; no document, phone or address. Orders carry
+ * their own delivery address.
+ */
+export function customerSummaryDto(c: Prisma.CustomerGetPayload<object>): Customer {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    status: c.active ? 'Ativo' : 'Inativo',
+    created: day(c.createdAt),
+    notes: '',
+    phone: '',
+    cep: '',
+    street: '',
+    number: '',
+    extra: '',
+    district: '',
+    city: '',
+    state: '',
+  };
+}
 export function orderDto(o: OrderRow, privateData = false): Order {
-  const extra = data<Partial<Order>>(o.data);
+  const extra = { ...data<Partial<Order> & { couponReleased?: boolean }>(o.data) };
+  // Internal bookkeeping (see releaseCoupon), not part of the order contract.
+  Reflect.deleteProperty(extra, 'couponReleased');
   return {
     ...extra,
     id: o.id,

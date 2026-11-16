@@ -237,9 +237,10 @@ class TeamController {
   @Post('team/invitations/:token/accept') @HttpCode(204) async accept(
     @Param('token') token: string,
     @Body() body: unknown,
+    @Req() req: ApiRequest,
   ) {
     z.string().min(20).max(100).parse(token);
-    await this.team.accept(token, body);
+    await this.team.accept(token, body, req.clientKey);
   }
   @Post('admin/integrations/melhor-envio/authorize') @HttpCode(200) async authorize(
     @Req() req: ApiRequest,

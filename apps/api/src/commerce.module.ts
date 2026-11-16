@@ -83,21 +83,24 @@ class IdentityController {
   @Post('recover') @HttpCode(200) async recover(@Body() body: unknown, @Req() req: ApiRequest) {
     return result(await this.service.recover(body, req.clientKey));
   }
-  @Post('verify') @HttpCode(204) async verify(@Body() body: unknown) {
-    await this.service.consume(body, 'verify-email');
+  @Post('verify') @HttpCode(204) async verify(@Body() body: unknown, @Req() req: ApiRequest) {
+    await this.service.consume(body, 'verify-email', req.clientKey);
   }
-  @Post('reset') @HttpCode(204) async reset(@Body() body: unknown) {
-    await this.service.consume(body, 'password-reset');
+  @Post('reset') @HttpCode(204) async reset(@Body() body: unknown, @Req() req: ApiRequest) {
+    await this.service.consume(body, 'password-reset', req.clientKey);
   }
-  @Post('email-change') @HttpCode(204) async changeEmail(@Body() body: unknown) {
-    await this.service.consume(body, 'email-change');
+  @Post('email-change') @HttpCode(204) async changeEmail(
+    @Body() body: unknown,
+    @Req() req: ApiRequest,
+  ) {
+    await this.service.consume(body, 'email-change', req.clientKey);
   }
   @Post('guest-order') @HttpCode(200) async guestOrder(
     @Req() req: ApiRequest,
     @Body() body: unknown,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const r = await this.service.guestOrder(body, req.actor);
+    const r = await this.service.guestOrder(body, req.actor, req.clientKey);
     if (r.raw) await sessionCookie(res, this.ctx, r.raw);
     return result({ orderId: r.orderId });
   }
@@ -128,8 +131,11 @@ class OrdersController {
   constructor(@Inject(CONTEXT) private ctx: Context) {
     this.service = new OrdersService(ctx);
   }
-  @Post('checkout/estimate') @HttpCode(200) async estimate(@Body() body: unknown) {
-    return result(await this.service.estimate(body));
+  @Post('checkout/estimate') @HttpCode(200) async estimate(
+    @Body() body: unknown,
+    @Req() req: ApiRequest,
+  ) {
+    return result(await this.service.estimate(body, req.clientKey));
   }
   @Post('orders')
   @HttpCode(200)
@@ -166,15 +172,21 @@ class OrdersController {
   ) {
     await this.service.auth.updateProfile(req.actor, body);
   }
-  @Post('shipping/quotes') @HttpCode(200) async quote(@Body() body: unknown) {
-    return result(await this.service.quote(body));
+  @Post('shipping/quotes') @HttpCode(200) async quote(
+    @Body() body: unknown,
+    @Req() req: ApiRequest,
+  ) {
+    return result(await this.service.quote(body, req.clientKey));
   }
   @Get('shipping/quotes') async quoteGet(
+    @Req() req: ApiRequest,
     @Query('cep') cep: string,
     @Query('productId') productId?: string,
   ) {
     return result(
-      productId ? await this.service.quote({ cep, items: [{ productId, quantity: 1 }] }) : [],
+      productId
+        ? await this.service.quote({ cep, items: [{ productId, quantity: 1 }] }, req.clientKey)
+        : [],
     );
   }
 }
@@ -216,7 +228,7 @@ class ContentController {
     @Req() req: ApiRequest,
     @Body() body: unknown,
   ) {
-    await this.service.postPrayer(this.key(req), body);
+    await this.service.postPrayer(this.key(req), body, req.clientKey);
   }
   @Delete('community/prayers/:id') @HttpCode(204) async delete(
     @Req() req: ApiRequest,
@@ -228,14 +240,14 @@ class ContentController {
     @Req() req: ApiRequest,
     @Param('id') id: string,
   ) {
-    await this.service.react(this.key(req), id);
+    await this.service.react(this.key(req), id, req.clientKey);
   }
   @Post('community/prayers/:id/report') @HttpCode(204) async report(
     @Req() req: ApiRequest,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
-    await this.service.report(this.key(req), id, body);
+    await this.service.report(this.key(req), id, body, req.clientKey);
   }
   @Post('newsletter') @HttpCode(200) async newsletter(
     @Req() req: ApiRequest,

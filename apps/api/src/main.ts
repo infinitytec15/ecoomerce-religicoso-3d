@@ -156,7 +156,6 @@ export async function bootstrap() {
       req.requestId = randomUUID();
       res.setHeader('X-Request-Id', req.requestId);
       res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-Integrations-Mode', ctx.config.INTEGRATIONS_MODE);
       try {
         const path = req.path,
           exempt =

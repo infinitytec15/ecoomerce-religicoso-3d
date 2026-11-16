@@ -9,6 +9,59 @@ import { orderInclude } from './projections';
 import { digest } from './security';
 /** Provider answers that end a refund without moving money. */
 const REFUSED_REFUNDS = ['rejected', 'cancelled'];
+type CouponFlags = { couponReleased?: boolean };
+/**
+ * Gives back the coupon use an order took at checkout, at most once per order: the
+ * `couponReleased` flag in order.data is written in the same transaction, so expiry, rejection
+ * and an admin cancel of the same order never return it twice. Callers hold the order lock.
+ */
+export async function releaseCoupon(tx: Transaction, orderId: string) {
+  const o = await tx.order.findUnique({
+    where: { id: orderId },
+    select: { couponId: true, data: true },
+  });
+  if (!o?.couponId) return;
+  const flags = data<CouponFlags>(o.data);
+  if (flags.couponReleased) return;
+  await tx.order.update({
+    where: { id: orderId },
+    data: { data: json({ ...flags, couponReleased: true }) },
+  });
+  await tx.coupon.updateMany({
+    where: { id: o.couponId, used: { gt: 0 } },
+    data: { used: { decrement: 1 } },
+  });
+}
+/**
+ * Takes back a use released by `releaseCoupon` when the order comes back to life. A Pix retry
+ * (`strict`) is refused when the coupon has run out meanwhile; a late payment the provider
+ * already captured is not, so the order keeps the discount it was paid with.
+ */
+export async function reclaimCoupon(tx: Transaction, orderId: string, strict: boolean) {
+  const o = await tx.order.findUnique({
+    where: { id: orderId },
+    select: { couponId: true, data: true },
+  });
+  if (!o?.couponId) return;
+  const flags = data<CouponFlags>(o.data);
+  if (!flags.couponReleased) return;
+  if (strict) {
+    // Same lock as checkout, so the limit check and the increment are atomic.
+    await lock(tx, 'coupon/' + o.couponId);
+    const c = await tx.coupon.findUnique({ where: { id: o.couponId } });
+    if (!c || c.used >= c.limit)
+      throw new DomainError(
+        'COUPON_INVALID',
+        'O cupom deste pedido se esgotou. Faça um novo pedido.',
+        409,
+      );
+  }
+  await tx.order.update({
+    where: { id: orderId },
+    data: { data: json({ ...flags, couponReleased: false }) },
+  });
+  await tx.coupon.update({ where: { id: o.couponId }, data: { used: { increment: 1 } } });
+}
 export class PaymentsService {
   async cancelPending(intentId: string, expectedDue?: string) {
     const initial = await transaction(this.ctx.db, async (tx) => {
@@ -93,6 +146,7 @@ export class PaymentsService {
           },
         });
         await this.release(tx, initial.orderId);
+        await releaseCoupon(tx, initial.orderId);
       }
     });
   }
@@ -363,6 +417,8 @@ export class PaymentsService {
           data: { status: 'Pago', paidAt: new Date() },
         });
         await tx.order.update({ where: { id: order.id }, data: { status: 'Confirmado' } });
+        // Paid after an expiry gave the coupon use back: the order keeps its discount.
+        await reclaimCoupon(tx, order.id, false);
         // Campaign before stock, the same lock order as the group checkout.
         if (order.groupBuyId) await lock(tx, 'group-buy/' + order.groupBuyId);
         const reservations = await tx.stockReservation.findMany({ where: { orderId: order.id } });
@@ -474,6 +530,7 @@ export class PaymentsService {
           data: { status: all.some((p) => p.status === 'rejected') ? 'Recusado' : 'Cancelada' },
         });
         await this.release(tx, order.id);
+        await releaseCoupon(tx, order.id);
         const a = data<Address>(order.address);
         await this.mail.email(tx, 'payment-failed/' + intent.id, order.id, a.email, {
           kind: 'payment-failed',
