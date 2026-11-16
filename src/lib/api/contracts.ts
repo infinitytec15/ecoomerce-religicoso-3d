@@ -10,7 +10,7 @@ import type {
   StoriesFeed,
   StoryEvent,
 } from '@maos-em-oracao/contracts';
-import type { LoginInput, NewsletterInput, PrayerInput } from '@/lib/domain/schemas';
+import type { LoginInput, NewsletterInput, PrayerInput, RegisterInput } from '@/lib/domain/schemas';
 import type {
   CartItem,
   AccountSnapshot,
@@ -61,6 +61,11 @@ export interface CommerceGateway {
   settings(): Promise<StoreSettings>;
   session(): Promise<Session | null>;
   login(input: LoginInput): Promise<Session>;
+  /**
+   * Customer sign-up (name + e-mail only). Never opens a session: the e-mail carries the link
+   * where the inbox owner creates the password. Always the same generic message.
+   */
+  register(input: RegisterInput): Promise<{ message: string }>;
   logout(): Promise<void>;
   recover(email: string, kind: 'customer' | 'staff'): Promise<{ message: string }>;
   account(): Promise<AccountSnapshot>;

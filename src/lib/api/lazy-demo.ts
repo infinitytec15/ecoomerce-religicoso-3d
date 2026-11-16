@@ -26,6 +26,7 @@ export function createLazyDemoGateway(): CommerceGateway {
     settings: async (...args) => (await load()).settings(...args),
     session: async (...args) => (await load()).session(...args),
     login: async (...args) => (await load()).login(...args),
+    register: async (...args) => (await load()).register(...args),
     logout: async (...args) => (await load()).logout(...args),
     recover: async (...args) => (await load()).recover(...args),
     account: async (...args) => (await load()).account(...args),

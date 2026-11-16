@@ -1528,6 +1528,28 @@ small {
 .check-line input {
   flex-shrink: 0;
 }
+.check-line.with-hint {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.check-line.with-hint input {
+  margin-top: 3px;
+}
+.check-line.with-hint small {
+  display: block;
+  margin-top: 2px;
+}
+.checkout-account-note {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+}
+.checkout-account-note svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
 .success {
   max-width: 780px;
   margin: 50px auto 100px;

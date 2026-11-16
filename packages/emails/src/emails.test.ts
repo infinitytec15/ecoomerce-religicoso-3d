@@ -69,6 +69,18 @@ describe('templates de e-mail', () => {
     expect(renderEmail(sample, sampleContext).headers).toEqual({});
     expect(() => renderEmail({ ...prayer, unsubscribeUrl: '' }, sampleContext)).toThrow();
   });
+  it('o cadastro cria a senha pelo link e a troca de e-mail só confirma o endereço', () => {
+    const verify = sampleEmails.find((m) => m.kind === 'verify-email')!;
+    const register = renderEmail(verify, sampleContext);
+    expect(register.subject).toBe('Confirme seu e-mail e crie sua senha · Mãos em Oração');
+    expect(register.html).toContain('Criar minha senha');
+    expect(register.text).toContain('Criar minha senha');
+    expect(renderEmail({ ...verify, purpose: 'register' }, sampleContext)).toEqual(register);
+    const change = renderEmail({ ...verify, purpose: 'email-change' }, sampleContext);
+    expect(change.subject).toBe('Confirmar e-mail · Mãos em Oração');
+    expect(change.html).toContain('Confirmar meu e-mail');
+    expect(change.html).not.toContain('Criar minha senha');
+  });
   it('pedido de avaliação traz o descadastro humano e sem cabeçalho one-click', () => {
     const review = sampleEmails.find((m) => m.kind === 'review-request')!;
     const rendered = renderEmail(review, sampleContext);

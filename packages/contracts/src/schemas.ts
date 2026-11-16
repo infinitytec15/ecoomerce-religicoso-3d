@@ -87,6 +87,18 @@ export const loginSchema = z.object({
   register: z.boolean().optional(),
   marketingOptIn: z.boolean().optional(),
 });
+/**
+ * Customer sign-up: name and e-mail only. The password is chosen on the link sent to that
+ * e-mail, so only whoever owns the inbox can set it (and see guest orders of that e-mail).
+ */
+export const registerSchema = z.object({
+  name: z.string().trim().min(3).max(100),
+  email: z.email().max(200),
+  marketingOptIn: z.boolean().default(false),
+});
+/** Same answer whether or not the e-mail already has an account (no account enumeration). */
+export const REGISTER_MESSAGE =
+  'Enviamos um link para o seu e-mail. Abra-o para criar sua senha e ativar a conta.';
 export const collectionSchema = z.enum([
   'Católicos',
   'Evangélicos',
@@ -162,6 +174,7 @@ export const publicSettingsSchema = z.object({
   }),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+export type RegisterInput = z.input<typeof registerSchema>;
 export type PrayerInput = z.infer<typeof prayerSchema>;
 export type NewsletterInput = z.infer<typeof newsletterSchema>;
 export const demoAddress = {

@@ -11,7 +11,7 @@ import type {
   PaymentMethod,
   ShippingQuote,
 } from '@/lib/domain/types';
-import { addressSchema, type LoginInput } from '@/lib/domain/schemas';
+import { addressSchema } from '@/lib/domain/schemas';
 import { z } from 'zod';
 import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
 import { calculateTotals, orderItems, validateSplit } from '@/lib/domain/commerce';
@@ -71,18 +71,20 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
     [estimate, setEstimate] = useState<Awaited<ReturnType<CommerceGateway['estimate']>>>(),
     [submitted, setSubmitted] = useState(false),
     [cardRequested, setCardRequested] = useState(false),
-    [existing, setExisting] = useState(false),
+    // Optional account for a visitor: 'sent' once the e-mailed link was requested.
+    [wantsAccount, setWantsAccount] = useState(false),
+    [accountLink, setAccountLink] = useState<'idle' | 'sent'>('idle'),
     [quoting, setQuoting] = useState<'idle' | 'loading' | 'done' | 'error'>('idle'),
     [quoteError, setQuoteError] = useState(''),
     [prefilled, setPrefilled] = useState(false),
     key = useRef<string>(''),
+    accountRequestedFor = useRef(''),
     marketingOptIn = useRef(false),
     gateway = useGateway(),
     session = useSession(),
     account = useAccount(),
     customer = session.data?.role === 'customer',
     staff = !!session.data && !customer,
-    register = useCommand((g, input: LoginInput) => g.login(input)),
     saveProfile = useCommand((g, input: { name: string; email: string; address: Address }) =>
       g.updateProfile(input),
     ),
@@ -152,6 +154,25 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
     });
     setEstimate(result);
     return result;
+  }
+  /**
+   * Optional sign-up for a visitor: only e-mails the link to create the password. It never
+   * blocks the purchase (errors are ignored) and is sent once per e-mail.
+   */
+  function requestAccount() {
+    const email = address.email.trim().toLowerCase();
+    if (!email || accountRequestedFor.current === email) return;
+    accountRequestedFor.current = email;
+    // Promise.resolve: input validation may throw synchronously; it must not stop the purchase.
+    Promise.resolve()
+      .then(() =>
+        gateway.register({ name: address.name, email: address.email, marketingOptIn: false }),
+      )
+      .then(() => setAccountLink('sent'))
+      .catch(() => {
+        // Guest checkout goes on; allow another try if they come back to this step.
+        accountRequestedFor.current = '';
+      });
   }
   async function complete(paymentToken?: PaymentToken) {
     if (payment === 'split') validateSplit(totals.totalCents, centsFromInput(pixValue));
@@ -232,6 +253,14 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
             do seu significado.
           </h1>
           <Steps items={['Seus dados', 'Entrega', 'Pagamento']} current={step} />
+          {accountLink === 'sent' && (
+            <p className="muted checkout-account-note" role="status">
+              <Icon name="mail" />{' '}
+              {IS_DEMO
+                ? 'Sua conta de demonstração foi criada com este e-mail.'
+                : 'Enviamos o link para criar sua conta.'}
+            </p>
+          )}
           {IS_DEMO && (
             <Notice>
               Checkout de demonstração. Use dados fictícios; nenhum pagamento ou envio real será
@@ -241,29 +270,10 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
           {step === 0 ? (
             <Form
               className="stack"
-              onSubmit={async (d) => {
+              onSubmit={async () => {
                 if (staff) throw new Error('Saia da conta da equipe para comprar como cliente.');
                 contactSchema.parse(address);
-                if (!customer) {
-                  const password = String(d.get('password') || '');
-                  try {
-                    await register.mutateAsync({
-                      email: address.email,
-                      password,
-                      kind: 'customer',
-                      name: address.name,
-                      register: true,
-                    });
-                  } catch (error) {
-                    if (error instanceof ApiError && error.code === 'ACCOUNT_EXISTS') {
-                      setExisting(true);
-                      throw new Error(
-                        'Este e-mail já tem cadastro. Entre com sua senha para continuar.',
-                      );
-                    }
-                    throw error;
-                  }
-                }
+                if (!customer && wantsAccount) requestAccount();
                 setStep(1);
                 window.scrollTo(0, 0);
               }}
@@ -301,28 +311,24 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
                 identity={!customer}
               />
               {!customer && !staff && (
-                <label>
-                  Crie uma senha
-                  <span className="muted"> (para acompanhar seus pedidos)</span>
+                <label className="check-line with-hint">
                   <input
-                    name="password"
-                    type="password"
-                    minLength={12}
-                    maxLength={128}
-                    required
-                    autoComplete="new-password"
-                    placeholder="Mínimo de 12 caracteres"
+                    type="checkbox"
+                    name="createAccount"
+                    checked={wantsAccount}
+                    onChange={(e) => setWantsAccount(e.target.checked)}
                   />
+                  <span>
+                    Quero criar minha conta com este e-mail
+                    <small className="muted">
+                      Enviaremos um link para você criar a senha e acompanhar seus pedidos.
+                    </small>
+                  </span>
                 </label>
-              )}
-              {existing && (
-                <ButtonLink href={`/login?retorno=${loginReturn}`} variant="secondary">
-                  Entrar e continuar a compra
-                </ButtonLink>
               )}
               <div className="form-actions">
                 <span />
-                <Button loading={register.isPending}>
+                <Button>
                   Continuar para entrega <Icon name="arrow" />
                 </Button>
               </div>

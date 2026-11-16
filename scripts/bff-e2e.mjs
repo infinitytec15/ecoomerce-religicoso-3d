@@ -66,6 +66,12 @@ const products = await step('catálogo: lista produtos', async () => {
 await step('catálogo: busca e filtro', () => g.catalog({ category: 'Católicos', search: 'cruz' }));
 const product = products?.[0];
 await step('produto: detalhe', async () => assert.ok(await g.product(product.id)));
+// NOTE: sign-up no longer signs in. POST auth/login with register: true now answers
+// 409 CONFIRM_EMAIL; the new flow is POST auth/register ({ name, email, marketingOptIn }) and
+// then POST auth/verify ({ token, password }) with the token from the 'verify-email' message in
+// the outbox, which signs the customer in. Until this smoke reads that token (it needs database
+// access) and the web gateway exposes the new calls, this step and the account steps after it
+// fail by design. scripts/backend-test.mjs covers the flow against the API.
 await step('conta: cadastro de cliente', () =>
   g.login({ email: address.email, password, kind: 'customer', name: address.name, register: true }),
 );

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EMAIL_TEMPLATE_VERSION = '2026-11-15.1';
+export const EMAIL_TEMPLATE_VERSION = '2026-11-16.1';
 const line = z
   .string()
   .trim()
@@ -53,7 +53,13 @@ const order = { ...base, orderNumber: line, totalCents: cents };
 
 export const emailMessageSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('operation-alert'), ...base, title: line, summary: prose }),
-  z.strictObject({ kind: z.literal('verify-email'), ...base, expiresAtLabel: line }),
+  z.strictObject({
+    kind: z.literal('verify-email'),
+    ...base,
+    expiresAtLabel: line,
+    // Sign-up links also create the password; an e-mail change only confirms the new address.
+    purpose: z.enum(['register', 'email-change']).optional(),
+  }),
   z.strictObject({ kind: z.literal('password-reset'), ...base, expiresAtLabel: line }),
   z.strictObject({ kind: z.literal('team-invite'), ...base, role: line, expiresAtLabel: line }),
   z.strictObject({
@@ -229,13 +235,21 @@ function content(message: EmailMessage): Content {
         note: 'Alerta da operação Mãos em Oração. Consulte o registro completo no painel.',
       };
     case 'verify-email':
-      return {
-        title: 'Seu próximo passo começa aqui.',
-        intro:
-          'Confirme seu e-mail para concluir o cadastro e acompanhar seus pedidos em um só lugar.',
-        cta: 'Confirmar meu e-mail',
-        note: `Este link é válido até ${message.expiresAtLabel}. Se você não criou uma conta, ignore esta mensagem.`,
-      };
+      return message.purpose === 'email-change'
+        ? {
+            title: 'Confirme seu novo e-mail.',
+            intro:
+              'Recebemos um pedido para usar este endereço na sua conta. Confirme para concluir a troca.',
+            cta: 'Confirmar meu e-mail',
+            note: `Este link é válido até ${message.expiresAtLabel}. Abra-o no navegador em que você está conectado à sua conta. Se você não pediu esta troca, ignore esta mensagem.`,
+          }
+        : {
+            title: 'Seu próximo passo começa aqui.',
+            intro:
+              'Abra o link para confirmar seu e-mail e criar a senha da sua conta. Assim você acompanha seus pedidos em um só lugar.',
+            cta: 'Criar minha senha',
+            note: `Este link é válido até ${message.expiresAtLabel} e só pode ser usado uma vez. Se você não pediu uma conta, ignore esta mensagem: nenhuma senha foi criada.`,
+          };
     case 'password-reset':
       return {
         title: 'Vamos recuperar seu acesso.',
@@ -609,7 +623,9 @@ export function renderEmail(input: EmailMessage, configuration: EmailContext): R
     subject:
       message.kind === 'marketing'
         ? message.subject
-        : `${emailLabels[message.kind]} · Mãos em Oração`,
+        : message.kind === 'verify-email' && message.purpose !== 'email-change'
+          ? 'Confirme seu e-mail e crie sua senha · Mãos em Oração'
+          : `${emailLabels[message.kind]} · Mãos em Oração`,
     html,
     text,
     headers:

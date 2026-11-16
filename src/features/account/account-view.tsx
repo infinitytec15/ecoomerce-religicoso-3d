@@ -512,7 +512,9 @@ function ProfileView({ customer, addressOnly }: { customer: Address; addressOnly
     save = useCommand((g, input: { name: string; email: string; address?: Address }) =>
       g.updateProfile(input),
     ),
-    notify = useNotify();
+    notify = useNotify(),
+    // The new e-mail only takes over after its link is opened while signed in here.
+    [pendingEmail, setPendingEmail] = useState('');
   return (
     <>
       <h1>{addressOnly ? 'Seu lugar no mundo.' : 'Seus dados.'}</h1>
@@ -524,12 +526,20 @@ function ProfileView({ customer, addressOnly }: { customer: Address; addressOnly
       <Form
         className="stack"
         onSubmit={async (d) => {
+          const email = addressOnly ? address.email : text(d, 'email'),
+            emailChanged =
+              !addressOnly && email.toLowerCase() !== customer.email.trim().toLowerCase();
           await save.mutateAsync({
             name: addressOnly ? address.name : text(d, 'name'),
-            email: addressOnly ? address.email : text(d, 'email'),
+            email,
             ...(addressOnly ? { address } : {}),
           });
-          notify('Dados atualizados.');
+          setPendingEmail(emailChanged && !IS_DEMO ? email : '');
+          notify(
+            emailChanged && !IS_DEMO
+              ? 'Dados salvos. Confirme o novo e-mail pelo link que enviamos.'
+              : 'Dados atualizados.',
+          );
         }}
       >
         {(pending) => (
@@ -549,6 +559,13 @@ function ProfileView({ customer, addressOnly }: { customer: Address; addressOnly
               </div>
             )}
             <Button loading={pending}>Salvar alterações</Button>
+            {pendingEmail && (
+              <p className="notice" role="status">
+                Enviamos um link para <strong>{pendingEmail}</strong>. Abra-o neste mesmo navegador,
+                com sua conta conectada, para confirmar a troca. Até lá, seus avisos continuam
+                chegando no e-mail atual.
+              </p>
+            )}
           </>
         )}
       </Form>

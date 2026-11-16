@@ -35,10 +35,12 @@ import {
   prayerSchema,
   productSchema,
   publicSettingsSchema,
+  registerSchema,
   subscriptionSchema,
   type LoginInput,
   type NewsletterInput,
   type PrayerInput,
+  type RegisterInput,
 } from '@/lib/domain/schemas';
 import type {
   Address,
@@ -199,6 +201,12 @@ export class HttpGateway implements CommerceGateway {
     return this.client.request('auth/login', sessionSchema, {
       method: 'POST',
       body: loginSchema.parse(input),
+    });
+  }
+  register(input: RegisterInput) {
+    return this.client.request('auth/register', message, {
+      method: 'POST',
+      body: registerSchema.parse(input),
     });
   }
   logout() {

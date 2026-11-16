@@ -40,10 +40,13 @@ import {
   productSchema,
   inventoryProductSchema,
   publicSettingsSchema,
+  registerSchema,
+  REGISTER_MESSAGE,
   subscriptionSchema,
   type LoginInput,
   type NewsletterInput,
   type PrayerInput,
+  type RegisterInput,
 } from '@/lib/domain/schemas';
 import {
   audit,
@@ -270,19 +273,18 @@ export class DemoGateway implements CommerceGateway {
         demo: true,
       };
     } else {
-      const customer = this.mutate((s) => {
-        const found = ensureCustomer(
+      // Same rule as the API: sign-up goes through register() and the e-mailed link.
+      if (data.register) throw new ApiError('CONFIRM_EMAIL', REGISTER_MESSAGE, 409);
+      const customer = this.mutate((s) =>
+        ensureCustomer(
           s,
           normalizeAddress({
             ...s.clients.find((c) => c.email.toLowerCase() === data.email.toLowerCase()),
             email: data.email,
             ...(data.name ? { name: data.name } : {}),
           }),
-        );
-        if (data.register && data.marketingOptIn)
-          registerConsent(s, { email: found.email, name: found.name }, 'register');
-        return found;
-      });
+        ),
+      );
       session = {
         id: customer.id,
         name: customer.name,
@@ -294,6 +296,23 @@ export class DemoGateway implements CommerceGateway {
     }
     this.storage.saveSession(session);
     return session;
+  }
+  /**
+   * The demo sends no e-mail, so the account is created right away and, like the API, no session
+   * is opened: the person signs in next with any password. Marketing consent is never taken
+   * here (the API takes it only on the e-mailed link); the account page has the toggle.
+   */
+  async register(input: RegisterInput) {
+    const data = registerSchema.parse(input);
+    this.mutate((s) => {
+      // An existing account is left untouched, as the API does (same answer either way).
+      if (s.clients.some((c) => c.email.toLowerCase() === data.email.toLowerCase())) return;
+      ensureCustomer(s, normalizeAddress({ email: data.email, name: data.name }));
+    });
+    return {
+      message:
+        'Simulação concluída. Nenhum e-mail foi enviado. Sua conta de demonstração está pronta: entre com este e-mail e qualquer senha.',
+    };
   }
   async logout() {
     this.storage.saveSession(null);

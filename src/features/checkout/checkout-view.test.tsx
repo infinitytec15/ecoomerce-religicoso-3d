@@ -25,17 +25,22 @@ const h = vi.hoisted(() => {
     estimate: vi.fn(),
     checkout: vi.fn(),
     updateProfile: vi.fn(),
+    register: vi.fn(),
   };
-  return { push: vi.fn(), customer, gateway };
+  // Signed-in customer by default; visitor tests switch this off.
+  const state = { visitor: false };
+  return { push: vi.fn(), customer, gateway, state };
 });
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: h.push }) }));
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
 vi.mock('@/lib/api/query', () => ({
   useGateway: () => h.gateway,
   useSession: () => ({
-    data: { role: 'customer', name: h.customer.name, email: h.customer.email },
+    data: h.state.visitor
+      ? null
+      : { role: 'customer', name: h.customer.name, email: h.customer.email },
   }),
-  useAccount: () => ({ data: { customer: h.customer } }),
+  useAccount: () => ({ data: h.state.visitor ? undefined : { customer: h.customer } }),
   useEndSession: () => ({ mutate: vi.fn() }),
   useCommand: <I, R>(action: (g: typeof h.gateway, input: I) => Promise<R>) => ({
     mutateAsync: (input: I) => action(h.gateway, input),
@@ -77,6 +82,7 @@ describe('CheckoutView', () => {
   const clear = vi.fn();
   beforeEach(() => {
     vi.clearAllMocks();
+    h.state.visitor = false;
     useCartStore.setState({ items: [], clear });
     h.gateway.shipping.mockResolvedValue([
       { id: 'standard', label: 'Padrão', estimate: '5 dias', cents: 1890 },
@@ -151,6 +157,72 @@ describe('CheckoutView', () => {
     await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
     await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
     expect(h.gateway.checkout.mock.calls[0][0].marketingOptIn).toBe(true);
+  });
+
+  describe('visitante (sem sessão)', () => {
+    const accountBox = () =>
+      screen.getByRole('checkbox', { name: /Quero criar minha conta com este e-mail/ });
+    async function fillContact(user: ReturnType<typeof userEvent.setup>) {
+      h.state.visitor = true;
+      useCartStore.setState({ items: [line] });
+      render(<CheckoutView />);
+      await user.click(screen.getByRole('button', { name: 'Preencher com dados fictícios' }));
+    }
+
+    it('segue como convidado sem senha e sem criar conta', async () => {
+      const user = userEvent.setup();
+      await fillContact(user);
+      // Password inputs have no ARIA role; the visitor must not be asked for one.
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+      expect(accountBox()).not.toBeChecked();
+      expect(
+        screen.getByRole('link', { name: /Entre para usar seus dados salvos/ }),
+      ).toHaveAttribute('href', '/login?retorno=/checkout');
+      await toPayment(user);
+      await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+      await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+      expect(h.gateway.register).not.toHaveBeenCalled();
+      expect(h.gateway.updateProfile).not.toHaveBeenCalled();
+    });
+
+    it('com a caixa marcada pede o link da conta e avisa quando ele sai', async () => {
+      const user = userEvent.setup();
+      h.gateway.register.mockResolvedValue({ message: 'ok' });
+      await fillContact(user);
+      await user.click(accountBox());
+      await toPayment(user);
+      expect(h.gateway.register).toHaveBeenCalledTimes(1);
+      expect(h.gateway.register).toHaveBeenCalledWith({
+        name: 'Cliente de Demonstração',
+        email: 'cliente@exemplo.com',
+        marketingOptIn: false,
+      });
+      expect(screen.getByText(/conta de demonstração foi criada/)).toBeVisible();
+      await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+      await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+    });
+
+    it('não trava a compra enquanto o cadastro demora', async () => {
+      const user = userEvent.setup();
+      h.gateway.register.mockReturnValue(new Promise(() => {}));
+      await fillContact(user);
+      await user.click(accountBox());
+      await toPayment(user);
+      await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+      await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+    });
+
+    it('uma falha no cadastro não bloqueia a compra nem mostra erro', async () => {
+      const user = userEvent.setup();
+      h.gateway.register.mockRejectedValue(new ApiError('RATE_LIMITED', 'Muitas tentativas.', 429));
+      await fillContact(user);
+      await user.click(accountBox());
+      await toPayment(user);
+      await user.click(screen.getByRole('button', { name: /Concluir demonstração/ }));
+      await vi.waitFor(() => expect(h.gateway.checkout).toHaveBeenCalled());
+      expect(screen.queryByText(/conta de demonstração foi criada|Enviamos o link/)).toBeNull();
+      expect(screen.queryByText('Muitas tentativas.')).toBeNull();
+    });
   });
 });
 

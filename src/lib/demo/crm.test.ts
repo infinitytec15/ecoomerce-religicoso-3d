@@ -202,23 +202,16 @@ describe('demo CRM', () => {
     await g.setMarketing(true);
     expect((await g.marketingStatus()).subscribed).toBe(true);
   });
-  it('records consent on registration only with marketingOptIn', async () => {
+  it('never records marketing consent at sign-up (only the inbox owner gives it)', async () => {
     const g = new DemoGateway(new MemoryDemoStorage());
-    await g.login({
-      ...customer,
-      email: 'fulana.nova@exemplo.net',
-      register: true,
-      name: 'Nova Pessoa',
-    });
-    expect((await g.marketingStatus()).subscribed).toBe(false);
-    await g.logout();
-    await g.login({
-      ...customer,
+    await g.register({
       email: 'fulana.outra@exemplo.net',
-      register: true,
       name: 'Outra Pessoa',
       marketingOptIn: true,
     });
+    await g.login({ ...customer, email: 'fulana.outra@exemplo.net' });
+    expect((await g.marketingStatus()).subscribed).toBe(false);
+    await g.setMarketing(true);
     expect((await g.marketingStatus()).subscribed).toBe(true);
   });
   it('keeps an unsubscribed e-mail out when it registers with marketingOptIn (ruling R3)', async () => {
@@ -227,13 +220,8 @@ describe('demo CRM', () => {
     await g.login(staff);
     await g.adminCommand({ type: 'crm.contact.unsubscribe', email: address });
     await g.logout();
-    await g.login({
-      ...customer,
-      email: address,
-      register: true,
-      name: 'Quem Saiu',
-      marketingOptIn: true,
-    });
+    await g.register({ email: address, name: 'Quem Saiu', marketingOptIn: true });
+    await g.login({ ...customer, email: address });
     expect((await g.marketingStatus()).subscribed).toBe(false);
   });
   it('unsubscribes by the contact token in the demo', async () => {

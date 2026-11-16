@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { transaction, lock, type Transaction, type Prisma } from '@maos-em-oracao/database';
 import type { Session, Address, Role } from '@maos-em-oracao/contracts';
-import { loginSchema, addressSchema } from '@maos-em-oracao/contracts';
+import {
+  loginSchema,
+  addressSchema,
+  registerSchema,
+  REGISTER_MESSAGE,
+} from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { rateLimit } from './context';
 import { Notifications } from './notifications';
@@ -30,6 +35,7 @@ export const passwordSchema = z
   .min(12, 'Use uma senha com pelo menos 12 caracteres.')
   .max(128);
 type EmailToken = Prisma.EmailTokenGetPayload<object>;
+type User = Prisma.UserGetPayload<object>;
 /**
  * Shared per-client budget for the unauthenticated endpoints that consume a link token
  * (verify, reset, e-mail change, guest order, team invitation), so tokens cannot be guessed
@@ -162,47 +168,14 @@ export class AuthService {
     if (input.register) {
       if (input.kind !== 'customer')
         throw new DomainError('FORBIDDEN', 'O cadastro da equipe exige convite.', 403);
-      passwordSchema.parse(input.password);
-      const name = z.string().trim().min(3).max(100).parse(input.name);
-      const result = await transaction(this.ctx.db, async (tx) => {
-        await lock(tx, 'register/' + email);
-        if (await tx.user.findUnique({ where: { email } }))
-          throw new DomainError(
-            'ACCOUNT_EXISTS',
-            'Não foi possível criar esta conta. Tente entrar ou recuperar o acesso.',
-            409,
-          );
-        const user = await tx.user.create({
-          data: {
-            email,
-            name,
-            passwordHash: await hashPassword(input.password),
-            customer: { create: { email, name, address: json(emptyAddress(name, email)) } },
-          },
-        });
-        const verifyToken = token();
-        await tx.emailToken.create({
-          data: {
-            tokenHash: digest(verifyToken),
-            userId: user.id,
-            purpose: 'verify-email',
-            data: {},
-            expiresAt: addDays(1),
-          },
-        });
-        await this.notifications.email(tx, 'verify/' + user.id, user.id, email, {
-          kind: 'verify-email',
-          name,
-          actionUrl: this.ctx.config.PUBLIC_WEB_URL + '/conta/confirmar?token=' + verifyToken,
-          expiresAtLabel:
-            addDays(1).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília)',
-        });
-        if (input.marketingOptIn) await this.crm.consent(tx, { email, name, source: 'register' });
-        await audit(tx, user.id, 'Conta criada', user.id);
-        return { raw: await this.session(tx, user.id), userId: user.id };
-      });
-      const actor = requireActor(await this.actor(result.raw));
-      return { raw: result.raw, session: this.publicSession(actor) };
+      // Bundles cached before the confirmation flow still send register + password. The password
+      // is never taken from this request: the link mailed by register() lets the owner of the
+      // address create it, and the old client only shows the message.
+      await this.register(
+        { name: input.name, email: input.email, marketingOptIn: input.marketingOptIn ?? false },
+        clientKey,
+      );
+      throw new DomainError('CONFIRM_EMAIL', REGISTER_MESSAGE, 409);
     }
     const user = await this.ctx.db.user.findUnique({ where: { email } });
     const valid = await verifyPassword(user?.passwordHash || (await this.dummy), input.password);
@@ -220,6 +193,104 @@ export class AuthService {
     });
     return { raw, session: this.publicSession(requireActor(await this.actor(raw))) };
   }
+  /**
+   * Customer sign-up. The account is created without a usable password and without a session:
+   * whoever opens the link mailed to the address creates the password (see consume), so nobody
+   * can register someone else's e-mail and keep the account. The answer never reveals whether
+   * the address already has an account.
+   */
+  async register(value: unknown, clientKey: string) {
+    const input = registerSchema.parse(value),
+      email = normalizeEmail(input.email);
+    await rateLimit(this.ctx, 'register/' + digest(email), 3, 3600000);
+    await rateLimit(this.ctx, 'register-ip/' + clientKey, 20, 3600000);
+    // Hashed for every request so the answer takes the same time whether or not the account exists.
+    const unusablePassword = await hashPassword(token());
+    await transaction(this.ctx.db, async (tx) => {
+      await lock(tx, 'register/' + email);
+      const existing = await tx.user.findUnique({ where: { email } });
+      if (!existing) {
+        const name = input.name;
+        const user = await tx.user.create({
+          data: {
+            email,
+            name,
+            passwordHash: unusablePassword,
+            customer: { create: { email, name, address: json(emptyAddress(name, email)) } },
+          },
+        });
+        await this.sendVerification(tx, user);
+        await audit(tx, user.id, 'Conta criada', user.id);
+        return;
+      }
+      if (existing.role !== 'customer' || !existing.enabled) return;
+      if (!existing.verifiedAt) await this.sendVerification(tx, existing);
+      // Already confirmed: the person most likely forgot the account, so offer a new password.
+      else await this.sendPasswordReset(tx, existing);
+    });
+    return { message: REGISTER_MESSAGE };
+  }
+  /** Confirms a sign-up link: creates the password, signs the confirmer in and returns the session. */
+  async verify(value: unknown, clientKey: string) {
+    const raw = requireValue(await this.consume(value, 'verify-email', clientKey));
+    return { raw, session: this.publicSession(requireActor(await this.actor(raw))) };
+  }
+  /** Mails a new sign-up link; only the latest one can be used. */
+  private async sendVerification(tx: Transaction, user: User) {
+    await tx.emailToken.updateMany({
+      where: { userId: user.id, purpose: 'verify-email', usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    const t = token(),
+      expires = addDays(1);
+    await tx.emailToken.create({
+      data: {
+        tokenHash: digest(t),
+        userId: user.id,
+        purpose: 'verify-email',
+        data: {},
+        expiresAt: expires,
+      },
+    });
+    await this.notifications.email(tx, 'verify/' + digest(t), user.id, user.email, {
+      kind: 'verify-email',
+      purpose: 'register',
+      name: user.name,
+      actionUrl: this.ctx.config.PUBLIC_WEB_URL + '/conta/confirmar?token=' + t,
+      expiresAtLabel:
+        expires.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília)',
+    });
+  }
+  /** Mails a password-reset link; earlier unused links stop working. */
+  private async sendPasswordReset(tx: Transaction, user: User) {
+    await tx.emailToken.updateMany({
+      where: { userId: user.id, purpose: 'password-reset', usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    const t = token(),
+      expires = new Date(Date.now() + 1800000);
+    await tx.emailToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: digest(t),
+        purpose: 'password-reset',
+        data: {},
+        expiresAt: expires,
+      },
+    });
+    await this.notifications.email(tx, 'reset/' + digest(t), user.id, user.email, {
+      kind: 'password-reset',
+      name: user.name,
+      actionUrl:
+        this.ctx.config.PUBLIC_WEB_URL +
+        '/conta/redefinir?kind=' +
+        (user.role === 'customer' ? 'customer' : 'staff') +
+        '&token=' +
+        t,
+      expiresAtLabel:
+        expires.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília)',
+    });
+  }
   async logout(raw?: string) {
     if (raw)
       await this.ctx.db.session.deleteMany({
@@ -233,35 +304,7 @@ export class AuthService {
     await rateLimit(this.ctx, 'recover-ip/' + clientKey, 50, 3600000);
     const user = await this.ctx.db.user.findUnique({ where: { email } });
     if (user?.enabled && (input.kind === 'staff') === (user.role !== 'customer'))
-      await transaction(this.ctx.db, async (tx) => {
-        await tx.emailToken.updateMany({
-          where: { userId: user.id, purpose: 'password-reset', usedAt: null },
-          data: { usedAt: new Date() },
-        });
-        const t = token(),
-          expires = new Date(Date.now() + 1800000);
-        await tx.emailToken.create({
-          data: {
-            userId: user.id,
-            tokenHash: digest(t),
-            purpose: 'password-reset',
-            data: {},
-            expiresAt: expires,
-          },
-        });
-        await this.notifications.email(tx, 'reset/' + digest(t), user.id, user.email, {
-          kind: 'password-reset',
-          name: user.name,
-          actionUrl:
-            this.ctx.config.PUBLIC_WEB_URL +
-            '/conta/redefinir?kind=' +
-            (user.role === 'customer' ? 'customer' : 'staff') +
-            '&token=' +
-            t,
-          expiresAtLabel:
-            expires.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasília)',
-        });
-      });
+      await transaction(this.ctx.db, (tx) => this.sendPasswordReset(tx, user));
     return {
       message: 'Se houver uma conta válida, enviaremos as instruções para o e-mail informado.',
     };
@@ -270,13 +313,22 @@ export class AuthService {
     value: unknown,
     purpose: 'verify-email' | 'password-reset' | 'email-change',
     clientKey: string,
-  ) {
+    actor: Actor | null = null,
+  ): Promise<string | undefined> {
     await limitTokenAttempts(this.ctx, clientKey);
     const input = z
-      .object({ token: z.string().min(20).max(200), password: passwordSchema.optional() })
+      .object({
+        token: z.string().min(20).max(200),
+        password: passwordSchema.optional(),
+        marketingOptIn: z.boolean().optional(),
+      })
       .parse(value);
-    if (purpose === 'password-reset' && !input.password)
-      throw new DomainError('PASSWORD_REQUIRED', 'Informe a nova senha.');
+    // A sign-up link creates the password: the account belongs to whoever controls the e-mail.
+    if (purpose !== 'email-change' && !input.password)
+      throw new DomainError(
+        'PASSWORD_REQUIRED',
+        purpose === 'verify-email' ? 'Crie uma senha para a sua conta.' : 'Informe a nova senha.',
+      );
     const usable = (t: EmailToken | null): EmailToken & { userId: string } => {
       const found = requireValue(t, 'Link inválido ou expirado.');
       if (
@@ -289,9 +341,21 @@ export class AuthService {
       return { ...found, userId: found.userId };
     };
     // Cheap lookup first: argon2 only runs for a token that can still be used.
-    usable(await this.ctx.db.emailToken.findUnique({ where: { tokenHash: digest(input.token) } }));
-    const passwordHash = input.password ? await hashPassword(input.password) : undefined;
-    await transaction(this.ctx.db, async (tx) => {
+    const found = usable(
+      await this.ctx.db.emailToken.findUnique({ where: { tokenHash: digest(input.token) } }),
+    );
+    // An e-mail change only completes in the browser signed in to that account. Otherwise
+    // whoever asked to move their account to someone else's address would get that person's
+    // guest orders the moment the link is opened.
+    if (purpose === 'email-change' && (!actor?.userId || actor.userId !== found.userId))
+      throw new DomainError(
+        'LOGIN_REQUIRED',
+        'Entre na sua conta neste navegador e abra o link novamente.',
+        401,
+      );
+    const passwordHash =
+      purpose !== 'email-change' && input.password ? await hashPassword(input.password) : undefined;
+    return transaction(this.ctx.db, async (tx) => {
       await lock(tx, 'token/' + digest(input.token));
       // Re-checked under the lock: a concurrent request may have used it meanwhile.
       const t = usable(
@@ -302,9 +366,19 @@ export class AuthService {
       if (purpose === 'password-reset') {
         await tx.user.update({ where: { id: u.id }, data: { passwordHash } });
         await tx.session.deleteMany({ where: { userId: u.id } });
-      } else if (purpose === 'verify-email')
-        await tx.user.update({ where: { id: u.id }, data: { verifiedAt: new Date() } });
-      else {
+      } else if (purpose === 'verify-email') {
+        await tx.user.update({
+          where: { id: u.id },
+          data: { passwordHash, verifiedAt: new Date() },
+        });
+        // Anyone who signed in before the address was confirmed (the old flow let the person
+        // registering pick the password) is signed out; the confirmer gets a fresh session below.
+        await tx.session.deleteMany({ where: { userId: u.id } });
+        // Marketing consent is asked on the confirmation page itself: only the owner of the inbox
+        // can give it (the sign-up form can be filled in with anyone's address).
+        if (input.marketingOptIn === true)
+          await this.crm.consent(tx, { email: u.email, name: u.name, source: 'register' });
+      } else {
         const email = z.email().parse(data<{ email: string }>(t.data).email);
         if (await tx.user.findFirst({ where: { email, id: { not: u.id } } }))
           throw new DomainError('EMAIL_EXISTS', 'Este e-mail não pode ser utilizado.', 409);
@@ -360,6 +434,7 @@ export class AuthService {
         purpose === 'password-reset' ? 'Senha redefinida' : 'E-mail confirmado',
         u.id,
       );
+      return purpose === 'verify-email' ? this.session(tx, u.id) : undefined;
     });
   }
   async updateProfile(actor: Actor | null, value: unknown) {
@@ -404,6 +479,7 @@ export class AuthService {
         });
         await this.notifications.email(tx, 'email-change/' + digest(t), a.id, input.email, {
           kind: 'verify-email',
+          purpose: 'email-change',
           name: input.name,
           actionUrl:
             this.ctx.config.PUBLIC_WEB_URL + '/conta/confirmar?purpose=email-change&token=' + t,

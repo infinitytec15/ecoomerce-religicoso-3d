@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
 import { Logo } from '@/components/layout/logo';
 import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
@@ -13,7 +12,8 @@ import { IS_DEMO } from '@/lib/api/config';
 import { useNotify } from '@/components/ui/feedback';
 import { usePreference, writePreference } from '@/lib/store/preferences';
 import { DevCredit } from '@/components/layout/dev-credit';
-import type { LoginInput } from '@/lib/domain/schemas';
+import { ApiError } from '@/lib/api/contracts';
+import type { LoginInput, RegisterInput } from '@/lib/domain/schemas';
 export const STAFF_DEMO_EMAIL = 'gestao@maosemoracao.demo';
 export const STAFF_DEMO_PASSWORD = 'Essencia3D!';
 export function safeReturnTo(path: string | undefined, kind: 'customer' | 'staff') {
@@ -43,10 +43,13 @@ export function AuthScreen({
     [name, setName] = useState(''),
     [rememberOverride, setRemember] = useState<boolean | null>(null),
     [recoveryMessage, setRecoveryMessage] = useState(''),
+    // Shown after sign-up (or a legacy CONFIRM_EMAIL answer): check the inbox, no session yet.
+    [inboxMessage, setInboxMessage] = useState(''),
     savedEmail = usePreference('auth-email-' + (staff ? 'admin' : 'customer')),
     email = emailOverride ?? savedEmail ?? '',
     remember = rememberOverride ?? !!savedEmail,
     login = useCommand((g, input: LoginInput) => g.login(input)),
+    signUp = useCommand((g, input: RegisterInput) => g.register(input)),
     recover = useCommand((g, input: { email: string; kind: 'customer' | 'staff' }) =>
       g.recover(input.email, input.kind),
     ),
@@ -98,14 +101,23 @@ export function AuthScreen({
       setRecoveryMessage(result.message);
       return;
     }
-    await login.mutateAsync({
-      email,
-      password,
-      kind,
-      name: register ? name : undefined,
-      register,
-      ...(register ? { marketingOptIn: data.has('marketingOptIn') } : {}),
-    });
+    if (register) {
+      // Sign-up only sends the link: the password is created from the e-mail, so no session here.
+      // Marketing consent is asked on that link too, so it comes from the inbox owner.
+      const result = await signUp.mutateAsync({ name, email, marketingOptIn: false });
+      setInboxMessage(result.message);
+      return;
+    }
+    try {
+      await login.mutateAsync({ email, password, kind });
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'CONFIRM_EMAIL') {
+        setPassword('');
+        setInboxMessage(error.message);
+        return;
+      }
+      throw error;
+    }
     writePreference(
       'auth-email-' + (staff ? 'admin' : 'customer'),
       data.has('remember') ? email : '',
@@ -174,17 +186,29 @@ export function AuthScreen({
                   {recovering
                     ? 'Informe seu e-mail para recuperar o acesso.'
                     : register
-                      ? 'Crie seu espaço para guardar escolhas e acompanhar cada nova história.'
+                      ? 'Conte como podemos chamar você e qual é o seu e-mail. Enviaremos um link para você criar sua senha com segurança.'
                       : staff
                         ? 'Entre para cuidar da loja e de cada nova história.'
                         : 'Seu espaço para acompanhar pedidos, cuidar da assinatura e guardar o que toca você.'}
                 </p>
                 {!staff && !recovering && (
                   <div className="auth-account-tabs" role="group" aria-label="Acesso da conta">
-                    <button aria-pressed={!register} onClick={() => setMode('login')}>
+                    <button
+                      aria-pressed={!register}
+                      onClick={() => {
+                        setMode('login');
+                        setInboxMessage('');
+                      }}
+                    >
                       Entrar
                     </button>
-                    <button aria-pressed={register} onClick={() => setMode('register')}>
+                    <button
+                      aria-pressed={register}
+                      onClick={() => {
+                        setMode('register');
+                        setInboxMessage('');
+                      }}
+                    >
                       Criar conta
                     </button>
                   </div>
@@ -201,7 +225,8 @@ export function AuthScreen({
                               id="auth-name"
                               name="name"
                               required
-                              minLength={2}
+                              minLength={3}
+                              maxLength={100}
                               value={name}
                               onChange={(e) => setName(e.target.value)}
                               placeholder="Seu nome"
@@ -221,12 +246,15 @@ export function AuthScreen({
                           type="email"
                           required
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            setInboxMessage('');
+                          }}
                           placeholder={staff && IS_DEMO ? STAFF_DEMO_EMAIL : 'seunome@exemplo.com'}
                           autoComplete={IS_DEMO ? 'off' : 'username'}
                         />
                       </div>
-                      {!recovering && (
+                      {!recovering && !register && (
                         <>
                           <div className="auth-label-row">
                             <label htmlFor="auth-password">
@@ -249,15 +277,13 @@ export function AuthScreen({
                               name="password"
                               type={show ? 'text' : 'password'}
                               required
-                              minLength={IS_DEMO ? 4 : register ? 12 : 8}
+                              minLength={IS_DEMO ? 4 : 8}
                               value={password}
                               onChange={(e) => setPassword(e.target.value)}
                               placeholder={
                                 staff && IS_DEMO ? 'Senha do acesso de teste' : 'Sua senha'
                               }
-                              autoComplete={
-                                IS_DEMO ? 'off' : register ? 'new-password' : 'current-password'
-                              }
+                              autoComplete={IS_DEMO ? 'off' : 'current-password'}
                             />
                             <button
                               type="button"
@@ -285,16 +311,10 @@ export function AuthScreen({
                           Esta é uma simulação. Nenhum e-mail será enviado.
                         </p>
                       )}
-                      {register && (
-                        <label className="auth-remember">
-                          <input type="checkbox" name="marketingOptIn" />
-                          {MARKETING_CONSENT_TEXT}
-                        </label>
-                      )}
                       <Button
                         className="auth-submit"
                         loading={pending}
-                        disabled={recovering && !!recoveryMessage}
+                        disabled={(recovering && !!recoveryMessage) || (register && !!inboxMessage)}
                       >
                         {recovering
                           ? IS_DEMO
@@ -307,6 +327,20 @@ export function AuthScreen({
                               : 'Entrar na minha conta'}{' '}
                         <Icon name="arrow" />
                       </Button>
+                      {inboxMessage && !recovering && (
+                        <div className="auth-feedback" role="status">
+                          <Icon name="mail" />
+                          <span>
+                            {inboxMessage}
+                            {!IS_DEMO && (
+                              <>
+                                <br />
+                                Confira também a caixa de spam. O link vale por tempo limitado.
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      )}
                       {recoveryMessage && recovering && (
                         <div className="auth-feedback" role="status">
                           <Icon name="check" />

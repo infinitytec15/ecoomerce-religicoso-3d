@@ -23,6 +23,7 @@ import {
   checkoutSchema,
   subscriptionSchema,
   loginSchema,
+  registerSchema,
   CLIENT_IP_HEADER,
   trustedForwardedIp,
 } from '@maos-em-oracao/contracts';
@@ -255,6 +256,7 @@ export async function bootstrap() {
           CheckoutInput: checkoutSchema,
           SubscribeInput: subscriptionSchema,
           LoginInput: loginSchema,
+          RegisterInput: registerSchema,
         }).map(([name, schema]) => [name, z.toJSONSchema(schema, { target: 'openapi-3.0' })]),
       ) as unknown as NonNullable<typeof spec.components.schemas>),
     };

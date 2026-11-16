@@ -8,10 +8,10 @@ import { operationsSchema, accountSchema } from '../src/lib/api/response-schemas
 import sharp from 'sharp';
 import { Queue } from 'bullmq';
 import { createContext, closeContext } from '@maos-em-oracao/backend-core/context';
-import { unseal } from '@maos-em-oracao/backend-core/security';
+import { unseal, hashPassword } from '@maos-em-oracao/backend-core/security';
 import { WorkerEngine, queueConnection } from '@maos-em-oracao/backend-core/worker';
 import { prayerForDay } from '@maos-em-oracao/backend-core/daily-prayers';
-import { storiesFeedSchema } from '@maos-em-oracao/contracts';
+import { storiesFeedSchema, REGISTER_MESSAGE } from '@maos-em-oracao/contracts';
 const root = fileURLToPath(new URL('../', import.meta.url)),
   runId = randomBytes(6).toString('hex'),
   databaseName = 'meo_test_' + runId;
@@ -147,18 +147,80 @@ function cli(args) {
   const r = spawnSync(process.execPath, args, { cwd: root, env, encoding: 'utf8' });
   if (r.status !== 0) throw new Error((r.stderr || r.stdout).slice(-2000));
 }
-async function register(client, label) {
-  const email = label + '-' + runId + '@example.test',
-    password = 'IntegrationTeste!2026';
-  const r = await client.call('auth/login', 'POST', {
-    name: 'Cliente de teste ' + label,
-    email,
-    password,
-    kind: 'customer',
-    register: true,
-  });
+let signUps = 0;
+/**
+ * Each sign-up comes from its own client address (TEST-NET-1), so the per-client sign-up and
+ * link budgets of one test never leak into another.
+ */
+const signUpIp = () => ({
+  headers: { 'x-meo-client-ip': '192.0.2.' + ((signUps++ % 250) + 1) },
+});
+/** Asks for an account: same generic answer for every e-mail, and never a session. */
+async function startSignUp(client, email, { name = 'Cliente de teste', marketingOptIn } = {}) {
+  const r = await client.call(
+    'auth/register',
+    'POST',
+    { name, email, ...(marketingOptIn === undefined ? {} : { marketingOptIn }) },
+    signUpIp(),
+  );
   assert.equal(r.status, 200, r.body?.error?.code);
-  return { email, password, user: r.body.data };
+  assert.deepEqual(r.body, { data: { message: REGISTER_MESSAGE } });
+  assert.deepEqual(
+    r.headers.getSetCookie().filter((c) => !c.startsWith('meo_visitor=')),
+    [],
+    'o cadastro não abre sessão',
+  );
+  return r;
+}
+/** The token of the newest sign-up link mailed to the account with this e-mail. */
+async function signUpToken(email) {
+  const user = await until(
+    () => ctx.db.user.findUnique({ where: { email: email.toLowerCase() } }),
+    'conta ' + email,
+  );
+  const found = await until(async () => {
+    const rows = await ctx.db.outboxEvent.findMany({
+      where: { aggregateId: user.id, kind: 'email' },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const row of rows) {
+      const envelope = unseal(row.payloadEncrypted, ctx.config);
+      const link = envelope.text.match(/https?:[^\s]+\/conta\/confirmar\?token=[^\s]+/);
+      if (envelope.kind === 'verify-email' && link) return link[0];
+    }
+    return null;
+  }, 'link de cadastro ' + email);
+  return new URL(found).searchParams.get('token');
+}
+/** Opens the sign-up link with a password: the client ends up signed in. */
+async function confirmSignUp(
+  client,
+  email,
+  password = 'IntegrationTeste!2026',
+  { marketingOptIn } = {},
+) {
+  const token = await signUpToken(email);
+  const r = await client.call(
+    'auth/verify',
+    'POST',
+    { token, password, ...(marketingOptIn === undefined ? {} : { marketingOptIn }) },
+    signUpIp(),
+  );
+  assert.equal(r.status, 200, r.body?.error?.code);
+  assert.equal(r.body.data.email, email.toLowerCase());
+  return r;
+}
+/** A confirmed, signed-in customer account. */
+async function register(
+  client,
+  label,
+  { email = label + '-' + runId + '@example.test', marketingOptIn } = {},
+) {
+  const password = 'IntegrationTeste!2026';
+  await startSignUp(client, email, { name: 'Cliente de teste ' + label });
+  // Consent is given on the confirmation page, by the owner of the inbox.
+  const response = await confirmSignUp(client, email, password, { marketingOptIn });
+  return { email, password, user: response.body.data, response };
 }
 /** Sets the workspace inventory policy; returns a function that puts the previous one back. */
 async function inventoryPolicy(policy) {
@@ -1365,19 +1427,19 @@ try {
         };
       assert.equal((await fresh.call('reviews', 'POST', guestReview)).status, 201);
       assert.equal((await fresh.call('auth/guest-order', 'POST', { token: t })).status, 422);
-      const account = new Client(),
-        register = await account.call('auth/login', 'POST', {
-          name: 'Conta de teste',
-          email,
-          password: 'ContaHomologacao!2026',
-          kind: 'customer',
-          register: true,
-        });
-      const verify = await mail(register.body.data.id, 'verify-email'),
-        token = new URL(
-          verify.envelope.text.match(/https?:[^\s]+\/conta\/confirmar[^\s]+/)[0],
-        ).searchParams.get('token');
-      assert.equal((await account.call('auth/verify', 'POST', { token })).status, 204);
+      const account = new Client();
+      await startSignUp(account, email, { name: 'Conta de teste' });
+      // Nothing moves before the owner of the address opens the link.
+      const pending = await ctx.db.user.findUniqueOrThrow({
+        where: { email },
+        include: { customer: true },
+      });
+      assert.equal(pending.verifiedAt, null);
+      assert.notEqual(
+        (await ctx.db.order.findUniqueOrThrow({ where: { id } })).customerId,
+        pending.customer.id,
+      );
+      await confirmSignUp(account, email, 'ContaHomologacao!2026');
       assert((await account.data('account')).orders.some((o) => o.id === id));
       // After the merge the review follows the order: no "Avaliar" again, no duplicate.
       assert.deepEqual(
@@ -1788,14 +1850,17 @@ try {
     });
     assert.equal(staff.status, 200);
     assert.ok(maxAge(staff) > 7 * 3600 && maxAge(staff) <= 8 * 3600, 'equipe: ' + maxAge(staff));
-    const shopper = await new Client().call('auth/login', 'POST', {
-      name: 'Cookie de teste',
-      email: 'cookie-' + runId + '@example.test',
-      password: 'IntegrationTeste!2026',
-      kind: 'customer',
-      register: true,
-    });
+    // The customer session starts when the sign-up link is confirmed.
+    const shopper = (await register(new Client(), 'cookie')).response;
     assert.ok(maxAge(shopper) > 6 * 86400, 'cliente: ' + maxAge(shopper));
+    const signedIn = new Client(),
+      login = await signedIn.call('auth/login', 'POST', {
+        email: 'cookie-' + runId + '@example.test',
+        password: 'IntegrationTeste!2026',
+        kind: 'customer',
+      });
+    assert.equal(login.status, 200, login.body?.error?.code);
+    assert.ok(maxAge(login) > 6 * 86400, 'login do cliente: ' + maxAge(login));
   });
   await check('custo congelado no item e exclusão segura de pedido e cliente', async () => {
     const buyer = new Client(),
@@ -3629,12 +3694,10 @@ try {
   });
   await check('links de token validam antes do Argon2 e têm limite por cliente', async () => {
     const visitor = new Client(),
-      reg = await register(visitor, 'token-limite'),
-      verify = await mail(reg.user.id, 'verify-email'),
-      token = new URL(
-        verify.envelope.text.match(/https?:[^\s]+\/conta\/confirmar[^\s]+/)[0],
-      ).searchParams.get('token'),
-      before = await ctx.db.user.findUniqueOrThrow({ where: { id: reg.user.id } });
+      email = 'token-limite-' + runId + '@example.test';
+    await startSignUp(visitor, email);
+    const token = await signUpToken(email),
+      before = await ctx.db.user.findUniqueOrThrow({ where: { email } });
     // A token of another purpose is refused and neither consumed nor turned into a password.
     const wrong = await visitor.call('auth/reset', 'POST', {
       token,
@@ -3643,10 +3706,14 @@ try {
     assert.equal(wrong.status, 422);
     assert.equal(wrong.body.error.code, 'INVALID_TOKEN');
     assert.equal(
-      (await ctx.db.user.findUniqueOrThrow({ where: { id: reg.user.id } })).passwordHash,
+      (await ctx.db.user.findUniqueOrThrow({ where: { email } })).passwordHash,
       before.passwordHash,
     );
-    assert.equal((await visitor.call('auth/verify', 'POST', { token })).status, 204);
+    const confirmed = await visitor.call('auth/verify', 'POST', {
+      token,
+      password: 'IntegrationTeste!2026',
+    });
+    assert.equal(confirmed.status, 200, confirmed.body?.error?.code);
     // One budget per client for every link-consuming endpoint, whatever cookie it sends.
     const bogus = () => randomBytes(24).toString('hex');
     for (let i = 0; i < 20; i++)
@@ -3677,8 +3744,14 @@ try {
         path,
       );
     assert.equal(
-      (await new Client().call('auth/verify', 'POST', { token: bogus() }, fromIp('198.51.100.95')))
-        .status,
+      (
+        await new Client().call(
+          'auth/verify',
+          'POST',
+          { token: bogus(), password: 'SenhaQualquerHomologacao!2026' },
+          fromIp('198.51.100.95'),
+        )
+      ).status,
       404,
     );
   });
@@ -3707,6 +3780,250 @@ try {
       ).status,
       204,
     );
+  });
+  await check(
+    'cadastro responde igual para conta nova, pendente, confirmada e da equipe',
+    async () => {
+      const email = 'cadastro-novo-' + runId + '@example.test',
+        password = 'IntegrationTeste!2026',
+        client = new Client(),
+        login = (c, e, p) =>
+          c.call('auth/login', 'POST', { email: e, password: p, kind: 'customer' });
+      // New e-mail: the account exists, unconfirmed, with no session and no usable password.
+      await startSignUp(client, email, { name: 'Pessoa nova' });
+      const created = await ctx.db.user.findUniqueOrThrow({
+        where: { email },
+        include: { customer: true },
+      });
+      assert.equal(created.role, 'customer');
+      assert.equal(created.verifiedAt, null);
+      assert.equal(created.customer.email, email);
+      assert.equal(await ctx.db.session.count({ where: { userId: created.id } }), 0);
+      assert.equal((await client.call('auth/session')).body.data, null);
+      assert.equal((await client.call('account')).status, 401);
+      const early = await login(client, email, password);
+      assert.equal(early.status, 401);
+      assert.equal(early.body.error.code, 'INVALID_CREDENTIALS');
+      const firstToken = await signUpToken(email);
+      // Still pending: a new link replaces the old one; name and password stay as they were.
+      await startSignUp(new Client(), email.toUpperCase(), { name: 'Outro nome' });
+      const secondToken = await until(async () => {
+        const t = await signUpToken(email);
+        return t !== firstToken && t;
+      }, 'novo link de cadastro');
+      const pending = await ctx.db.user.findUniqueOrThrow({ where: { email } });
+      assert.equal(pending.name, 'Pessoa nova');
+      assert.equal(pending.passwordHash, created.passwordHash);
+      assert.equal(
+        await ctx.db.emailToken.count({
+          where: { userId: created.id, purpose: 'verify-email', usedAt: null },
+        }),
+        1,
+      );
+      const stale = await client.call(
+        'auth/verify',
+        'POST',
+        { token: firstToken, password },
+        signUpIp(),
+      );
+      assert.equal(stale.status, 422);
+      assert.equal(stale.body.error.code, 'INVALID_TOKEN');
+      // Per e-mail: three requests an hour.
+      await startSignUp(new Client(), email);
+      const limited = await new Client().call(
+        'auth/register',
+        'POST',
+        { name: 'Pessoa nova', email },
+        signUpIp(),
+      );
+      assert.equal(limited.status, 429);
+      assert.ok(secondToken);
+      // Confirmed account: a password-reset e-mail, the account itself untouched.
+      const known = await register(new Client(), 'cadastro-existente'),
+        before = await ctx.db.user.findUniqueOrThrow({ where: { id: known.user.id } }),
+        resets = () =>
+          ctx.db.emailToken.count({ where: { userId: known.user.id, purpose: 'password-reset' } }),
+        resetsBefore = await resets();
+      await startSignUp(new Client(), known.email.toUpperCase(), { name: 'Tentativa' });
+      assert.equal((await mail(known.user.id, 'password-reset')).envelope.kind, 'password-reset');
+      assert.equal(await resets(), resetsBefore + 1);
+      assert.equal(
+        await ctx.db.emailToken.count({
+          where: { userId: known.user.id, purpose: 'verify-email', usedAt: null },
+        }),
+        0,
+      );
+      const after = await ctx.db.user.findUniqueOrThrow({ where: { id: known.user.id } });
+      assert.equal(after.passwordHash, before.passwordHash);
+      assert.equal(after.name, before.name);
+      assert.equal((await login(new Client(), known.email, known.password)).status, 200);
+      // Team e-mail: same answer and nothing happens.
+      const staff = await ctx.db.user.findUniqueOrThrow({
+        where: { email: env.BOOTSTRAP_ADMIN_EMAIL },
+      });
+      const staffTokens = () => ctx.db.emailToken.count({ where: { userId: staff.id } }),
+        staffBefore = await staffTokens();
+      await startSignUp(new Client(), env.BOOTSTRAP_ADMIN_EMAIL, { name: 'Tentativa' });
+      assert.equal(await staffTokens(), staffBefore);
+      assert.equal(
+        (await ctx.db.user.findUniqueOrThrow({ where: { id: staff.id } })).passwordHash,
+        staff.passwordHash,
+      );
+      // Old bundles (login + register) get the same message as an error and no session.
+      const legacyEmail = 'cadastro-antigo-' + runId + '@example.test',
+        legacyClient = new Client(),
+        legacy = await legacyClient.call(
+          'auth/login',
+          'POST',
+          {
+            name: 'Cliente antigo',
+            email: legacyEmail,
+            password,
+            kind: 'customer',
+            register: true,
+          },
+          signUpIp(),
+        );
+      assert.equal(legacy.status, 409);
+      assert.equal(legacy.body.error.code, 'CONFIRM_EMAIL');
+      assert.equal(legacy.body.error.message, REGISTER_MESSAGE);
+      assert.equal((await legacyClient.call('auth/session')).body.data, null);
+      assert.equal((await login(legacyClient, legacyEmail, password)).status, 401);
+      assert.ok(await signUpToken(legacyEmail));
+    },
+  );
+  await check('pré-cadastro do e-mail alheio não fica com a conta nem com os pedidos', async () => {
+    const victim = 'vitima-' + runId + '@example.test',
+      victimPassword = 'SenhaDaVitima!2026',
+      attackerPassword = 'SenhaDoAtacante!2026',
+      guest = new Client(),
+      placed = await buy(guest, checkout(product, await quote(guest, product), victim));
+    assert.equal(placed.status, 200, placed.body?.error?.code);
+    const orderId = placed.body.data.orderId,
+      login = (client, password) =>
+        client.call('auth/login', 'POST', { email: victim, password, kind: 'customer' });
+    // Old bundle path: the password sent with register is ignored.
+    const attacker = new Client(),
+      legacy = await attacker.call(
+        'auth/login',
+        'POST',
+        {
+          name: 'Atacante',
+          email: victim,
+          password: attackerPassword,
+          kind: 'customer',
+          register: true,
+        },
+        signUpIp(),
+      );
+    assert.equal(legacy.status, 409);
+    assert.equal(legacy.body.error.code, 'CONFIRM_EMAIL');
+    assert.equal((await attacker.call('auth/session')).body.data, null);
+    assert.equal((await login(attacker, attackerPassword)).status, 401);
+    // An account left by the old flow: whoever registered chose the password and is signed in.
+    const account = await ctx.db.user.findUniqueOrThrow({
+      where: { email: victim },
+      include: { customer: true },
+    });
+    await ctx.db.user.update({
+      where: { id: account.id },
+      data: { passwordHash: await hashPassword(attackerPassword) },
+    });
+    assert.equal((await login(attacker, attackerPassword)).status, 200);
+    // The guest orders stay out of that account while the address is unconfirmed.
+    assert.equal((await attacker.data('account')).orders.length, 0);
+    assert.notEqual(
+      (await ctx.db.order.findUniqueOrThrow({ where: { id: orderId } })).customerId,
+      account.customer.id,
+    );
+    // New path: the link always goes to the address, so only its owner can finish.
+    await startSignUp(new Client(), victim, { name: 'Atacante' });
+    const rightful = new Client();
+    await confirmSignUp(rightful, victim, victimPassword);
+    assert.equal((await attacker.call('auth/session')).body.data, null);
+    assert.equal((await attacker.call('account')).status, 401);
+    assert.equal((await login(new Client(), attackerPassword)).status, 401);
+    assert.equal((await login(new Client(), victimPassword)).status, 200);
+    assert.deepEqual(
+      (await rightful.data('account')).orders.map((o) => o.id),
+      [orderId],
+    );
+    assert.equal(
+      (await ctx.db.order.findUniqueOrThrow({ where: { id: orderId } })).customerId,
+      account.customer.id,
+    );
+  });
+  await check('troca de e-mail só conclui na sessão da própria conta', async () => {
+    const client = new Client(),
+      reg = await register(client, 'troca-sessao'),
+      target = 'troca-destino-' + runId + '@example.test';
+    assert.equal(
+      (await client.call('account/profile', 'PATCH', { name: 'Cliente troca', email: target }))
+        .status,
+      204,
+    );
+    const link = await until(async () => {
+      const rows = await ctx.db.outboxEvent.findMany({
+        where: { aggregateId: reg.user.id, kind: 'email' },
+        orderBy: { createdAt: 'desc' },
+      });
+      for (const row of rows) {
+        const envelope = unseal(row.payloadEncrypted, ctx.config),
+          found = envelope.text.match(
+            /https?:[^\s]+\/conta\/confirmar\?purpose=email-change&token=[^\s]+/,
+          );
+        if (found) return found[0];
+      }
+      return null;
+    }, 'link de troca de e-mail');
+    const token = new URL(link).searchParams.get('token'),
+      unchanged = async () => {
+        assert.equal(
+          (await ctx.db.user.findUniqueOrThrow({ where: { id: reg.user.id } })).email,
+          reg.email,
+        );
+        assert.equal(
+          await ctx.db.emailToken.count({
+            where: { userId: reg.user.id, purpose: 'email-change', usedAt: null },
+          }),
+          1,
+        );
+      };
+    // An invalid link still reads as invalid, signed in or not.
+    assert.equal(
+      (
+        await new Client().call(
+          'auth/email-change',
+          'POST',
+          { token: randomBytes(24).toString('hex') },
+          signUpIp(),
+        )
+      ).status,
+      404,
+    );
+    // Neither a browser without a session nor another signed-in account can complete it.
+    const otherAccount = new Client();
+    await register(otherAccount, 'troca-outra');
+    for (const stranger of [new Client(), otherAccount]) {
+      const r = await stranger.call('auth/email-change', 'POST', { token }, signUpIp());
+      assert.equal(r.status, 401);
+      assert.equal(r.body.error.code, 'LOGIN_REQUIRED');
+      assert.equal(
+        r.body.error.message,
+        'Entre na sua conta neste navegador e abra o link novamente.',
+      );
+      await unchanged();
+    }
+    assert.notEqual((await client.call('auth/session')).body.data, null);
+    const done = await client.call('auth/email-change', 'POST', { token }, signUpIp());
+    assert.equal(done.status, 204, done.body?.error?.code);
+    const moved = await ctx.db.user.findUniqueOrThrow({
+      where: { id: reg.user.id },
+      include: { customer: true },
+    });
+    assert.equal(moved.email, target);
+    assert.equal(moved.customer.email, target);
+    assert.equal((await client.call('auth/session')).body.data, null);
   });
   await check('cupom volta uma única vez quando o pagamento não acontece', async () => {
     const p = (await new Client().data('catalog/products'))[0],
@@ -3993,15 +4310,42 @@ try {
     crmGuest = 'CRM-Checkout-' + runId + '@Example.test',
     crmAccount = new Client();
   await check('CRM: aceite no cadastro, no checkout e na conta', async () => {
-    const r = await crmAccount.call('auth/login', 'POST', {
+    await startSignUp(crmAccount, crmRegistered, {
       name: 'Cliente do CRM',
-      email: crmRegistered,
-      password: 'IntegrationTeste!2026',
-      kind: 'customer',
-      register: true,
       marketingOptIn: true,
     });
-    assert.equal(r.status, 200, r.body?.error?.code);
+    // Anyone can fill the sign-up form with this address: its opt-in is ignored; consent is
+    // given on the confirmation page, by the owner of the inbox.
+    const contacts = () =>
+      ctx.db.marketingContact.count({ where: { email: crmRegistered.toLowerCase() } });
+    assert.equal(await contacts(), 0);
+    // The link creates the password: without one nothing is confirmed.
+    const token = await signUpToken(crmRegistered),
+      noPassword = await crmAccount.call('auth/verify', 'POST', { token }, signUpIp());
+    assert.equal(noPassword.status, 422);
+    assert.equal(noPassword.body.error.code, 'PASSWORD_REQUIRED');
+    assert.equal(await contacts(), 0);
+    assert.equal(
+      (await ctx.db.user.findUniqueOrThrow({ where: { email: crmRegistered.toLowerCase() } }))
+        .verifiedAt,
+      null,
+    );
+    const confirmed = await confirmSignUp(crmAccount, crmRegistered, undefined, {
+      marketingOptIn: true,
+    });
+    assert.ok(
+      confirmed.headers.getSetCookie().some((c) => c.startsWith('meo_session=')),
+      'a confirmação entra na conta',
+    );
+    assert.equal((await crmAccount.data('auth/session')).email, crmRegistered.toLowerCase());
+    const reused = await new Client().call(
+      'auth/verify',
+      'POST',
+      { token, password: 'OutraSenhaQualquer!2026' },
+      signUpIp(),
+    );
+    assert.equal(reused.status, 422);
+    assert.equal(reused.body.error.code, 'INVALID_TOKEN');
     const registered = await crmContact(crmRegistered);
     assert.equal(registered.legalBasis, 'consent');
     assert.equal(registered.consentSource, 'register');
@@ -4025,7 +4369,9 @@ try {
     assert.equal(off.status, 204, off.body?.error?.code);
     assert.equal((await crmAccount.data('account/marketing')).subscribed, false);
     assert((await crmContact(crmRegistered)).unsubscribedAt);
-    // Ruling R3: back in only once the account e-mail is confirmed.
+    // Ruling R3: back in only once the account e-mail is confirmed. Sign-ups are confirmed now,
+    // so this stands for an account left unconfirmed by the old flow.
+    await ctx.db.user.update({ where: { email: crmRegistered }, data: { verifiedAt: null } });
     const unverified = await crmAccount.call('account/marketing', 'PUT', { subscribed: true });
     assert.equal(unverified.status, 422);
     assert.equal(unverified.body.error.code, 'EMAIL_NOT_VERIFIED');
@@ -4072,15 +4418,8 @@ try {
       guestEmail = crmEmail('saiu-checkout');
     await gone(registered);
     await gone(guestEmail);
-    const r = await new Client().call('auth/login', 'POST', {
-      name: 'Outra pessoa',
-      email: registered,
-      password: 'IntegrationTeste!2026',
-      kind: 'customer',
-      register: true,
-      marketingOptIn: true,
-    });
-    assert.equal(r.status, 200, r.body?.error?.code);
+    // Confirming the sign-up applies its consent, which still keeps an unsubscribe.
+    await register(new Client(), 'saiu-cadastro', { email: registered, marketingOptIn: true });
     await unchanged(registered);
     await crmBuy(guestEmail, { marketingOptIn: true });
     await crmBuy(registered, { marketingOptIn: true });

@@ -7,12 +7,15 @@ import { Logo } from '@/components/layout/logo';
 import { Form, text } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { HttpClient } from '@/lib/api/http';
+import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
+import { ApiError } from '@/lib/api/contracts';
 const copy = {
+  // Sign-up confirmation: the password is created here, so only the inbox owner can set it.
   verify: {
-    title: 'Seu e-mail, confirmado.',
-    intro: 'Confirme seu e-mail para manter os dados da sua conta atualizados.',
-    button: 'Confirmar meu e-mail',
-    success: 'Seu e-mail foi confirmado.',
+    title: 'Sua conta, quase pronta.',
+    intro: 'Crie sua senha para ativar a conta. Use pelo menos 12 caracteres.',
+    button: 'Criar senha e entrar',
+    success: 'Sua conta está ativa e você já entrou. Que bom ter você por aqui.',
   },
   reset: {
     title: 'Um novo acesso para você.',
@@ -38,6 +41,12 @@ const copy = {
     button: 'Deixar de receber',
     success: 'Pronto: você não receberá mais pedidos de avaliação.',
   },
+  emailChange: {
+    title: 'Seu novo e-mail, confirmado.',
+    intro: 'Confirme o novo e-mail da sua conta. Use o mesmo navegador em que você está conectado.',
+    button: 'Confirmar meu e-mail',
+    success: 'Seu novo e-mail foi confirmado.',
+  },
   guest: {
     title: 'Seu pedido, com segurança.',
     intro: 'Confirme para abrir este pedido neste navegador.',
@@ -51,15 +60,24 @@ export function TokenAction({
   purpose,
   staff = false,
 }: {
-  mode: keyof typeof copy;
+  mode: Exclude<keyof typeof copy, 'emailChange'>;
   token: string;
   purpose?: string;
   staff?: boolean;
 }) {
   const [complete, setComplete] = useState(false),
     [orderId, setOrderId] = useState(''),
+    // Set when an e-mail change link is opened without being signed in to that account.
+    [loginRequired, setLoginRequired] = useState<{ message: string; href: string } | null>(null),
     client = useQueryClient(),
-    content = copy[mode],
+    emailChange = mode === 'verify' && purpose === 'email-change',
+    // Account confirmation creates the password (min 12, like reset) and asks for marketing
+    // consent here, where only the inbox owner can give it.
+    confirmsAccount = mode === 'verify' && !emailChange,
+    createsPassword = mode === 'reset' || confirmsAccount,
+    content = copy[emailChange ? 'emailChange' : mode],
+    // Both confirmations end signed in; a reset asks to sign in again.
+    signedIn = mode === 'verify' && !staff,
     valid = token.length >= 20 && token.length <= 2048;
   return (
     <main id="main" className="invitation-page">
@@ -74,22 +92,33 @@ export function TokenAction({
               href={
                 orderId
                   ? '/conta/pedidos/' + encodeURIComponent(orderId)
-                  : mode === 'reset' || mode === 'verify'
-                    ? staff
-                      ? '/admin/login'
-                      : '/login'
-                    : mode === 'reviewOptOut'
-                      ? '/produtos'
-                      : '/cantinho-da-fe'
+                  : signedIn
+                    ? '/conta'
+                    : mode === 'reset' || mode === 'verify'
+                      ? staff
+                        ? '/admin/login'
+                        : '/login'
+                      : mode === 'reviewOptOut'
+                        ? '/produtos'
+                        : '/cantinho-da-fe'
               }
             >
               {orderId
                 ? 'Ver meu pedido'
-                : mode === 'reset' || mode === 'verify'
-                  ? 'Entrar na minha conta'
-                  : mode === 'reviewOptOut'
-                    ? 'Voltar à loja'
-                    : 'Visitar o Cantinho da Fé'}
+                : signedIn
+                  ? 'Ir para minha conta'
+                  : mode === 'reset' || mode === 'verify'
+                    ? 'Entrar na minha conta'
+                    : mode === 'reviewOptOut'
+                      ? 'Voltar à loja'
+                      : 'Visitar o Cantinho da Fé'}
+            </Link>
+          </>
+        ) : loginRequired ? (
+          <>
+            <p role="alert">{loginRequired.message}</p>
+            <Link className="btn primary" href={loginRequired.href}>
+              Entrar e confirmar o e-mail
             </Link>
           </>
         ) : !valid ? (
@@ -103,7 +132,7 @@ export function TokenAction({
             <Form
               onSubmit={async (data) => {
                 const password = text(data, 'password');
-                if (mode === 'reset' && password !== text(data, 'confirm'))
+                if (createsPassword && password !== text(data, 'confirm'))
                   throw new Error('As senhas precisam ser iguais.');
                 const api = new HttpClient();
                 if (mode === 'guest') {
@@ -126,10 +155,30 @@ export function TokenAction({
                           : mode === 'reviewOptOut'
                             ? 'reviews/opt-out'
                             : 'newsletter/unsubscribe';
-                  await api.request(path, z.unknown(), {
-                    method: 'POST',
-                    body: { token, ...(mode === 'reset' ? { password } : {}) },
-                  });
+                  try {
+                    await api.request(path, z.unknown(), {
+                      method: 'POST',
+                      body: {
+                        token,
+                        ...(createsPassword ? { password } : {}),
+                        ...(confirmsAccount ? { marketingOptIn: data.has('marketingOptIn') } : {}),
+                      },
+                    });
+                  } catch (error) {
+                    if (!(
+                      emailChange &&
+                      error instanceof ApiError &&
+                      error.code === 'LOGIN_REQUIRED'
+                    ))
+                      throw error;
+                    // Sign in here and come back to this same link to finish the change.
+                    const here = window.location.pathname + window.location.search;
+                    setLoginRequired({
+                      message: error.message,
+                      href: '/login?retorno=' + encodeURIComponent(here),
+                    });
+                    return;
+                  }
                 }
                 await client.invalidateQueries();
                 setComplete(true);
@@ -137,10 +186,10 @@ export function TokenAction({
             >
               {(pending) => (
                 <>
-                  {mode === 'reset' && (
+                  {createsPassword && (
                     <>
                       <label>
-                        Nova senha
+                        {mode === 'reset' ? 'Nova senha' : 'Crie sua senha'}
                         <input
                           name="password"
                           type="password"
@@ -151,7 +200,7 @@ export function TokenAction({
                         />
                       </label>
                       <label>
-                        Confirmar nova senha
+                        {mode === 'reset' ? 'Confirmar nova senha' : 'Confirme a senha'}
                         <input
                           name="confirm"
                           type="password"
@@ -162,6 +211,12 @@ export function TokenAction({
                         />
                       </label>
                     </>
+                  )}
+                  {confirmsAccount && (
+                    <label className="check-line">
+                      <input type="checkbox" name="marketingOptIn" />
+                      {MARKETING_CONSENT_TEXT}
+                    </label>
                   )}
                   <Button loading={pending}>{content.button}</Button>
                 </>

@@ -83,8 +83,22 @@ class IdentityController {
   @Post('recover') @HttpCode(200) async recover(@Body() body: unknown, @Req() req: ApiRequest) {
     return result(await this.service.recover(body, req.clientKey));
   }
-  @Post('verify') @HttpCode(204) async verify(@Body() body: unknown, @Req() req: ApiRequest) {
-    await this.service.consume(body, 'verify-email', req.clientKey);
+  /** Sign-up: always the same answer; the password is created on the link mailed to the address. */
+  @Post('register')
+  @HttpCode(200)
+  @ApiBody({ schema: { $ref: '#/components/schemas/RegisterInput' } })
+  async register(@Body() body: unknown, @Req() req: ApiRequest) {
+    return result(await this.service.register(body, req.clientKey));
+  }
+  /** Confirms the sign-up link, creates the password and signs the confirmer in. */
+  @Post('verify') @HttpCode(200) async verify(
+    @Body() body: unknown,
+    @Req() req: ApiRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const r = await this.service.verify(body, req.clientKey);
+    await sessionCookie(res, this.ctx, r.raw);
+    return result(r.session);
   }
   @Post('reset') @HttpCode(204) async reset(@Body() body: unknown, @Req() req: ApiRequest) {
     await this.service.consume(body, 'password-reset', req.clientKey);
@@ -93,7 +107,7 @@ class IdentityController {
     @Body() body: unknown,
     @Req() req: ApiRequest,
   ) {
-    await this.service.consume(body, 'email-change', req.clientKey);
+    await this.service.consume(body, 'email-change', req.clientKey, req.actor);
   }
   @Post('guest-order') @HttpCode(200) async guestOrder(
     @Req() req: ApiRequest,

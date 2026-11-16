@@ -16,6 +16,29 @@ describe('demo gateway workflows', () => {
     await gateway.login({ email: DEMO_EMAIL, password: DEMO_PASSWORD, kind: 'staff' });
     expect((await gateway.admin()).products[0].costCents).toBeGreaterThan(0);
   });
+  it('creates the account on sign-up without opening a session', async () => {
+    const g = new DemoGateway(new MemoryDemoStorage());
+    const result = await g.register({ name: 'Rita Lima', email: 'rita@exemplo.net' });
+    expect(result.message).toMatch(/qualquer senha/);
+    expect(await g.session()).toBeNull();
+    const session = await g.login({
+      email: 'rita@exemplo.net',
+      password: 'qualquer',
+      kind: 'customer',
+    });
+    expect(session.name).toBe('Rita Lima');
+  });
+  it('leaves an existing account untouched and refuses the legacy register login', async () => {
+    const g = new DemoGateway(new MemoryDemoStorage());
+    await g.register({ name: 'Rita Lima', email: 'rita@exemplo.net' });
+    await g.register({ name: 'Outra Pessoa', email: 'RITA@exemplo.net' });
+    expect(
+      (await g.login({ email: 'rita@exemplo.net', password: 'qualquer', kind: 'customer' })).name,
+    ).toBe('Rita Lima');
+    await expect(
+      g.login({ ...customerLogin, name: 'Nova Pessoa', register: true }),
+    ).rejects.toMatchObject({ code: 'CONFIRM_EMAIL' });
+  });
   it('isolates customer records and rejects staff actions for a customer', async () => {
     const gateway = new DemoGateway();
     await expect(gateway.admin()).rejects.toThrow();

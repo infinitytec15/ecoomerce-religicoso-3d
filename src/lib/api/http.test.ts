@@ -39,6 +39,30 @@ describe('HTTP boundary', () => {
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/health');
     expect(fetcher.mock.calls[0][1]?.credentials).toBe('include');
   });
+  it('signs up with name and e-mail only and returns the generic message', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({ data: { message: 'Enviamos um link.' } }));
+    const result = await new HttpGateway(new HttpClient('/api/v1', fetcher)).register({
+      name: '  Ana Souza ',
+      email: 'ana@example.com',
+    });
+    expect(result).toEqual({ message: 'Enviamos um link.' });
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/auth/register');
+    expect(fetcher.mock.calls[0][1]?.method).toBe('POST');
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      name: 'Ana Souza',
+      email: 'ana@example.com',
+      marketingOptIn: false,
+    });
+  });
+  it('rejects an invalid sign-up before calling the API', async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    expect(() =>
+      new HttpGateway(new HttpClient('/api/v1', fetcher)).register({ name: 'A', email: 'x' }),
+    ).toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it('sends the chosen password when accepting a team invitation', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     await new HttpGateway(new HttpClient('/api/v1', fetcher)).acceptInvitation({
