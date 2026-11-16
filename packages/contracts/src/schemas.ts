@@ -38,6 +38,8 @@ export const orderItemSchema = z.object({
   color: z.string().min(1),
   sizeIndex: z.number().int().min(0).max(10),
   dedication: z.string().max(40).default(''),
+  /** Story video the line was put in the bag from; credits the sale to that video. */
+  videoId: z.string().min(1).max(64).optional(),
 });
 export const checkoutSchema = z.object({
   items: z.array(orderItemSchema).min(1).max(50),

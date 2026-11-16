@@ -1,6 +1,6 @@
 import { productSchema } from '@/lib/domain/schemas';
 import { withKitSummary } from '@/lib/domain/kits';
-import { publicStories } from '@/lib/domain/stories';
+import { publicStoriesFeed } from '@/lib/domain/stories';
 import { groupBuyProductFields, withGroupBuy } from '@/lib/domain/group-buys';
 import { requireValue } from '@/lib/api/contracts';
 import { seedContacts, seedCrm, type DemoContact } from './crm';
@@ -9,6 +9,7 @@ import {
   KIT_SIZE,
   kitCostCents,
   remainingParticipants,
+  DEFAULT_STORY_SETTINGS,
 } from '@maos-em-oracao/contracts';
 import source from '@/data/legacy-seed.json';
 import { defaultWorkspaceSettings } from '@/lib/domain/admin-types';
@@ -74,36 +75,98 @@ function demoKit(products: InventoryProduct[]): InventoryProduct {
     kit,
   };
 }
-/** "Bastidores": two short workshop clips; the asset id of a bundled file is its public path. */
+/** Usage counters of a demo video: impressions, plays, completes, product clicks, bag adds. */
+type DemoCounters = [number, number, number, number, number];
+/**
+ * Two demo collections of short workshop clips: "Bastidores" as story bubbles on top of the home and
+ * on the "Presentes" page, "Peças em casa" as a video carousel in the middle of the home. Videos sell
+ * pieces in stock, so they also show on those product pages. The asset id of a bundled file is its
+ * public path.
+ */
 function demoStories(products: InventoryProduct[]): AdminStoryHighlight[] {
-  const [first, second] = products,
-    video = (n: number, caption: string, productIds: string[]) => ({
+  const sellable = products.filter((p) => p.active && !p.archived && p.stock > 0 && !p.kit),
+    pick = (...indexes: number[]) => [
+      ...new Set(indexes.map((i) => (sellable[i] ?? products[0]).id)),
+    ],
+    cover = '/assets/stories/bastidores.webp',
+    // Odd videos show the cross (oficina-1), even ones Our Lady (oficina-2): link those pieces first.
+    video = (
+      n: number,
+      position: number,
+      caption: string,
+      productIds: string[],
+      [impressions, views, completes, clicks, carts]: DemoCounters,
+    ) => ({
       id: 'video-demo-' + n,
-      assetId: `/assets/stories/oficina-${n}.mp4`,
+      assetId: `/assets/stories/oficina-${2 - (n % 2)}.mp4`,
       caption,
       productIds,
       active: true,
-      position: n - 1,
+      position,
       status: 'ready' as const,
-      views: 0,
-      clicks: 0,
+      createdAt: `2026-11-0${n}T12:00:00.000Z`,
+      impressions,
+      views,
+      completes,
+      clicks,
+      carts,
+      orders: 0,
+      revenueCents: 0,
     });
   return [
     {
       id: 'destaque-demo',
       title: 'Bastidores',
-      coverAssetId: '/assets/stories/bastidores.webp',
-      coverUrl: '/assets/stories/bastidores.webp',
+      coverAssetId: cover,
+      coverUrl: cover,
       active: true,
       position: 0,
-      placements: ['home', 'product', 'category'],
+      format: 'stories',
+      placements: ['home_top', 'category'],
       categories: ['Presentes'],
       videos: [
-        video(1, 'Da impressora para a sua casa', [first.id]),
-        video(2, 'Acabamento feito à mão', [first.id, second.id]),
+        video(1, 0, 'Da impressora para a sua casa', pick(0), [1840, 612, 287, 74, 21]),
+        video(2, 1, 'Acabamento feito à mão', pick(1, 0), [1325, 498, 231, 58, 17]),
+      ],
+    },
+    {
+      id: 'carrossel-demo',
+      title: 'Peças em casa',
+      coverAssetId: cover,
+      coverUrl: cover,
+      active: true,
+      position: 1,
+      format: 'carousel',
+      placements: ['home_middle'],
+      categories: [],
+      videos: [
+        video(3, 0, 'Pintura de cada detalhe', pick(0, 4), [960, 344, 152, 41, 12]),
+        video(4, 1, 'Um presente para o altar de casa', pick(1, 5), [705, 251, 98, 26, 8]),
       ],
     },
   ];
+}
+/** Demo orders bought from a story video (the last one is unpaid, so it does not count as a sale). */
+const DEMO_STORY_SALES: [orderId: string, videoId: string][] = [
+  ['PED-4001', 'video-demo-3'],
+  ['PED-4002', 'video-demo-4'],
+  ['PED-4004', 'video-demo-1'],
+  ['PED-4100', 'video-demo-2'],
+  ['PED-4005', 'video-demo-4'],
+];
+/** Marks the first item of each demo sale that is one of the video's products with its `videoId`. */
+function withDemoStorySales(orders: Order[], stories: AdminStoryHighlight[]): Order[] {
+  const videos = new Map(stories.flatMap((h) => h.videos).map((v) => [v.id, v])),
+    sales = new Map(DEMO_STORY_SALES);
+  return orders.map((order) => {
+    const video = videos.get(sales.get(order.id) ?? '');
+    const index = video ? order.items.findIndex((i) => video.productIds.includes(i.productId)) : -1;
+    if (!video || index < 0) return order;
+    return {
+      ...order,
+      items: order.items.map((item, i) => (i === index ? { ...item, videoId: video.id } : item)),
+    };
+  });
 }
 /** "Compra coletiva de Natal": 7 of 10 participants, on the first piece of the demo kit. */
 function demoGroupBuy(products: InventoryProduct[], now = new Date()): AdminGroupBuy {
@@ -338,6 +401,7 @@ export function createSeed(legacy = source.operations): Operations {
       variant: variant(demoProduct.sizes[0]),
     }),
   ];
+  const stories = demoStories(products);
   return Object.assign<Operations, { crmContacts: DemoContact[] }>(
     {
       version: 2,
@@ -359,11 +423,15 @@ export function createSeed(legacy = source.operations): Operations {
       stockMovements: [],
       reviews,
       groupBuys: [demoGroupBuy(products)],
-      stories: demoStories(products),
+      stories,
+      storySettings: {
+        ...DEFAULT_STORY_SETTINGS,
+        productPage: { ...DEFAULT_STORY_SETTINGS.productPage },
+      },
       crm: seedCrm(clients),
       products,
       clients,
-      orders,
+      orders: withDemoStorySales(orders, stories),
       subscriptions,
       charges,
       jobs: legacy.jobs.map((j) => ({
@@ -451,7 +519,7 @@ export function createSeed(legacy = source.operations): Operations {
 const seedState = createSeed(),
   seedProducts = seedState.products;
 export const seedGroupBuys = seedState.groupBuys;
-export const seedStories = publicStories(seedState);
+export const seedStories = publicStoriesFeed(seedState);
 export const seedCatalog = seedProducts.flatMap((product) => {
   const visible = withKitSummary(seedProducts, product);
   return visible ? [productSchema.parse(withGroupBuy(seedGroupBuys, visible))] : [];

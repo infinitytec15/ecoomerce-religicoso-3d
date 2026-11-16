@@ -17,8 +17,9 @@ import {
   type Segment,
   type StoryEvent,
 } from '@maos-em-oracao/contracts';
-import { publicStories, recordStoryEvent } from '@/lib/domain/stories';
+import { publicStoriesFeed, recordStoryEvents } from '@/lib/domain/stories';
 import type { CommerceGateway } from '@/lib/api/contracts';
+import type { OrderItemInput } from '@/lib/domain/types';
 import { ApiError, requireValue, type CrmContactsQuery } from '@/lib/api/contracts';
 import type {
   Address,
@@ -157,12 +158,16 @@ export class DemoGateway implements CommerceGateway {
     return joinableGroupBuys(this.read().groupBuys).map(publicGroupBuy);
   }
   async stories() {
-    return publicStories(this.read());
+    return publicStoriesFeed(this.read());
   }
-  async storyEvent(input: StoryEvent) {
-    const event = storyEventSchema.safeParse(input);
-    if (!event.success) return;
-    this.mutate((state) => recordStoryEvent(state, event.data));
+  async storyEvents(input: StoryEvent[]) {
+    const events = input.flatMap((e) => {
+      const parsed = storyEventSchema.safeParse(e);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (!events.length) return;
+    // recordStoryEvents returns the next state (it may not touch the one it gets).
+    this.storage.save(recordStoryEvents(this.read(), events));
   }
   async groupBuy(id: string) {
     const found = joinableGroupBuys(this.read().groupBuys).find((g) => g.id === id);
@@ -347,13 +352,14 @@ export class DemoGateway implements CommerceGateway {
           null,
         )
       : null;
-    const items = input.items.map((i) =>
+    const items = input.items.map((i: OrderItemInput) =>
       cartLine(
         forSale(products, requireValue(products.find((p) => p.id === i.productId))),
         i.quantity,
         i.color,
         i.sizeIndex,
         i.dedication,
+        { videoId: i.videoId },
       ),
     );
     if (group) items[0].unitCents = group.unitCents;

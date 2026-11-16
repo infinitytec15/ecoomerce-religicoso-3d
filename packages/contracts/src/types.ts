@@ -11,7 +11,12 @@ import type {
 } from './admin-types';
 import type { AdminReview, MyReview, ReviewStatus } from './reviews';
 import type { AdminGroupBuy, GroupBuyInput, GroupBuySummary } from './group-buys';
-import type { AdminStoryHighlight, StoryHighlightInput, StoryVideoInput } from './stories';
+import type {
+  AdminStoryHighlight,
+  StoryHighlightInput,
+  StorySettings,
+  StoryVideoInput,
+} from './stories';
 import type { AdminCrm, CrmSettings, MarketingCampaignInput } from './crm';
 import type { Kit, KitSummary } from './kits';
 export type {
@@ -159,6 +164,8 @@ export interface CartItem {
   dedication: string;
   /** OrderItem id; only present on items of placed orders. */
   itemId?: string;
+  /** Story video the item was put in the bag from (sale attribution). */
+  videoId?: string;
   /** Component snapshot of a kit line; recorded on the order. */
   kit?: {
     items: {
@@ -358,6 +365,8 @@ export interface Operations {
   reviews: AdminReview[];
   groupBuys: AdminGroupBuy[];
   stories: AdminStoryHighlight[];
+  /** Product page video bubble; absent in snapshots from before the setting existed. */
+  storySettings?: StorySettings;
   crm: AdminCrm;
 }
 export interface AccountSnapshot {
@@ -374,6 +383,8 @@ export interface OrderItemInput {
   color: string;
   sizeIndex: number;
   dedication: string;
+  /** Story video the line was put in the bag from; credits the sale to that video. */
+  videoId?: string;
 }
 export interface CheckoutInput {
   items: OrderItemInput[];
@@ -440,6 +451,7 @@ export type AdminCommand =
   | ({ type: 'story.video.save' } & StoryVideoInput)
   | { type: 'story.video.reorder'; highlightId: string; ids: string[] }
   | { type: 'story.video.delete'; id: string }
+  | ({ type: 'story.settings' } & StorySettings)
   | { type: 'crm.settings'; settings: CrmSettings }
   | { type: 'crm.campaign.save'; campaign: MarketingCampaignInput }
   | { type: 'crm.campaign.schedule'; id: string; at: string | null }

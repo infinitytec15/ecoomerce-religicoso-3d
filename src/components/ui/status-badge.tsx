@@ -7,6 +7,7 @@ const success = [
   'Disponível',
   'Concluída',
   'Pode receber',
+  'Na loja',
 ];
 const warning = [
   'Pendente',
@@ -16,6 +17,9 @@ const warning = [
   'Aguardando grupo',
   'Pausada',
   'Previsto',
+  'Sem vídeo',
+  'Sem capa',
+  'Vídeo processando',
 ];
 const danger = [
   'Cancelada',
@@ -25,6 +29,7 @@ const danger = [
   'Inativo',
   'Manutenção',
   'Descadastrado',
+  'Vídeo falhou',
 ];
 export function StatusBadge({ status }: { status: string }) {
   const tone = success.includes(status)

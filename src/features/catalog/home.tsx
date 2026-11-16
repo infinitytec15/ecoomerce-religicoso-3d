@@ -1,13 +1,15 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { storiesFor, type StoryHighlightPublic } from '@maos-em-oracao/contracts';
+import { EMPTY_STORIES_FEED, type StoriesFeed } from '@maos-em-oracao/contracts';
 import type { Product, StoreSettings } from '@/lib/domain/types';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { ButtonLink } from '@/components/ui/button';
 import { ProductImage } from '@/components/ui/product-image';
 import { ProductGrid } from './product-grid';
 import { HomeClubBanner } from '@/features/club/home-club-banner';
-import { StoriesRow } from '@/features/stories/stories-row';
+import { StorySlot } from '@/features/stories/story-slot';
+import { HomeGroupBuys } from '@/features/group-buys/home-group-buys';
+import type { GroupBuyPublic } from '@maos-em-oracao/contracts';
 export function Services() {
   return (
     <div className="service-strip">
@@ -30,15 +32,21 @@ export function Services() {
 export function Home({
   products,
   settings,
-  stories = [],
+  feed = EMPTY_STORIES_FEED,
+  groupBuys = [],
 }: {
   products: Product[];
   settings: StoreSettings;
-  stories?: StoryHighlightPublic[];
+  feed?: StoriesFeed;
+  groupBuys?: GroupBuyPublic[];
 }) {
   return (
     <main id="main" className="faith-home">
-      <StoriesRow highlights={storiesFor(stories, { place: 'home' })} />
+      <StorySlot
+        collections={feed.collections}
+        where={{ place: 'home_top' }}
+        className="container"
+      />
       <section className="faith-hero container">
         <div className="faith-hero-copy">
           <h1>
@@ -106,6 +114,11 @@ export function Home({
           ))}
         </div>
       </div>
+      <StorySlot
+        collections={feed.collections}
+        where={{ place: 'home_below_banner' }}
+        className="container"
+      />
       <section className="container faith-collections">
         <div className="section-header">
           <div>
@@ -163,6 +176,12 @@ export function Home({
           </Link>
         </div>
       </section>
+      <StorySlot
+        collections={feed.collections}
+        where={{ place: 'home_middle' }}
+        className="container"
+      />
+      <HomeGroupBuys groupBuys={groupBuys} />
       <HomeClubBanner initialSettings={settings} />
       <section className="container faith-featured">
         <div className="section-header">
@@ -236,6 +255,11 @@ export function Home({
           ))}
         </div>
       </section>
+      <StorySlot
+        collections={feed.collections}
+        where={{ place: 'home_bottom' }}
+        className="container"
+      />
       <section className="container faith-personalize">
         <div className="personalize-art">
           <ProductImage src="/assets/products/palavra-fe.webp" alt="Palavra Fé em terracota" />

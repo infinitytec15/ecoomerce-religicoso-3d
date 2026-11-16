@@ -343,7 +343,8 @@ body {
   background: #f2e5cc;
   color: #5c472d;
 }
-.faith-featured {
+.faith-featured,
+.faith-group-buys {
   padding-top: 68px;
 }
 .faith-home .product-grid {
@@ -958,7 +959,8 @@ body {
   .devotion-card {
     border-radius: 12px;
   }
-  .faith-featured {
+  .faith-featured,
+  .faith-group-buys {
     padding-top: 39px;
   }
   .faith-home .product-grid {

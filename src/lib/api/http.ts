@@ -7,11 +7,14 @@ import {
   myReviewSchema,
   productReviewsSchema,
   reviewInputSchema,
-  storyHighlightPublicSchema,
+  storiesFeedSchema,
+  storyEventBatchSchema,
   storyEventSchema,
+  STORY_LIMITS,
   type ContactImportInput,
   type Segment,
   type StoryEvent,
+  type StoryEventBatch,
   type ReviewInput,
 } from '@maos-em-oracao/contracts';
 import { invitationSchema } from '@/lib/domain/admin-schemas';
@@ -140,19 +143,30 @@ export class HttpGateway implements CommerceGateway {
     return this.client.request('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema);
   }
   stories() {
-    return this.client.request('stories', z.array(storyHighlightPublicSchema));
+    return this.client.request('stories', storiesFeedSchema);
   }
-  /** Metrics are best effort: a network error or any status is swallowed. */
-  async storyEvent(input: StoryEvent) {
-    const event = storyEventSchema.safeParse(input);
-    if (!event.success) return;
-    await this.client
-      .request('stories/events', voidSchema, {
-        method: 'POST',
-        body: event.data,
-        keepalive: true,
-      })
-      .catch(() => undefined);
+  /**
+   * Metrics are best effort: invalid events are dropped, network errors and any status are
+   * swallowed. keepalive lets a flush on pagehide finish; unlike sendBeacon it carries the Origin
+   * header the BFF requires on mutations.
+   */
+  async storyEvents(input: StoryEvent[]) {
+    const events = input.flatMap((e) => {
+      const parsed = storyEventSchema.safeParse(e);
+      return parsed.success ? [parsed.data] : [];
+    });
+    const size = STORY_LIMITS.eventsPerBatch,
+      batches: StoryEventBatch[] = [];
+    for (let index = 0; index < events.length; index += size)
+      batches.push(storyEventBatchSchema.parse({ events: events.slice(index, index + size) }));
+    // All requests start now: on pagehide only requests already started survive (keepalive).
+    await Promise.all(
+      batches.map((body) =>
+        this.client
+          .request('stories/events', voidSchema, { method: 'POST', body, keepalive: true })
+          .catch(() => undefined),
+      ),
+    );
   }
   productReviews(productId: string, rating?: number) {
     return this.client.request(

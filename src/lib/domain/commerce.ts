@@ -4,6 +4,7 @@ import type {
   CheckoutInput,
   Operations,
   Order,
+  OrderItemInput,
   Product,
   Session,
   Subscription,
@@ -20,8 +21,35 @@ export function cartLine(
   color = product.colors[0],
   sizeIndex = 0,
   dedication = '',
+  options: CartLineOptions = {},
 ): CartItem {
-  if (product.kit) return kitCartLine(product, product.kit, quantity, dedication);
+  const line = product.kit
+    ? kitCartLine(product, product.kit, quantity, dedication)
+    : optionCartLine(product, quantity, color, sizeIndex, dedication);
+  return options.videoId ? { ...line, videoId: options.videoId } : line;
+}
+export interface CartLineOptions {
+  /** Story video the line is put in the bag from (sale attribution). */
+  videoId?: string;
+}
+/** Checkout payload items for the cart lines; the video credit goes along when present. */
+export function orderItems(items: CartItem[]): OrderItemInput[] {
+  return items.map((i) => ({
+    productId: i.productId,
+    quantity: i.quantity,
+    color: i.color,
+    sizeIndex: i.sizeIndex,
+    dedication: i.dedication,
+    ...(i.videoId ? { videoId: i.videoId } : {}),
+  }));
+}
+function optionCartLine(
+  product: Product,
+  quantity: number,
+  color: string,
+  sizeIndex: number,
+  dedication: string,
+): CartItem {
   if (
     !product.active ||
     !product.colors.includes(color) ||
@@ -208,13 +236,14 @@ export function createShopOrder(state: Operations, input: CheckoutInput, session
         input.address.email,
       )
     : null;
-  const items = input.items.map((x) =>
+  const items = input.items.map((x: OrderItemInput) =>
     cartLine(
       forSale(state.products, requireValue(state.products.find((p) => p.id === x.productId))),
       x.quantity,
       x.color,
       x.sizeIndex,
       x.dedication,
+      { videoId: x.videoId },
     ),
   );
   if (group) items[0].unitCents = group.unitCents;

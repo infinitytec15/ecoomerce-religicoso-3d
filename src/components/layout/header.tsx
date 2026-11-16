@@ -118,6 +118,7 @@ export function Header({ compact = false }: { compact?: boolean }) {
                 <Icon name="heart" />
                 Cantinho da Fé
               </Link>
+              <Link href="/compra-coletiva">Compra coletiva</Link>
               <Link className="club-nav" href="/clube">
                 <Icon name="gift" />
                 Clube mensal
@@ -162,6 +163,7 @@ export function Header({ compact = false }: { compact?: boolean }) {
           {[
             ['/clube', 'Clube Cesta com Jesus'],
             ['/cantinho-da-fe', 'Cantinho da Fé'],
+            ['/compra-coletiva', 'Compra coletiva'],
             ['/conta/pedidos', 'Meus pedidos'],
             ['/suporte', 'Suporte'],
           ].map(([href, label]) => (

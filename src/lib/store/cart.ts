@@ -27,7 +27,14 @@ export const useCartStore = create<CartStore>()(
             items: found
               ? s.items.map((x) =>
                   x.key === item.key
-                    ? { ...x, quantity: Math.min(10, x.quantity + item.quantity) }
+                    ? {
+                        ...x,
+                        quantity: Math.min(10, x.quantity + item.quantity),
+                        // The first video that sold the line keeps the credit.
+                        ...((x.videoId ?? item.videoId)
+                          ? { videoId: x.videoId ?? item.videoId }
+                          : {}),
+                      }
                     : x,
                 )
               : [...s.items, item],

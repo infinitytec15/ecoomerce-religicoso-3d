@@ -4,9 +4,11 @@ import {
   adminGroupBuySchema,
   adminReviewSchema,
   adminStoryHighlightSchema,
+  DEFAULT_STORY_SETTINGS,
   defaultCrmSettings,
   httpsUrlSchema,
   myReviewSchema,
+  storySettingsSchema,
 } from '@maos-em-oracao/contracts';
 import {
   workspaceSchema,
@@ -219,6 +221,7 @@ export const operationsSchema = z.object({
   reviews: z.array(adminReviewSchema).default([]),
   groupBuys: z.array(adminGroupBuySchema).default([]),
   stories: z.array(adminStoryHighlightSchema).default([]),
+  storySettings: storySettingsSchema.default(DEFAULT_STORY_SETTINGS),
   crm: adminCrmSchema.default({
     settings: defaultCrmSettings,
     campaigns: [],

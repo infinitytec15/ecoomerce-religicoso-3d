@@ -14,7 +14,7 @@ import type {
 import { addressSchema, type LoginInput } from '@/lib/domain/schemas';
 import { z } from 'zod';
 import { MARKETING_CONSENT_TEXT } from '@maos-em-oracao/contracts';
-import { calculateTotals, validateSplit } from '@/lib/domain/commerce';
+import { calculateTotals, orderItems, validateSplit } from '@/lib/domain/commerce';
 import { centsFromInput, money } from '@/lib/domain/format';
 import { useCartStore } from '@/lib/store/cart';
 import { useAccount, useCommand, useEndSession, useGateway, useSession } from '@/lib/api/query';
@@ -159,13 +159,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
     let result: { orderId: string };
     try {
       result = await create.mutateAsync({
-        items: items.map((i) => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          color: i.color,
-          sizeIndex: i.sizeIndex,
-          dedication: i.dedication,
-        })),
+        items: orderItems(items),
         address,
         shipping,
         coupon: groupBuyId ? '' : coupon,

@@ -345,8 +345,9 @@ class StoriesController {
   constructor(@Inject(CONTEXT) ctx: Context) {
     this.service = new StoriesService(ctx);
   }
+  /** The storefront video feed: collections by place plus the product page bubble. */
   @Get('stories') async list() {
-    return result(await this.service.publicList());
+    return result(await this.service.feed());
   }
   @Post('stories/events') @HttpCode(204) async event(
     @Req() req: ApiRequest,

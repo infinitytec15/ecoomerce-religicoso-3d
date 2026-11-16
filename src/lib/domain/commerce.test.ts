@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   cartLine,
   calculateTotals,
+  orderItems,
   validateSplit,
   createShopOrder,
   enqueueProduction,
   generateCycle,
   payCharge,
 } from './commerce';
+import type { OrderItemInput } from './types';
 import { addMonth, centsFromInput, csvText } from './format';
 import { createSeed, seedCatalog } from '@/lib/demo/seed';
 import { demoAddress, checkoutSchema } from './schemas';
@@ -176,5 +178,54 @@ describe('kit cart lines', () => {
   });
   it('refuses a kit without its summary', () => {
     expect(() => cartLine({ ...demoKit, kitSummary: undefined })).toThrow(/opções/);
+  });
+});
+
+describe('story video attribution', () => {
+  const cruz = seedCatalog.find((p) => p.id === 'cruz-essencial')!;
+  const demoKit = seedCatalog.find((p) => p.kit)!;
+  it('cartLine carries the video only when given, without changing the line key', () => {
+    const plain = cartLine(cruz, 1, cruz.colors[0], 0);
+    const fromVideo = cartLine(cruz, 1, cruz.colors[0], 0, '', { videoId: 'v1' });
+    expect(plain).not.toHaveProperty('videoId');
+    expect(fromVideo.videoId).toBe('v1');
+    expect(fromVideo.key).toBe(plain.key);
+    expect(cartLine(demoKit, 1, undefined, 0, '', { videoId: 'v2' }).videoId).toBe('v2');
+  });
+  it('orderItems sends the video of each line that has one', () => {
+    const lines = [cartLine(cruz, 2, cruz.colors[0], 0, '', { videoId: 'v1' }), cartLine(cruz)];
+    expect(orderItems(lines)).toEqual([
+      {
+        productId: 'cruz-essencial',
+        quantity: 2,
+        color: cruz.colors[0],
+        sizeIndex: 0,
+        dedication: '',
+        videoId: 'v1',
+      },
+      {
+        productId: 'cruz-essencial',
+        quantity: 1,
+        color: cruz.colors[0],
+        sizeIndex: 0,
+        dedication: '',
+      },
+    ]);
+    expect(checkoutSchema.shape.items.safeParse(orderItems(lines)).success).toBe(true);
+  });
+  it('the demo order keeps the video of the item', () => {
+    const state = createSeed();
+    const item: OrderItemInput = {
+      productId: 'cruz-essencial',
+      quantity: 1,
+      color: 'Marfim',
+      sizeIndex: 0,
+      dedication: '',
+      videoId: 'video-demo-1',
+    };
+    const input = checkout({ items: [item] });
+    const { orderId } = createShopOrder(state, input, null);
+    const order = state.orders.find((o) => o.id === orderId)!;
+    expect(order.items[0].videoId).toBe('video-demo-1');
   });
 });

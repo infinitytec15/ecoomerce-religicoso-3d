@@ -1,8 +1,13 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { GET, POST, PUT } from './[...path]/route';
-afterEach(() => vi.unstubAllEnvs());
+vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.mocked(revalidateTag).mockClear();
+});
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split('/') }) });
 describe('same-origin backend proxy', () => {
   it('rejects paths outside the published contract', async () => {
@@ -294,5 +299,52 @@ describe('same-origin backend proxy', () => {
     expect((await put('reviews', 5)).status).toBe(405);
     expect((await put('reviews/uploads/abc/complete', 5)).status).toBe(405);
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  describe('storefront cache', () => {
+    const post = (path: string) =>
+      POST(
+        new NextRequest('http://localhost/api/v1/' + path, {
+          method: 'POST',
+          headers: { origin: 'http://localhost', 'Content-Type': 'application/json' },
+          body: '{}',
+        }),
+        context(path),
+      );
+    it('expires the public catalog right after an admin change succeeds', async () => {
+      vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+      vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{"data":null}', { status: 200 }));
+      expect((await post('admin/commands')).status).toBe(200);
+      expect(revalidateTag).toHaveBeenCalledWith('catalog', { expire: 0 });
+    });
+    it('expires it after an order, which moves stock and group-buy counts', async () => {
+      vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+      vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{"data":null}', { status: 201 }));
+      await post('orders');
+      expect(revalidateTag).toHaveBeenCalledTimes(1);
+    });
+    it('still answers with the upstream result when the cache cannot be expired', async () => {
+      vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+      vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{"data":null}', { status: 200 }));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(revalidateTag).mockImplementationOnce(() => {
+        throw new Error('sem contexto');
+      });
+      expect((await post('admin/commands')).status).toBe(200);
+    });
+    it('keeps it when the change fails, is a read or does not touch the catalog', async () => {
+      vi.stubEnv('API_BASE_URL', 'https://api.example.com/api/v1');
+      const fetcher = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response('{"error":{}}', { status: 422 }));
+      await post('admin/commands');
+      fetcher.mockResolvedValue(new Response('{"data":null}', { status: 200 }));
+      await GET(
+        new NextRequest('http://localhost/api/v1/admin/overview'),
+        context('admin/overview'),
+      );
+      await post('auth/login');
+      await post('stories/events');
+      expect(revalidateTag).not.toHaveBeenCalled();
+    });
   });
 });

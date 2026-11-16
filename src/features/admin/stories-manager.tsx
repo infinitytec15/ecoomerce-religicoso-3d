@@ -1,17 +1,22 @@
 'use client';
 import { useState } from 'react';
 import {
+  DEFAULT_STORY_SETTINGS,
+  STORY_FORMATS,
   STORY_LIMITS,
   STORY_PLACEMENTS,
-  clickRate,
   collectionSchema,
+  storyFormatLabels,
   storyPlacementLabels,
   type AdminStoryHighlight,
   type AdminStoryVideo,
+  type StoryFormat,
   type StoryPlacement,
 } from '@maos-em-oracao/contracts';
 import { useAdminData } from './admin-frame';
 import { AdminHeading, AdminMetrics, useAdminAction } from './shared';
+import { storyMetricItems, sumCounters, VideoMetrics } from './story-metrics';
+import { ProductPageSettings } from './story-settings-card';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Form } from '@/components/ui/form';
@@ -33,6 +38,21 @@ const videoStatusLabels: Record<AdminStoryVideo['status'], string> = {
 };
 const processingCount = (h: AdminStoryHighlight) =>
   h.videos.filter((v) => v.status === 'processing').length;
+/**
+ * What the store shows for this highlight, by the same rule as the public list: active, with a
+ * cover and at least one active video that is ready. Without a place it is drawn nowhere, but its
+ * videos still show on the page of the pieces they sell.
+ */
+export function storefrontStatus(h: AdminStoryHighlight): string {
+  if (!h.active) return 'Inativo';
+  const live = h.videos.filter((v) => v.active);
+  if (live.some((v) => v.status === 'ready')) {
+    if (!h.placements.length) return 'Só na página do produto';
+    return h.coverUrl ? 'Na loja' : 'Sem capa';
+  }
+  if (live.some((v) => v.status === 'processing')) return 'Vídeo processando';
+  return live.length ? 'Vídeo falhou' : 'Sem vídeo';
+}
 const byPosition = <T extends { position: number }>(list: T[]) =>
   [...list].sort((a, b) => a.position - b.position);
 const moved = <T,>(list: T[], index: number, delta: -1 | 1) => {
@@ -49,7 +69,8 @@ const placesLabel = (h: AdminStoryHighlight) =>
         ? `${storyPlacementLabels[p]} (${h.categories.join(', ')})`
         : storyPlacementLabels[p],
     )
-    .join(', ');
+    .join(', ') || 'Só na página do produto';
+const formatOf = (h: AdminStoryHighlight): StoryFormat => h.format ?? 'stories';
 
 /** Runs an admin command and keeps the failure message for the caller to show. */
 function useGuardedRun() {
@@ -99,41 +120,32 @@ export function StoriesManager() {
     [editing, setEditing] = useState<string | null>(null),
     [videosId, setVideosId] = useState<string | null>(null),
     [deleteId, setDeleteId] = useState<string | null>(null),
+    // Ids known before a new highlight was saved: the one that shows up after it gets its videos opened.
+    [knownBeforeCreate, setKnownBeforeCreate] = useState<string[] | null>(null),
     editingStory = stories.find((s) => s.id === editing),
-    videosStory = stories.find((s) => s.id === videosId),
+    createdStory = knownBeforeCreate
+      ? stories.find((s) => !knownBeforeCreate.includes(s.id))
+      : undefined,
+    videosStory = stories.find((s) => s.id === videosId) ?? createdStory,
+    closeVideos = () => {
+      setVideosId(null);
+      setKnownBeforeCreate(null);
+    },
     deleteStory = stories.find((s) => s.id === deleteId),
-    allVideos = stories.flatMap((s) => s.videos);
+    allVideos = stories.flatMap((s) => s.videos),
+    settings = data.storySettings ?? DEFAULT_STORY_SETTINGS;
   return (
     <>
       <AdminHeading
         title="Stories"
-        description="Destaques em círculo com vídeos curtos das peças, na página inicial, no produto e nas categorias."
+        description="Vídeos curtos das peças em bolinhas ou carrossel, na página inicial, nas categorias e na página do produto."
         actions={
           <Button type="button" onClick={() => setEditing('new')}>
             Novo destaque
           </Button>
         }
       />
-      <AdminMetrics
-        items={[
-          {
-            label: 'Destaques ativos',
-            value: stories.filter((s) => s.active).length,
-            note: 'Aparecem na loja quando têm vídeo pronto',
-          },
-          { label: 'Vídeos', value: allVideos.length, note: 'Em todos os destaques' },
-          {
-            label: 'Visualizações',
-            value: allVideos.reduce((sum, v) => sum + v.views, 0),
-            note: 'Soma aproximada de todos os vídeos',
-          },
-          {
-            label: 'Cliques em produto',
-            value: allVideos.reduce((sum, v) => sum + v.clicks, 0),
-            note: 'Toques em “Ver peça”',
-          },
-        ]}
-      />
+      <AdminMetrics items={storyMetricItems(sumCounters(allVideos))} />
       {guarded.error && (
         <p className="form-error" role="alert">
           {guarded.error}
@@ -149,6 +161,7 @@ export function StoriesManager() {
             render: (s) => <Thumb source={s.coverUrl} size={40} />,
           },
           { key: 'title', label: 'Destaque', render: (s) => s.title },
+          { key: 'format', label: 'Formato', render: (s) => storyFormatLabels[formatOf(s)] },
           { key: 'places', label: 'Onde aparece', render: placesLabel },
           {
             key: 'videos',
@@ -171,7 +184,7 @@ export function StoriesManager() {
           {
             key: 'status',
             label: 'Status',
-            render: (s) => <StatusBadge status={s.active ? 'Ativo' : 'Inativo'} />,
+            render: (s) => <StatusBadge status={storefrontStatus(s)} />,
           },
           {
             key: 'actions',
@@ -245,6 +258,7 @@ export function StoriesManager() {
           },
         ]}
       />
+      <ProductPageSettings key={JSON.stringify(settings)} settings={settings} />
       <Modal
         open={editing !== null && (editing === 'new' || !!editingStory)}
         onOpenChange={(next) => !next && setEditing(null)}
@@ -252,12 +266,19 @@ export function StoriesManager() {
         className="admin-record-drawer"
       >
         {editing !== null && (
-          <HighlightEditor key={editing} story={editingStory} onDone={() => setEditing(null)} />
+          <HighlightEditor
+            key={editing}
+            story={editingStory}
+            onDone={() => {
+              if (!editingStory) setKnownBeforeCreate(stories.map((s) => s.id));
+              setEditing(null);
+            }}
+          />
         )}
       </Modal>
       <Modal
         open={!!videosStory}
-        onOpenChange={(next) => !next && setVideosId(null)}
+        onOpenChange={(next) => !next && closeVideos()}
         title="Vídeos"
         className="admin-record-drawer"
       >
@@ -306,7 +327,8 @@ function HighlightEditor({ story, onDone }: { story?: AdminStoryHighlight; onDon
     [coverAssetId, setCoverAssetId] = useState(story?.coverAssetId ?? ''),
     [coverSource, setCoverSource] = useState(story?.coverUrl),
     [active, setActive] = useState(story?.active ?? true),
-    [placements, setPlacements] = useState<StoryPlacement[]>(story?.placements ?? ['home']),
+    [format, setFormat] = useState<StoryFormat>(story ? formatOf(story) : 'stories'),
+    [placements, setPlacements] = useState<StoryPlacement[]>(story?.placements ?? ['home_top']),
     [categories, setCategories] = useState<string[]>(story?.categories ?? []),
     [busy, setBusy] = useState(false),
     [coverError, setCoverError] = useState(''),
@@ -336,7 +358,8 @@ function HighlightEditor({ story, onDone }: { story?: AdminStoryHighlight; onDon
             title: title.trim(),
             coverAssetId,
             active,
-            placements,
+            format,
+            placements: STORY_PLACEMENTS.filter((p) => placements.includes(p)),
             categories: wantsCategory ? COLLECTIONS.filter((c) => categories.includes(c)) : [],
           },
           story ? 'Destaque atualizado.' : 'Destaque criado.',
@@ -382,6 +405,20 @@ function HighlightEditor({ story, onDone }: { story?: AdminStoryHighlight; onDon
             Ativo
           </label>
           <fieldset className="stack">
+            <legend>Formato</legend>
+            {STORY_FORMATS.map((f) => (
+              <label className="row" key={f}>
+                <input
+                  type="radio"
+                  name="story-format"
+                  checked={format === f}
+                  onChange={() => setFormat(f)}
+                />
+                {storyFormatLabels[f]}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="stack">
             <legend>Onde aparece</legend>
             {STORY_PLACEMENTS.map((p) => (
               <label className="row" key={p}>
@@ -393,6 +430,11 @@ function HighlightEditor({ story, onDone }: { story?: AdminStoryHighlight; onDon
                 {storyPlacementLabels[p]}
               </label>
             ))}
+            {!placements.length && (
+              <small>
+                Sem lugar na loja: os vídeos ainda aparecem na página das peças marcadas.
+              </small>
+            )}
           </fieldset>
           {wantsCategory && (
             <fieldset className="stack">
@@ -409,10 +451,7 @@ function HighlightEditor({ story, onDone }: { story?: AdminStoryHighlight; onDon
               ))}
             </fieldset>
           )}
-          <Button
-            loading={pending}
-            disabled={!title.trim() || !coverAssetId || !placements.length || busy}
-          >
+          <Button loading={pending} disabled={!title.trim() || !coverAssetId || busy}>
             Salvar destaque
           </Button>
         </>
@@ -476,7 +515,7 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
     <div className="stack">
       <p className="notice">
         Vídeos novos ficam alguns minutos em processamento no Bunny e só aparecem na loja quando
-        ficam prontos. Mudanças podem levar até 1 minuto para aparecer na loja.
+        ficam prontos.
       </p>
       {guarded.error && (
         <p className="form-error" role="alert">
@@ -513,10 +552,7 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
                       .filter(Boolean)
                       .join(', ') || 'Sem peças'}
                   </small>
-                  <small>
-                    Visualizações <strong>{v.views}</strong> · Cliques <strong>{v.clicks}</strong> ·
-                    Taxa de clique <strong>{clickRate(v.views, v.clicks)}</strong>
-                  </small>
+                  <VideoMetrics video={v} />
                 </div>
                 <div className="row wrap">
                   <Button
@@ -563,7 +599,9 @@ function VideosPanel({ story }: { story: AdminStoryHighlight }) {
           })}
         </ul>
       ) : (
-        <p>Este destaque ainda não tem vídeos.</p>
+        <p className="notice">
+          Envie ao menos um vídeo: sem vídeo pronto, o destaque não aparece na loja.
+        </p>
       )}
       {videos.length >= STORY_LIMITS.videosPerHighlight ? (
         <p className="muted">Limite de {STORY_LIMITS.videosPerHighlight} vídeos por destaque.</p>

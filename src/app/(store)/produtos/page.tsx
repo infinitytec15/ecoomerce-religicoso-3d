@@ -9,11 +9,11 @@ export default async function Page({
   const p = await searchParams,
     value = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : undefined),
     max = Number(value('preco')),
-    [products, stories] = await Promise.all([getServerCatalog(), getServerStories()]);
+    [products, feed] = await Promise.all([getServerCatalog(), getServerStories()]);
   return (
     <CatalogView
       initialProducts={products}
-      stories={stories}
+      feed={feed}
       query={{
         search: value('busca'),
         category: value('categoria'),

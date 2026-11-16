@@ -5,16 +5,20 @@ import type { StoryHighlightPublic } from '@maos-em-oracao/contracts';
 import { StoriesRow } from './stories-row';
 
 vi.mock('@/lib/api/query', () => ({
-  useGateway: () => ({ storyEvent: vi.fn(async () => {}) }),
+  useGateway: () => ({ storyEvents: vi.fn(async () => {}) }),
+  useCatalog: () => ({ data: [] }),
 }));
 vi.mock('@/lib/media/use-asset', () => ({ useAssetUrl: (s?: string) => s }));
 vi.mock('./player', () => ({ attachSource: vi.fn(async () => () => {}) }));
 
+/** The player is loaded on demand; under a full parallel run that import can take over 1 s. */
+const LAZY_VIEWER_MS = 5000;
 const highlight: StoryHighlightPublic = {
   id: 'destaque-demo',
   title: 'Bastidores',
   coverUrl: '/assets/stories/bastidores.webp',
-  placements: ['home'],
+  format: 'stories',
+  placements: ['home_top'],
   categories: ['Presentes'],
   videos: [
     {
@@ -57,7 +61,9 @@ describe('StoriesRow', () => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     render(<StoriesRow highlights={[highlight]} />);
     await user.click(screen.getByRole('button', { name: 'Abrir destaque Bastidores' }));
-    expect(await screen.findByRole('dialog', { name: 'Bastidores' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('dialog', { name: 'Bastidores' }, { timeout: LAZY_VIEWER_MS }),
+    ).toBeInTheDocument();
     expect(document.querySelector('video')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'Fechar' }));
     expect(screen.queryByRole('dialog')).toBeNull();

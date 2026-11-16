@@ -234,6 +234,8 @@ model StoryHighlight {
   coverAssetId String
   position     Int          @default(0)
   active       Boolean      @default(true)
+  /// 'stories' (bubbles) or 'carousel' (video cards).
+  format       String       @default("stories")
   placements   String[]
   categories   String[]     @default([])
   createdAt    DateTime     @default(now())
@@ -252,8 +254,14 @@ model StoryVideo {
   caption     String         @default("")
   productIds  String[]       @default([])
   active      Boolean        @default(true)
+  impressions Int            @default(0)
+  /// Plays.
   views       Int            @default(0)
+  completes   Int            @default(0)
+  /// Product clicks.
   clicks      Int            @default(0)
+  /// Products put in the bag from the player.
+  carts       Int            @default(0)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -261,19 +269,22 @@ model StoryVideo {
 }
 
 model OrderItem {
-  id        String  @id @default(uuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity  Int
-  unitCents Int
+  id           String  @id @default(uuid())
+  orderId      String
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity     Int
+  unitCents    Int
   /// Production cost of the whole line (unit cost x quantity) frozen at sale time.
-  costCents Int     @default(0)
-  data      Json
-  review    Review?
+  costCents    Int     @default(0)
+  data         Json
+  /// Story video the item was bought from (attribution only, no FK: deleting a video keeps orders).
+  storyVideoId String?
+  review       Review?
 
   @@index([orderId])
+  @@index([storyVideoId])
 }
 
 model Review {

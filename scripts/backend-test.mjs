@@ -11,6 +11,7 @@ import { createContext, closeContext } from '@maos-em-oracao/backend-core/contex
 import { unseal } from '@maos-em-oracao/backend-core/security';
 import { WorkerEngine, queueConnection } from '@maos-em-oracao/backend-core/worker';
 import { prayerForDay } from '@maos-em-oracao/backend-core/daily-prayers';
+import { storiesFeedSchema } from '@maos-em-oracao/contracts';
 const root = fileURLToPath(new URL('../', import.meta.url)),
   runId = randomBytes(6).toString('hex'),
   databaseName = 'meo_test_' + runId;
@@ -3005,7 +3006,7 @@ try {
           assert.equal(done.body.data.status, 'ready');
           return id;
         },
-        stories = () => guest.data('stories'),
+        stories = async () => (await guest.data('stories')).collections,
         admin = async () => (await owner.data('admin/operations')).stories,
         template = (await owner.data('admin/operations')).products.find((p) => p.id === product.id),
         [p1, p2, p3, p4] = [1, 2, 3, 4].map((n) => {
@@ -3030,7 +3031,7 @@ try {
           title: 'Terços',
           coverAssetId: coverId,
           active: true,
-          placements: ['home', 'product'],
+          placements: ['home_top'],
           categories: [],
         };
       // 1-2. Category placement needs a category; the cover must be a ready image.
@@ -3068,7 +3069,9 @@ try {
       assert.equal(pub.length, 1);
       assert.equal(pub[0].id, highlightId);
       assert.equal(pub[0].coverUrl, coverUrl);
-      assert.deepEqual(pub[0].placements, ['home', 'product']);
+      assert.deepEqual(pub[0].placements, ['home_top']);
+      assert.equal(pub[0].format, 'stories');
+      assert.equal(list[0].format, 'stories');
       assert.equal(pub[0].videos.length, 1);
       const storyVideoId = pub[0].videos[0].id;
       assert.equal(pub[0].videos[0].caption, video.caption);
@@ -3089,25 +3092,70 @@ try {
       assert.deepEqual(await stories(), []);
       assert.equal((await admin())[0].videos[0].status, 'processing');
       await ctx.db.mediaAsset.update({ where: { id: videoId }, data: { state: 'ready' } });
-      // 7. An archived product leaves the video; the video stays.
+      // 7. A video sells: without stock or with only archived products it leaves the store, and a
+      // collection left without videos leaves with it.
+      await ctx.db.product.update({ where: { id: p1.id }, data: { stock: 0 } });
+      assert.deepEqual(await stories(), []);
+      await ctx.db.product.update({ where: { id: p1.id }, data: { stock: 5 } });
+      assert.equal((await stories()).length, 1);
       await owner.command({ type: 'product.archive', id: p1.id });
+      assert.deepEqual(await stories(), []);
+      // The archived product stays linked; only the sellable one is shown.
+      await owner.command({ ...video, id: storyVideoId, productIds: [p1.id, p2.id] });
       pub = await stories();
       assert.equal(pub[0].videos.length, 1);
-      assert.deepEqual(pub[0].videos[0].products, []);
-      // 8. Views and clicks; unknown ids are a silent no-op; other event types are refused.
+      assert.deepEqual(
+        pub[0].videos[0].products.map((p) => p.id),
+        [p2.id],
+      );
+      // 8. Legacy view/click, new single events and batches; unknown ids are a silent no-op;
+      // other event types and oversized batches are refused.
       const event = (body) => guest.call('stories/events', 'POST', body);
       for (const type of ['view', 'view', 'click'])
         assert.equal((await event({ videoId: storyVideoId, type })).status, 204);
       assert.equal((await event({ videoId: randomUUID(), type: 'view' })).status, 204);
       assert.equal((await event({ videoId: 'nao-e-uuid', type: 'click' })).status, 204);
-      const like = await event({ videoId: storyVideoId, type: 'like' });
-      assert(like.status >= 400 && like.status < 500, String(like.status));
+      assert.equal((await event({ videoId: storyVideoId, type: 'impression' })).status, 204);
+      const batch = await event({
+        events: [
+          ...['impression', 'play', 'complete', 'product_click', 'add_to_cart', 'add_to_cart'].map(
+            (type) => ({ videoId: storyVideoId, type }),
+          ),
+          { videoId: randomUUID(), type: 'play' },
+          { videoId: 'nao-e-uuid', type: 'play' },
+        ],
+      });
+      assert.equal(batch.status, 204, batch.body?.error?.code);
+      for (const body of [
+        { videoId: storyVideoId, type: 'like' },
+        { events: [] },
+        { events: [{ videoId: storyVideoId, type: 'like' }] },
+        {
+          events: Array.from({ length: 51 }, () => ({ videoId: storyVideoId, type: 'play' })),
+        },
+      ]) {
+        const refused = await event(body);
+        assert(refused.status >= 400 && refused.status < 500, String(refused.status));
+      }
       list = await admin();
-      assert.equal(list[0].videos[0].views, 2);
-      assert.equal(list[0].videos[0].clicks, 1);
+      assert.deepEqual(
+        (({ impressions, views, completes, clicks, carts }) => ({
+          impressions,
+          views,
+          completes,
+          clicks,
+          carts,
+        }))(list[0].videos[0]),
+        { impressions: 2, views: 3, completes: 1, clicks: 2, carts: 2 },
+      );
       // A video whose Stream URLs cannot be built (here: Stream not configured) leaves only itself.
       const streamId = await upload(owner, 'video');
-      await owner.command({ ...video, assetId: streamId, caption: 'Do Stream', productIds: [] });
+      await owner.command({
+        ...video,
+        assetId: streamId,
+        caption: 'Do Stream',
+        productIds: [p2.id],
+      });
       assert.equal((await stories())[0].videos.length, 2);
       await ctx.db.mediaAsset.update({
         where: { id: streamId },
@@ -3196,17 +3244,22 @@ try {
       );
       // 10c. A linked product archived later (p1, step 7) does not block editing the video.
       const linked = await ctx.db.storyVideo.findUniqueOrThrow({ where: { id: storyVideoId } });
-      assert.deepEqual(linked.productIds, [p1.id]);
-      const recaption = await send(owner, { ...video, id: linked.id, caption: 'Legenda nova' });
+      assert.deepEqual(linked.productIds, [p1.id, p2.id]);
+      const recaption = await send(owner, {
+        ...video,
+        id: linked.id,
+        caption: 'Legenda nova',
+        productIds: [p1.id, p2.id],
+      });
       assert.equal(recaption.status, 204, recaption.body?.error?.code);
       const edited = await ctx.db.storyVideo.findUniqueOrThrow({ where: { id: linked.id } });
       assert.equal(edited.caption, 'Legenda nova');
-      assert.deepEqual(edited.productIds, [p1.id]);
-      await owner.command({ type: 'product.archive', id: p2.id });
+      assert.deepEqual(edited.productIds, [p1.id, p2.id]);
+      await owner.command({ type: 'product.archive', id: p3.id });
       const addArchived = await send(owner, {
         ...video,
         id: linked.id,
-        productIds: [p1.id, p2.id],
+        productIds: [p1.id, p2.id, p3.id],
       });
       assert.equal(addArchived.status, 422);
       assert.equal(addArchived.body.error.code, 'INVALID_PRODUCT');
@@ -3218,6 +3271,235 @@ try {
       assert.equal(missing.status, 404);
       // 12. The admin snapshot keeps its contract.
       operationsSchema.parse(await owner.data('admin/operations'));
+    },
+  );
+  await check(
+    'stories: carrossel por lugar, vídeos da página do produto, configuração e vendas por vídeo',
+    async () => {
+      // A marketing member runs it: its own request budget, and the permission stories need.
+      const team = await marketingMember(owner, 'video-commerce');
+      const send = (client, command) =>
+          client.call('admin/commands', 'POST', command, {
+            headers: { 'idempotency-key': randomUUID() },
+          }),
+        upload = async (kind) => {
+          const bytes =
+              kind === 'image'
+                ? await sharp({
+                    create: { width: 8, height: 8, channels: 3, background: '#3e5c7a' },
+                  })
+                    .png()
+                    .toBuffer()
+                : Buffer.from('commerce-video-' + randomUUID()),
+            u = await team.call('admin/media/uploads', 'POST', {
+              name: kind === 'image' ? 'capa.png' : 'video.mp4',
+              mime: kind === 'image' ? 'image/png' : 'video/mp4',
+              size: bytes.length,
+              kind,
+            });
+          assert.equal(u.status, 200, u.body?.error?.code);
+          const id = u.body.data.id;
+          await team.call('admin/media/uploads/' + id + '/content', 'PUT', undefined, { bytes });
+          const done = await team.call('admin/media/uploads/' + id + '/complete', 'POST', {});
+          assert.equal(done.body.data.status, 'ready');
+          return id;
+        },
+        feed = () => guest.data('stories'),
+        snapshot = () => team.data('admin/operations'),
+        template = (await owner.data('admin/operations')).products.find((p) => p.id === product.id),
+        [pa, pb, pc] = [
+          ['A', 40],
+          ['B', 40],
+          ['C', 0],
+        ].map(([n, stock]) => {
+          const p = {
+            ...template,
+            id: randomUUID(),
+            sku: 'VC-' + n + '-' + runId,
+            name: 'Peça em vídeo ' + n,
+            active: true,
+            archived: false,
+            stock,
+          };
+          delete p.kit;
+          return p;
+        });
+      for (const p of [pa, pb, pc]) await owner.command({ type: 'product.save', product: p });
+      const coverId = await upload('image'),
+        collection = async (fields) => {
+          const title = 'Vídeos ' + randomUUID().slice(0, 8);
+          await team.command({
+            type: 'story.save',
+            title,
+            coverAssetId: coverId,
+            active: true,
+            categories: [],
+            ...fields,
+          });
+          return (await ctx.db.storyHighlight.findFirstOrThrow({ where: { title } })).id;
+        },
+        clip = async (highlightId, productIds) => {
+          const caption = 'Clipe ' + randomUUID().slice(0, 8);
+          await team.command({
+            type: 'story.video.save',
+            highlightId,
+            assetId: await upload('video'),
+            caption,
+            productIds,
+            active: true,
+          });
+          return (await ctx.db.storyVideo.findFirstOrThrow({ where: { highlightId, caption } })).id;
+        };
+      // A carousel in two places, a collection drawn nowhere and an inactive one.
+      const carousel = await collection({
+          format: 'carousel',
+          placements: ['category', 'home_middle'],
+          categories: ['Presentes'],
+        }),
+        hidden = await collection({ placements: [] }),
+        off = await collection({ placements: ['home_bottom'], active: false }),
+        v1 = await clip(carousel, [pa.id]),
+        v2 = await clip(hidden, [pa.id, pb.id]),
+        v3 = await clip(off, [pb.id]),
+        v4 = await clip(carousel, [pc.id]),
+        mine = new Set([v1, v2, v3, v4]);
+      let pub = await feed();
+      assert.equal(storiesFeedSchema.safeParse(pub).success, true);
+      const shown = pub.collections.find((h) => h.id === carousel);
+      assert.equal(shown.format, 'carousel');
+      assert.deepEqual(shown.placements, ['home_middle', 'category']);
+      assert.deepEqual(shown.categories, ['Presentes']);
+      // The video of the product without stock is out.
+      assert.deepEqual(
+        shown.videos.map((v) => v.id),
+        [v1],
+      );
+      assert(!pub.collections.some((h) => h.id === hidden || h.id === off));
+      // Product page: every sellable video of any collection, newest first.
+      assert.equal(pub.productPage.enabled, true);
+      assert.equal(pub.productPage.position, 'right');
+      assert.deepEqual(
+        pub.productPage.videos.filter((v) => mine.has(v.id)).map((v) => v.id),
+        [v3, v2, v1],
+      );
+      assert.deepEqual(pub.productPage.byProduct[pa.id], [v2, v1]);
+      assert.deepEqual(pub.productPage.byProduct[pb.id], [v3, v2]);
+      assert.equal(pub.productPage.byProduct[pc.id], undefined);
+      // The store setting turns the product page bubble off and moves it.
+      const invalid = await send(team, {
+        type: 'story.settings',
+        productPage: { enabled: true, position: 'top' },
+      });
+      assert(invalid.status >= 400 && invalid.status < 500, String(invalid.status));
+      const denied = await send(customer, {
+        type: 'story.settings',
+        productPage: { enabled: false, position: 'left' },
+      });
+      assert.equal(denied.status, 403);
+      assert.deepEqual((await snapshot()).storySettings, {
+        productPage: { enabled: true, position: 'right' },
+      });
+      await team.command({
+        type: 'story.settings',
+        productPage: { enabled: false, position: 'left' },
+      });
+      assert.deepEqual(operationsSchema.parse(await snapshot()).storySettings, {
+        productPage: { enabled: false, position: 'left' },
+      });
+      pub = await feed();
+      assert.deepEqual(pub.productPage, {
+        enabled: false,
+        position: 'left',
+        videos: [],
+        byProduct: {},
+      });
+      assert(pub.collections.some((h) => h.id === carousel));
+      await team.command({
+        type: 'story.settings',
+        productPage: { enabled: true, position: 'left' },
+      });
+      pub = await feed();
+      assert.equal(pub.productPage.position, 'left');
+      assert.deepEqual(pub.productPage.byProduct[pa.id], [v2, v1]);
+      // A purchase from a video is attributed to it; it counts once the order is paid.
+      const email = 'video-' + runId + '@example.test',
+        item = (videoId) => ({
+          productId: pa.id,
+          quantity: 2,
+          color: pa.colors[0],
+          sizeIndex: 0,
+          dedication: '',
+          ...(videoId ? { videoId } : {}),
+        }),
+        order = async (videoId) => {
+          const buyer = new Client(),
+            r = await buy(
+              buyer,
+              checkout(pa, await quote(buyer, pa, 2), email, 'pix', { items: [item(videoId)] }),
+            );
+          assert.equal(r.status, 200, r.body?.error?.code);
+          return ctx.db.orderItem.findFirstOrThrow({ where: { orderId: r.body.data.orderId } });
+        },
+        metrics = async () => {
+          const v = (await snapshot()).stories
+            .find((h) => h.id === carousel)
+            .videos.find((x) => x.id === v1);
+          return { orders: v.orders, revenueCents: v.revenueCents };
+        },
+        bought = await order(v1);
+      assert.equal(bought.storyVideoId, v1);
+      assert.deepEqual(await metrics(), { orders: 0, revenueCents: 0 });
+      const paid = (status) =>
+        ctx.db.order.update({ where: { id: bought.orderId }, data: { status } });
+      await paid('Confirmado');
+      assert.deepEqual(await metrics(), { orders: 1, revenueCents: bought.unitCents * 2 });
+      await paid('Aguardando grupo');
+      assert.deepEqual(await metrics(), { orders: 0, revenueCents: 0 });
+      await paid('Cancelado');
+      assert.deepEqual(await metrics(), { orders: 0, revenueCents: 0 });
+      await paid('Enviado');
+      assert.deepEqual(await metrics(), { orders: 1, revenueCents: bought.unitCents * 2 });
+      // An unknown or malformed video id never blocks the checkout and is not stored.
+      for (const videoId of [randomUUID(), 'nao-e-uuid'])
+        assert.equal((await order(videoId)).storyVideoId, null);
+      // Deleting the video keeps the order and its attribution column.
+      await team.command({ type: 'story.video.delete', id: v1 });
+      assert.equal(
+        (await ctx.db.orderItem.findUniqueOrThrow({ where: { id: bought.id } })).storyVideoId,
+        v1,
+      );
+      // Legacy placements: the migration maps `home` to the top slot and drops `product`; read
+      // paths normalize rows written before it (a carousel `home` is the middle slot).
+      const legacy = await ctx.db.storyHighlight.create({
+          data: { title: 'Legado', coverAssetId: coverId, placements: ['home', 'product'] },
+        }),
+        legacyCarousel = await ctx.db.storyHighlight.create({
+          data: {
+            title: 'Legado carrossel',
+            coverAssetId: coverId,
+            format: 'carousel',
+            placements: ['product', 'home'],
+          },
+        }),
+        placementsOf = async (id) => (await snapshot()).stories.find((h) => h.id === id).placements;
+      assert.deepEqual(await placementsOf(legacy.id), ['home_top']);
+      assert.deepEqual(await placementsOf(legacyCarousel.id), ['home_middle']);
+      const migration = await readFile(
+          new URL(
+            '../packages/database/prisma/migrations/202611180001_video_commerce/migration.sql',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+        dataStep = migration.slice(migration.indexOf('UPDATE "StoryHighlight"'));
+      await ctx.db.$executeRawUnsafe(dataStep);
+      assert.deepEqual(
+        (await ctx.db.storyHighlight.findUniqueOrThrow({ where: { id: legacy.id } })).placements,
+        ['home_top'],
+      );
+      for (const id of [legacy.id, legacyCarousel.id, carousel, hidden, off])
+        await team.command({ type: 'story.delete', id });
+      operationsSchema.parse(await snapshot());
     },
   );
   await check('alerta de estoque baixo é deduplicado por produto e dia', async () => {

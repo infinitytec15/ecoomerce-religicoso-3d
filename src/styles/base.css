@@ -2964,6 +2964,13 @@ small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Home shows up to three campaigns side by side, like the product grid. */
+@media (min-width: 1024px) {
+  .faith-group-buys .group-buy-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-bottom: 0;
+  }
+}
 
 /* Stories (destaques em vídeo) */
 .stories-row {
@@ -3240,5 +3247,426 @@ small {
   }
   .story-bar i {
     transition: none;
+  }
+}
+/* Stories: slots, carrossel, compra no vídeo e bolinha da página do produto */
+.story-slot {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+  margin-block: 28px 0;
+}
+.faith-home > .story-slot:first-child {
+  margin-top: 16px;
+}
+.story-slot .stories-row {
+  margin: 0;
+}
+.story-slot[data-place='category'] {
+  margin-block: 0 18px;
+}
+.story-carousel {
+  min-width: 0;
+}
+.story-carousel h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+.faith-home .story-carousel h2 {
+  margin-bottom: 18px;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  line-height: 1.05;
+}
+.story-cards {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 2px 2px 8px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.story-cards::-webkit-scrollbar {
+  display: none;
+}
+.story-cards li {
+  flex: none;
+  width: clamp(136px, 40vw, 196px);
+  scroll-snap-align: start;
+}
+.story-card {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.story-card-media {
+  position: relative;
+  display: block;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--sand);
+}
+.story-card-media > img,
+.story-card-media > video,
+.story-card-media > .story-poster-empty {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.story-card-media::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 0;
+  background: linear-gradient(transparent, #0000008c);
+  pointer-events: none;
+}
+.story-card-play {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #0000004d;
+  color: var(--white);
+}
+.story-card-play svg {
+  width: 16px;
+  height: 16px;
+}
+.story-card-caption {
+  position: absolute;
+  inset: auto 10px 10px;
+  z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--white);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.story-card-product {
+  display: grid;
+  min-width: 0;
+}
+.story-card-product strong {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-card-product small {
+  color: var(--muted);
+}
+.story-card:focus-visible {
+  outline: none;
+}
+.story-card:focus-visible .story-card-media {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+}
+.story-product > .story-product-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  min-width: auto;
+}
+.story-sheet-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+}
+.story-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: #0000008c;
+  cursor: default;
+}
+.story-sheet {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-height: 85%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 16px max(18px, env(safe-area-inset-bottom));
+  border-radius: 18px 18px 0 0;
+  background: var(--paper);
+  color: var(--ink);
+  animation: story-sheet-in 260ms var(--ease);
+}
+@keyframes story-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+.story-sheet-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.story-sheet-product .photo {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+}
+.story-sheet-product > div {
+  flex: 1;
+  min-width: 0;
+}
+.story-sheet-product h3 {
+  margin: 0;
+  font-size: 1rem;
+  outline: none;
+}
+.story-sheet-product p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.story-sheet-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sand);
+  color: var(--ink);
+}
+.story-sheet-close svg {
+  width: 18px;
+  height: 18px;
+}
+.story-sheet-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.story-sheet-group legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.story-sheet .color-buttons,
+.story-size-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.story-size-chip {
+  display: grid;
+  gap: 2px;
+  min-width: 84px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #c5c8bc;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-align: left;
+}
+.story-size-chip small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.story-size-chip.selected {
+  padding: 7px 11px;
+  border: 2px solid var(--olive);
+  background: var(--olive-light);
+}
+.story-sheet-note,
+.story-sheet-error {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.story-sheet-note {
+  color: var(--muted);
+}
+.story-sheet-note a {
+  color: var(--olive);
+  text-decoration: underline;
+}
+.story-sheet-error {
+  color: var(--red);
+}
+.story-sheet-actions {
+  display: grid;
+  gap: 8px;
+}
+.story-sheet-actions .btn {
+  width: 100%;
+}
+.product-video-bubble {
+  position: fixed;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  /* Under modals (150) and drawers; the book button and verse card sit at the bottom left. */
+  z-index: 140;
+  width: 64px;
+  height: 64px;
+  animation: product-video-in 320ms var(--ease);
+}
+.product-video-bubble.right {
+  right: 24px;
+}
+.product-video-bubble.left {
+  /* Beside the book button (22px + 44px) and below the verse card (84px from the bottom). */
+  left: 78px;
+}
+@keyframes product-video-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+.product-video-open {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: 0 8px 24px #222b2733;
+  cursor: pointer;
+}
+.product-video-open:focus-visible {
+  outline: 2px solid var(--olive);
+  outline-offset: 3px;
+}
+.product-video-ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--terra), var(--olive));
+  box-sizing: border-box;
+}
+.product-video-ring > img,
+.product-video-ring > video,
+.product-video-ring > .story-poster-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sand);
+  box-sizing: border-box;
+}
+.product-video-badge {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--olive);
+  color: var(--white);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+}
+.product-video-badge svg {
+  width: 11px;
+  height: 11px;
+}
+.product-video-close {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink);
+}
+.product-video-close::before {
+  /* 40 px touch target around the small button. */
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.product-video-close svg {
+  width: 12px;
+  height: 12px;
+}
+@media (min-width: 761px) {
+  .story-cards li {
+    width: 196px;
+  }
+}
+@media (max-width: 760px) {
+  .story-slot {
+    margin-top: 22px;
+  }
+  .product-video-bubble {
+    width: 56px;
+    height: 56px;
+  }
+  .product-video-bubble.right {
+    right: 16px;
+  }
+  .product-video-bubble.left {
+    /* Beside the book button (16px + 40px); the verse card starts 77px from the bottom. */
+    left: 66px;
+  }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .story-card-media > img,
+  .story-card-media > video {
+    transition: transform 400ms var(--ease);
+  }
+  .story-card:hover .story-card-media > img,
+  .story-card:hover .story-card-media > video {
+    transform: scale(1.03);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-sheet,
+  .product-video-bubble {
+    animation: none;
+  }
+}
+@media print {
+  .product-video-bubble {
+    display: none;
   }
 }

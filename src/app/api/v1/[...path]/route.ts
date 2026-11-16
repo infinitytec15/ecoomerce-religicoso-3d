@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { CLIENT_IP_HEADER, trustedForwardedIp } from '@maos-em-oracao/contracts';
+/**
+ * Mutations that change what the storefront renders (products, stock, settings, stories,
+ * group buys). The server pages cache those reads under the `catalog` tag.
+ */
+const catalogWrites = /^(admin\/|orders(\/|$))/;
+/** The change already happened upstream: a cache failure must not turn it into an error. */
+function expireCatalog() {
+  try {
+    revalidateTag('catalog', { expire: 0 });
+  } catch (error) {
+    console.warn('Cache da vitrine não foi renovado:', (error as Error | null)?.message);
+  }
+}
 const routes =
   /^(checkout\/estimate|catalog\/products(?:\/[a-zA-Z0-9_-]+(?:\/reviews)?)?|reviews(?:\/opt-out|\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content))?)?|group-buys(?:\/[a-zA-Z0-9_-]+)?|stories(?:\/events)?|store\/settings|auth\/(session|login|logout|recover|verify|reset|email-change|guest-order)|account(?:\/(?:profile|marketing))?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/(unsubscribe|confirm))?|marketing\/(?:unsubscribe|one-click)|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|crm\/(?:preview|contacts(?:\/import)?)|overview|integrations|jobs|webhooks|reports\/[a-zA-Z0-9_-]+|exports(?:\/[a-zA-Z0-9_-]+(?:\/download)?)?|resources\/[a-zA-Z0-9_-]+|orders\/[a-zA-Z0-9_-]+\/(fiscal|shipment)|integrations\/melhor-envio\/authorize|media\/[a-zA-Z0-9_-]+\/(status|original)|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content|renew))?))$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -122,6 +136,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
         signal: AbortSignal.timeout(binary ? 120000 : 15000),
       },
     );
+    // Without this, an admin change only reaches the store when the 60 s cache expires
+    // and someone visits again; expire it now so the next page view reads fresh data.
+    if (mutation && upstream.ok && catalogWrites.test(pathname)) expireCatalog();
     const response = new NextResponse(upstream.body, {
       status: upstream.status,
       headers: {

@@ -7,6 +7,7 @@ import {
   reorderStoryHighlights,
   reorderStoryVideos,
   saveStoryHighlight,
+  saveStorySettings,
   saveStoryVideo,
 } from '@/lib/domain/stories';
 import { closeGroupBuy, extendGroupBuy, saveGroupBuy } from '@/lib/domain/group-buys';
@@ -68,6 +69,12 @@ export function applyAdminExtension(s: Operations, c: AdminCommand, actor: Sessi
     case 'story.video.delete':
       deleteStoryVideo(s, c.id);
       return true;
+    case 'story.settings': {
+      const { type, ...input } = c;
+      void type;
+      saveStorySettings(s, input);
+      return true;
+    }
     case 'stock.adjust': {
       const p = requireValue(s.products.find((p) => p.id === c.productId));
       if (

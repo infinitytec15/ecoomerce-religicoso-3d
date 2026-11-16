@@ -5,10 +5,12 @@ import { z } from 'zod';
 import {
   groupBuyPublicSchema,
   productReviewsSchema,
-  storyHighlightPublicSchema,
-  type StoryHighlightPublic,
+  EMPTY_STORIES_FEED,
+  storiesFeedSchema,
+  type StoriesFeed,
 } from '@maos-em-oracao/contracts';
-import { seedCatalog, seedGroupBuys, seedSettings, seedStories } from '@/lib/demo/seed';
+import { createSeed, seedCatalog, seedGroupBuys, seedSettings } from '@/lib/demo/seed';
+import { publicStoriesFeed } from '@/lib/domain/stories';
 import { joinableGroupBuys, publicGroupBuy } from '@/lib/domain/group-buys';
 import { productSchema, publicSettingsSchema } from '@/lib/domain/schemas';
 import { IS_DEMO } from './config';
@@ -68,24 +70,24 @@ export const getServerGroupBuy = cache(async (id: string) =>
     : publicFetch('group-buys/' + encodeURIComponent(id), groupBuyPublicSchema.nullable(), null),
 );
 const STORIES_TIMEOUT_MS = 2500;
-/** Story highlights; any failure yields none, so stories never take a page down. */
-export const getServerStories = cache(async (): Promise<StoryHighlightPublic[]> => {
+/** Stories feed; any failure yields an empty one, so stories never take a page down. */
+export const getServerStories = cache(async (): Promise<StoriesFeed> => {
   try {
-    if (IS_DEMO) return seedStories;
+    if (IS_DEMO) return publicStoriesFeed(createSeed());
     // Stories are decoration: never hold a page for the catalog's 10 s budget.
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<StoryHighlightPublic[]>((resolve) => {
-      timer = setTimeout(() => resolve([]), STORIES_TIMEOUT_MS);
+    const late = new Promise<StoriesFeed>((resolve) => {
+      timer = setTimeout(() => resolve(EMPTY_STORIES_FEED), STORIES_TIMEOUT_MS);
     });
     try {
       return await Promise.race([
-        publicFetch('stories', z.array(storyHighlightPublicSchema), undefined, STORIES_TIMEOUT_MS),
+        publicFetch('stories', storiesFeedSchema, undefined, STORIES_TIMEOUT_MS),
         late,
       ]);
     } finally {
       clearTimeout(timer);
     }
   } catch {
-    return [];
+    return EMPTY_STORIES_FEED;
   }
 });

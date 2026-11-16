@@ -1,6 +1,13 @@
 import type { Operations, Session } from '@/lib/domain/types';
 import { seedContacts, seedCrm } from './crm';
 import { createSeed, DEMO_EMAIL, STAFF_PERMISSIONS } from './seed';
+import { normalizeStoryState, withStorySales } from '@/lib/domain/stories';
+
+/**
+ * Every load brings stored stories up to date (formats, home slots, counters, product page setting)
+ * and derives each video's paid orders and revenue from the demo orders.
+ */
+const withStories = (state: Operations) => withStorySales(normalizeStoryState(state));
 export interface DemoStorage {
   load(): Operations;
   save(value: Operations): void;
@@ -13,7 +20,7 @@ export class MemoryDemoStorage implements DemoStorage {
     private currentSession: Session | null = null,
   ) {}
   load() {
-    return structuredClone(this.value);
+    return withStories(structuredClone(this.value));
   }
   save(value: Operations) {
     this.value = structuredClone(value);
@@ -29,6 +36,9 @@ export class BrowserDemoStorage implements DemoStorage {
   private readonly key = 'meo-commerce-v2';
   private readonly sessionKey = 'meo-session-v2';
   load(): Operations {
+    return withStories(this.stored());
+  }
+  private stored(): Operations {
     try {
       const current = localStorage.getItem(this.key);
       if (current) {

@@ -2,33 +2,63 @@
 import { useEffect, useEffectEvent, useRef, useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import type { StoryHighlightPublic } from '@maos-em-oracao/contracts';
-import { useGateway } from '@/lib/api/query';
+import type { StoryHighlightPublic, StoryProduct } from '@maos-em-oracao/contracts';
+import type { Product } from '@/lib/domain/types';
+import { useCatalog } from '@/lib/api/query';
+import { useCartStore } from '@/lib/store/cart';
 import { useAssetUrl } from '@/lib/media/use-asset';
 import { money } from '@/lib/domain/format';
+import { cartLine } from '@/lib/domain/commerce';
 import { buttonClass } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { ProductImage } from '@/components/ui/product-image';
 import { attachSource } from './player';
+import { useStoryTracker } from './events';
+import { StoryBuySheet } from './story-buy-sheet';
 
-/** Videos already counted as viewed on this page load. */
-const viewed = new Set<string>();
 const TAP_SLOP_PX = 10,
   CLOSE_DRAG_PX = 80,
   ERROR_ADVANCE_MS = 3000;
 type Position = { highlight: number; video: number };
-
-export default function StoryViewer({
-  highlights,
-  start,
-  onClose,
-}: {
+/** Position kept inside the highlights, whose collections all have videos. */
+function clampPosition(highlights: StoryHighlightPublic[], position: Position): Position {
+  const highlight = Math.min(Math.max(0, position.highlight), highlights.length - 1);
+  return {
+    highlight,
+    video: Math.min(Math.max(0, position.video), highlights[highlight].videos.length - 1),
+  };
+}
+type ViewerProps = {
   highlights: StoryHighlightPublic[];
   start: number;
+  /** Video to open in the start collection (a carousel card). */
+  startVideo?: number;
+  /** Shown instead of the collection title (the product page bubble). */
+  title?: string;
   onClose: () => void;
-}) {
-  const gateway = useGateway(),
-    [position, setPosition] = useState<Position>({ highlight: start, video: 0 }),
+};
+/** The open buy sheet: which product, and whether it went in the bag on open (kits). */
+type Sheet = { product: Product; added: boolean };
+
+/** The player; closes itself when nothing is left to play (the feed changed while open). */
+export default function StoryViewer(props: ViewerProps) {
+  const highlights = props.highlights.filter((h) => h.videos.length > 0),
+    { onClose } = props,
+    empty = highlights.length === 0;
+  useEffect(() => {
+    if (empty) onClose();
+  }, [empty, onClose]);
+  return empty ? null : <Player {...props} highlights={highlights} />;
+}
+
+function Player({ highlights, start, startVideo = 0, title, onClose }: ViewerProps) {
+  const track = useStoryTracker(),
+    catalog = useCatalog().data,
+    openCart = useCartStore((s) => s.setOpen),
+    [stored, setPosition] = useState<Position>(() =>
+      clampPosition(highlights, { highlight: start, video: startVideo }),
+    ),
+    [sheet, setSheet] = useState<Sheet | null>(null),
     [muted, setMuted] = useState(true),
     [progress, setProgress] = useState(0),
     [failed, setFailed] = useState(false),
@@ -36,11 +66,53 @@ export default function StoryViewer({
     dialogRef = useRef<HTMLDivElement>(null),
     videoRef = useRef<HTMLVideoElement>(null),
     closeRef = useRef<HTMLButtonElement>(null),
+    sheetOpener = useRef<HTMLElement | null>(null),
     pointer = useRef<{ x: number; y: number } | null>(null),
+    // The feed can shrink while the player is open (a video leaves after a refresh): stay in range.
+    position = clampPosition(highlights, stored),
     highlight = highlights[position.highlight],
     video = highlight.videos[position.video],
     src = useAssetUrl(video.source.src),
-    poster = video.source.type === 'hls' ? video.source.poster : undefined;
+    poster = video.source.type === 'hls' ? video.source.poster : undefined,
+    heading = title ?? highlight.title;
+
+  /** Sellable catalog product for a video product; none until the catalog loads. */
+  function sellable(product: StoryProduct) {
+    return catalog?.find((p) => p.id === product.id && p.active && !p.archived);
+  }
+  function openSheet(product: Product, opener: HTMLElement) {
+    sheetOpener.current = opener;
+    setSheet({ product, added: product.kit ? addKit(product) : false });
+    videoRef.current?.pause();
+  }
+  /**
+   * A kit has no options: straight to the bag, the sheet only confirms. When that fails the sheet
+   * opens as for any product, and its own "Adicionar à sacola" shows the reason.
+   */
+  function addKit(product: Product): boolean {
+    try {
+      useCartStore.getState().add(cartLine(product, 1, undefined, 0, '', { videoId: video.id }));
+    } catch {
+      return false;
+    }
+    track(video.id, 'add_to_cart');
+    return true;
+  }
+  function closeSheet() {
+    setSheet(null);
+    const opener = sheetOpener.current;
+    if (opener?.isConnected) opener.focus();
+    else closeRef.current?.focus();
+    void videoRef.current?.play()?.catch(() => {});
+  }
+  function viewBag() {
+    onClose();
+    openCart(true);
+  }
+  function openProduct() {
+    track(video.id, 'product_click');
+    onClose();
+  }
 
   function go(next: Position) {
     setPosition(next);
@@ -72,8 +144,12 @@ export default function StoryViewer({
   }
 
   function trapFocus(event: KeyboardEvent) {
-    const dialog = dialogRef.current,
-      focusable = dialog?.querySelectorAll<HTMLElement>('button, a[href]');
+    const dialog = sheet
+        ? dialogRef.current?.querySelector<HTMLElement>('.story-sheet')
+        : dialogRef.current,
+      focusable = dialog?.querySelectorAll<HTMLElement>(
+        'button:not([tabindex="-1"]), a[href], select, input',
+      );
     if (!dialog || !focusable?.length) return;
     const first = focusable[0],
       last = focusable[focusable.length - 1];
@@ -91,10 +167,13 @@ export default function StoryViewer({
 
   const advanceAfterError = useEffectEvent(next);
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === 'Escape') onClose();
+    if (event.key === 'Escape') {
+      if (sheet) closeSheet();
+      else onClose();
+    } else if (event.key === 'Tab') trapFocus(event);
+    else if (sheet) return;
     else if (event.key === 'ArrowRight') next();
     else if (event.key === 'ArrowLeft') previous();
-    else if (event.key === 'Tab') trapFocus(event);
     else return;
     if (event.key !== 'Tab') event.preventDefault();
   });
@@ -186,7 +265,7 @@ export default function StoryViewer({
       className="story-viewer"
       role="dialog"
       aria-modal="true"
-      aria-label={highlight.title}
+      aria-label={heading}
       tabIndex={-1}
       style={
         drag ? { transform: `translateY(${drag}px)`, opacity: 1 - Math.min(drag / 400, 0.5) } : {}
@@ -210,13 +289,12 @@ export default function StoryViewer({
               const { currentTime, duration } = event.currentTarget;
               if (duration > 0) setProgress(Math.min(100, (currentTime / duration) * 100));
             }}
-            onEnded={next}
-            onError={() => setFailed(true)}
-            onPlaying={() => {
-              if (viewed.has(video.id)) return;
-              viewed.add(video.id);
-              void gateway.storyEvent({ videoId: video.id, type: 'view' });
+            onEnded={() => {
+              track(video.id, 'complete');
+              next();
             }}
+            onError={() => setFailed(true)}
+            onPlaying={() => track(video.id, 'play')}
           />
           {failed && (
             <p className="story-error" role="status">
@@ -245,7 +323,7 @@ export default function StoryViewer({
             })}
           </div>
           <div className="story-head">
-            <strong>{highlight.title}</strong>
+            <strong>{heading}</strong>
             <button type="button" className="story-control" onClick={() => setMuted(!muted)}>
               {muted ? 'Ativar som' : 'Desativar som'}
             </button>
@@ -270,29 +348,53 @@ export default function StoryViewer({
           {video.caption && <p>{video.caption}</p>}
           {video.products.length > 0 && (
             <ul className="story-products">
-              {video.products.slice(0, 3).map((product) => (
-                <li key={product.id} className="story-product">
-                  <ProductImage src={product.image} alt="" sizes="48px" />
-                  <span>
-                    <strong>{product.name}</strong>
-                    <small>{money(product.priceCents)}</small>
-                  </span>
-                  <Link
-                    href={'/produto/' + product.id}
-                    className={buttonClass('primary', 'small')}
-                    aria-label={`Ver peça ${product.name}`}
-                    onClick={() => {
-                      void gateway.storyEvent({ videoId: video.id, type: 'click' });
-                      onClose();
-                    }}
-                  >
-                    Ver peça
-                  </Link>
-                </li>
-              ))}
+              {video.products.slice(0, 3).map((product) => {
+                const full = sellable(product);
+                return (
+                  <li key={product.id} className="story-product">
+                    <ProductImage src={product.image} alt="" sizes="48px" />
+                    <span>
+                      <strong>{product.name}</strong>
+                      <small>{money(full?.priceCents ?? product.priceCents)}</small>
+                    </span>
+                    <span className="story-product-actions">
+                      {full && (
+                        <button
+                          type="button"
+                          className={buttonClass('primary', 'small')}
+                          aria-label={`Comprar ${product.name}`}
+                          onClick={(event) => openSheet(full, event.currentTarget)}
+                        >
+                          Comprar
+                        </button>
+                      )}
+                      <Link
+                        href={'/produto/' + product.id}
+                        className={buttonClass(full ? 'secondary' : 'primary', 'small')}
+                        aria-label={`Ver peça ${product.name}`}
+                        onClick={openProduct}
+                      >
+                        Ver peça
+                      </Link>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
+        {sheet && (
+          <StoryBuySheet
+            key={sheet.product.id}
+            product={sheet.product}
+            videoId={video.id}
+            added={sheet.added}
+            onAdd={() => track(video.id, 'add_to_cart')}
+            onViewBag={viewBag}
+            onOpenProduct={openProduct}
+            onClose={closeSheet}
+          />
+        )}
       </div>
     </div>,
     document.body,

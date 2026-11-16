@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { transaction, lock, type Transaction } from '@maos-em-oracao/database';
-import { defaultCrmSettings } from '@maos-em-oracao/contracts';
+import { defaultCrmSettings, DEFAULT_STORY_SETTINGS } from '@maos-em-oracao/contracts';
 import type { Operations, Permission, Address, Campaign } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
 import { settings } from './context';
@@ -189,6 +189,7 @@ export class AdminService {
       reviews,
       groupBuys,
       stories,
+      storySettings,
     ] = await Promise.all([
       can('catalog') || can('production') || can('marketing')
         ? this.ctx.db.product.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 })
@@ -276,6 +277,7 @@ export class AdminService {
           })
         : [],
       can('marketing') ? this.stories.forAdmin() : [],
+      can('marketing') ? this.stories.settings() : DEFAULT_STORY_SETTINGS,
     ]);
     const names = new Map(users.map((u) => [u.id, u.name]));
     return {
@@ -385,6 +387,7 @@ export class AdminService {
       reviews: reviews.map((r) => reviewDto(r, true)),
       groupBuys,
       stories,
+      storySettings,
       crm: can('marketing')
         ? await this.crm.snapshot()
         : {
@@ -766,6 +769,8 @@ export class AdminService {
         return this.stories.reorderVideos(a, c.highlightId, c.ids);
       case 'story.video.delete':
         return this.stories.removeVideo(a, c.id);
+      case 'story.settings':
+        return this.stories.saveSettings(a, { productPage: c.productPage });
       case 'crm.settings':
         return this.crm.saveSettings(a, c.settings);
       case 'crm.campaign.save':

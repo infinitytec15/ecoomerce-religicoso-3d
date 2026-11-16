@@ -1,22 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnchorHTMLAttributes } from 'react';
 import type {
-  StoryEvent,
+  StoryEventType,
   StoryHighlightPublic,
   StorySource,
   StoryVideoPublic,
 } from '@maos-em-oracao/contracts';
+import type { Product } from '@/lib/domain/types';
+import { seedCatalog } from '@/lib/demo/seed';
+import { money } from '@/lib/domain/format';
+import { useCartStore } from '@/lib/store/cart';
 import StoryViewer from './story-viewer';
 
 const h = vi.hoisted(() => ({
-  storyEvent: vi.fn<(event: StoryEvent) => Promise<void>>(async () => {}),
+  track: vi.fn<(videoId: string, type: StoryEventType) => void>(),
+  catalog: [] as Product[] | undefined,
   attachSource: vi.fn<
     (video: HTMLVideoElement, source: StorySource, signal?: AbortSignal) => Promise<() => void>
   >(async () => () => {}),
 }));
-vi.mock('@/lib/api/query', () => ({ useGateway: () => ({ storyEvent: h.storyEvent }) }));
+vi.mock('@/lib/api/query', () => ({ useCatalog: () => ({ data: h.catalog }) }));
+vi.mock('./events', () => ({ useStoryTracker: () => h.track }));
 vi.mock('@/lib/media/use-asset', () => ({ useAssetUrl: (s?: string) => s }));
 vi.mock('./player', () => ({ attachSource: h.attachSource }));
 vi.mock('next/link', () => ({
@@ -42,7 +48,8 @@ const highlightA: StoryHighlightPublic = {
   id: 'a',
   title: 'Bastidores',
   coverUrl: '/assets/stories/bastidores.webp',
-  placements: ['home'],
+  format: 'stories',
+  placements: ['home_top'],
   categories: ['Presentes'],
   videos: [
     video('a1', [
@@ -51,6 +58,8 @@ const highlightA: StoryHighlightPublic = {
     video('a2'),
   ],
 };
+const cruz = seedCatalog.find((p) => p.id === 'cruz-essencial')!;
+const kit = seedCatalog.find((p) => p.id === 'kit-oracao-familia')!;
 const highlightB: StoryHighlightPublic = {
   ...highlightA,
   id: 'b',
@@ -63,6 +72,10 @@ const videoEl = () => document.querySelector('video')!;
 describe('StoryViewer', () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    h.catalog = [cruz, kit];
+    h.track.mockClear();
+    useCartStore.setState({ items: [], isOpen: false });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -82,6 +95,27 @@ describe('StoryViewer', () => {
     );
     unmount();
     expect(document.body.style.overflow).toBe('');
+  });
+
+  it('continua aberto no que sobrou quando o vídeo atual sai do feed', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <StoryViewer highlights={highlights} start={1} onClose={onClose} />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Oficina' })).toBeInTheDocument();
+    rerender(<StoryViewer highlights={[highlightA]} start={1} onClose={onClose} />);
+    expect(screen.getByRole('dialog', { name: 'Bastidores' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('fecha quando não sobra nenhum vídeo no feed', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <StoryViewer highlights={highlights} start={0} onClose={onClose} />,
+    );
+    rerender(<StoryViewer highlights={[]} start={0} onClose={onClose} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('começa sem som e alterna o som', async () => {
@@ -180,14 +214,29 @@ describe('StoryViewer', () => {
     expect(screen.queryByText('Não foi possível carregar este vídeo.')).toBeNull();
   });
 
-  it('dois playing do mesmo vídeo geram uma única visualização', () => {
-    // A video id no other test plays, since views are deduped per page load.
-    const once = { ...highlightA, videos: [video('visto-uma-vez')] };
-    render(<StoryViewer highlights={[once]} start={0} onClose={vi.fn()} />);
+  it('playing registra play e ended registra complete do vídeo', () => {
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
     fireEvent.playing(videoEl());
-    fireEvent.playing(videoEl());
-    expect(h.storyEvent).toHaveBeenCalledTimes(1);
-    expect(h.storyEvent).toHaveBeenCalledWith({ videoId: 'visto-uma-vez', type: 'view' });
+    fireEvent.ended(videoEl());
+    expect(h.track.mock.calls).toEqual([
+      ['a1', 'play'],
+      ['a1', 'complete'],
+    ]);
+    expect(screen.getByText('Legenda a2')).toBeInTheDocument();
+  });
+
+  it('abre no vídeo pedido e usa o título informado', () => {
+    render(
+      <StoryViewer
+        highlights={highlights}
+        start={0}
+        startVideo={1}
+        title="Vídeos da peça"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Vídeos da peça' })).toBeInTheDocument();
+    expect(screen.getByText('Legenda a2')).toBeInTheDocument();
   });
 
   it('fechar antes dos 3 s cancela o avanço do erro', () => {
@@ -225,9 +274,138 @@ describe('StoryViewer', () => {
     const link = screen.getByRole('link', { name: /Ver peça/ });
     expect(link).toHaveAttribute('href', '/produto/cruz-essencial');
     expect(screen.getByText('Cruz Essencial')).toBeInTheDocument();
-    expect(screen.getByText(/R\$\s89,90/)).toBeInTheDocument();
+    // The catalog price wins over the one in the feed.
+    expect(screen.getByText(money(cruz.priceCents).replace(/\s/g, ' '))).toBeInTheDocument();
     await user.click(link);
-    expect(h.storyEvent).toHaveBeenCalledWith({ videoId: 'a1', type: 'click' });
+    expect(h.track).toHaveBeenCalledWith('a1', 'product_click');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('"Comprar" abre a compra no vídeo, pausado, e adiciona a peça com o vídeo', async () => {
+    const user = userEvent.setup(),
+      pause = vi.mocked(HTMLMediaElement.prototype.pause);
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar Cruz Essencial' }));
+    const sheet = screen.getByRole('dialog', { name: 'Comprar Cruz Essencial' });
+    expect(pause).toHaveBeenCalled();
+    expect(within(sheet).getByRole('button', { name: /^Marfim/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(within(sheet).getByRole('button', { name: /^Areia/ }));
+    await user.click(within(sheet).getByRole('button', { name: /^20 cm/ }));
+    await user.click(within(sheet).getByRole('button', { name: 'Adicionar à sacola' }));
+    expect(useCartStore.getState().items).toEqual([
+      expect.objectContaining({
+        productId: 'cruz-essencial',
+        color: 'Areia',
+        sizeIndex: 1,
+        quantity: 1,
+        videoId: 'a1',
+      }),
+    ]);
+    expect(h.track).toHaveBeenCalledWith('a1', 'add_to_cart');
+    expect(within(sheet).getByRole('heading', { name: 'Adicionado à sacola' })).toBeInTheDocument();
+  });
+
+  it('"Continuar assistindo" fecha a compra e volta a tocar', async () => {
+    const user = userEvent.setup(),
+      play = vi.mocked(HTMLMediaElement.prototype.play);
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar Cruz Essencial' }));
+    await user.click(screen.getByRole('button', { name: 'Adicionar à sacola' }));
+    play.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Continuar assistindo' }));
+    expect(screen.queryByRole('dialog', { name: 'Comprar Cruz Essencial' })).toBeNull();
+    expect(play).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Comprar Cruz Essencial' })).toHaveFocus();
+  });
+
+  it('"Ver sacola" fecha o player e abre a sacola', async () => {
+    const user = userEvent.setup(),
+      onClose = vi.fn();
+    render(<StoryViewer highlights={highlights} start={0} onClose={onClose} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar Cruz Essencial' }));
+    await user.click(screen.getByRole('button', { name: 'Adicionar à sacola' }));
+    await user.click(screen.getByRole('button', { name: 'Ver sacola' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useCartStore.getState().isOpen).toBe(true);
+  });
+
+  it('um kit vai direto para a sacola com o vídeo', async () => {
+    const user = userEvent.setup();
+    const withKit: StoryHighlightPublic = {
+      ...highlightA,
+      videos: [
+        video('k1', [{ id: kit.id, name: kit.name, priceCents: kit.priceCents, image: '/k.webp' }]),
+      ],
+    };
+    render(<StoryViewer highlights={[withKit]} start={0} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar ' + kit.name }));
+    expect(useCartStore.getState().items).toEqual([
+      expect.objectContaining({ productId: kit.id, videoId: 'k1', kit: expect.anything() }),
+    ]);
+    expect(h.track).toHaveBeenCalledWith('k1', 'add_to_cart');
+    expect(screen.getByRole('heading', { name: 'Adicionado à sacola' })).toBeInTheDocument();
+  });
+
+  it('um kit que não entra na sacola abre a compra, que mostra o erro', async () => {
+    const user = userEvent.setup();
+    const add = useCartStore.getState().add;
+    useCartStore.setState({
+      add: () => {
+        throw new Error('sem espaço');
+      },
+    });
+    const withKit: StoryHighlightPublic = {
+      ...highlightA,
+      videos: [
+        video('k1', [{ id: kit.id, name: kit.name, priceCents: kit.priceCents, image: '/k.webp' }]),
+      ],
+    };
+    try {
+      render(<StoryViewer highlights={[withKit]} start={0} onClose={vi.fn()} />);
+      await user.click(screen.getByRole('button', { name: 'Comprar ' + kit.name }));
+      expect(screen.queryByRole('heading', { name: 'Adicionado à sacola' })).toBeNull();
+      expect(h.track).not.toHaveBeenCalledWith('k1', 'add_to_cart');
+      await user.click(screen.getByRole('button', { name: /Adicionar à sacola/ }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Não foi possível adicionar esta peça.',
+      );
+    } finally {
+      useCartStore.setState({ add });
+    }
+  });
+
+  it('peça fora do catálogo fica só com "Ver peça"', () => {
+    h.catalog = undefined;
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Comprar/ })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Ver peça Cruz Essencial' })).toBeInTheDocument();
+  });
+
+  it('Escape fecha primeiro a compra, depois o player; setas não navegam com a compra aberta', async () => {
+    const user = userEvent.setup(),
+      onClose = vi.fn();
+    render(<StoryViewer highlights={highlights} start={0} onClose={onClose} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar Cruz Essencial' }));
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByText('Legenda a1')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Comprar Cruz Essencial' })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Tab fica preso dentro da compra aberta', async () => {
+    const user = userEvent.setup();
+    render(<StoryViewer highlights={highlights} start={0} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Comprar Cruz Essencial' }));
+    const sheet = screen.getByRole('dialog', { name: 'Comprar Cruz Essencial' });
+    for (let i = 0; i < 12; i++) {
+      await user.tab();
+      expect(sheet).toContainElement(document.activeElement as HTMLElement);
+    }
   });
 });

@@ -110,8 +110,9 @@ export class OrdersService {
     this.groupBuys = new GroupBuysService(ctx);
     this.crm = new CrmService(ctx);
   }
-  async cart(tx: Transaction | Context['db'], items: OrderItemInput[]) {
+  async cart(tx: Transaction | Context['db'], items: (OrderItemInput & { videoId?: string })[]) {
     const result: CartItem[] = [];
+    const videos = await this.storyVideos(tx, items);
     for (const item of items) {
       const product = requireValue(
         await tx.product.findFirst({
@@ -185,9 +186,29 @@ export class OrdersService {
         quantity: item.quantity,
         dedication: item.dedication,
         ...(kit ? { kit } : {}),
+        ...(item.videoId && videos.has(item.videoId) ? { videoId: item.videoId } : {}),
       });
     }
     return result;
+  }
+  /**
+   * Story videos the cart lines were bought from that still exist, read once for the whole cart.
+   * Attribution only: an invalid or deleted video id is dropped and never fails the order.
+   */
+  private async storyVideos(
+    tx: Transaction | Context['db'],
+    items: { videoId?: string }[],
+  ): Promise<Set<string>> {
+    const ids = [
+      ...new Set(
+        items.flatMap((i) =>
+          i.videoId && z.uuid().safeParse(i.videoId).success ? [i.videoId] : [],
+        ),
+      ),
+    ];
+    if (!ids.length) return new Set();
+    const rows = await tx.storyVideo.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    return new Set(rows.map((r) => r.id));
   }
   async fingerprint(
     items: { productId: string; quantity: number; sizeIndex?: number }[],
@@ -548,6 +569,7 @@ export class OrdersService {
               unitCents: i.unitCents,
               costCents: (unitCost.get(i.productId + '/' + i.sizeIndex) || 0) * i.quantity,
               data: json(i),
+              storyVideoId: i.videoId ?? null,
             })),
           },
           payment: {

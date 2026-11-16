@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { productPageFeed } from '@maos-em-oracao/contracts';
 import { ProductDetail } from '@/features/catalog/product-detail';
 import {
   getServerProduct,
@@ -28,7 +29,7 @@ export async function generateMetadata({
 }
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params,
-    [p, products, stories] = await Promise.all([
+    [p, products, feed] = await Promise.all([
       getServerProduct(id),
       getServerCatalog(),
       getServerStories(),
@@ -43,7 +44,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           __html: jsonLdScript(productJsonLd(p, reviews?.reviews)),
         }}
       />
-      <ProductDetail initialProduct={p} initialCatalog={products} stories={stories} />
+      <ProductDetail
+        initialProduct={p}
+        initialCatalog={products}
+        feed={productPageFeed(feed, p.id)}
+      />
     </>
   );
 }

@@ -6,14 +6,18 @@ import StoryViewer from './story-viewer';
 
 // The real attachSource: StrictMode runs the source effect twice, and the first run's late
 // cleanup must not remove the source the second run attached.
-vi.mock('@/lib/api/query', () => ({ useGateway: () => ({ storyEvent: vi.fn(async () => {}) }) }));
+vi.mock('@/lib/api/query', () => ({
+  useGateway: () => ({ storyEvents: vi.fn(async () => {}) }),
+  useCatalog: () => ({ data: [] }),
+}));
 vi.mock('@/lib/media/use-asset', () => ({ useAssetUrl: (s?: string) => s }));
 
 const highlight: StoryHighlightPublic = {
   id: 'destaque-demo',
   title: 'Bastidores',
   coverUrl: '/assets/stories/bastidores.webp',
-  placements: ['home'],
+  format: 'stories',
+  placements: ['home_top'],
   categories: ['Presentes'],
   videos: [
     {

@@ -22,7 +22,7 @@ export function createLazyDemoGateway(): CommerceGateway {
     groupBuys: async (...args) => (await load()).groupBuys(...args),
     groupBuy: async (...args) => (await load()).groupBuy(...args),
     stories: async (...args) => (await load()).stories(...args),
-    storyEvent: async (...args) => (await load()).storyEvent(...args),
+    storyEvents: async (...args) => (await load()).storyEvents(...args),
     settings: async (...args) => (await load()).settings(...args),
     session: async (...args) => (await load()).session(...args),
     login: async (...args) => (await load()).login(...args),

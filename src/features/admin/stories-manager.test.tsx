@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AdminStoryHighlight } from '@maos-em-oracao/contracts';
-import { StoriesManager } from './stories-manager';
+import { StoriesManager, storefrontStatus } from './stories-manager';
+import { money } from '@/lib/domain/format';
+
+/** Currency text as the DOM matcher sees it (the non-breaking space normalized). */
+const brl = (cents: number) => money(cents).replace(/\s/g, ' ');
 import { uploadMedia } from '@/lib/media/upload';
 
 const { run } = vi.hoisted(() => ({ run: vi.fn().mockResolvedValue(undefined) }));
@@ -33,7 +37,8 @@ const first: AdminStoryHighlight = {
   coverUrl: '/assets/capa-1.webp',
   active: true,
   position: 0,
-  placements: ['home', 'product'],
+  format: 'stories',
+  placements: ['home_top', 'home_middle'],
   categories: [],
   videos: [
     {
@@ -46,6 +51,11 @@ const first: AdminStoryHighlight = {
       status: 'processing',
       views: 0,
       clicks: 0,
+      impressions: 0,
+      completes: 0,
+      carts: 0,
+      orders: 0,
+      revenueCents: 0,
     },
     {
       id: 'v2',
@@ -55,8 +65,13 @@ const first: AdminStoryHighlight = {
       active: true,
       position: 1,
       status: 'ready',
+      impressions: 40,
       views: 8,
+      completes: 5,
       clicks: 1,
+      carts: 1,
+      orders: 1,
+      revenueCents: 12990,
     },
   ],
 };
@@ -66,6 +81,7 @@ const second: AdminStoryHighlight = {
   coverAssetId: 'c2',
   active: false,
   position: 1,
+  format: 'carousel',
   placements: ['category'],
   categories: ['Presentes'],
   videos: [],
@@ -79,11 +95,94 @@ describe('stories manager', () => {
 
   it('lists highlights by position with places and video counts', () => {
     render(<StoriesManager />);
-    expect(screen.getByText('Página inicial, Página do produto')).toBeInTheDocument();
+    expect(screen.getByText('Início · topo, Início · meio')).toBeInTheDocument();
+    expect(screen.getByText('Stories (bolinhas)')).toBeInTheDocument();
+    expect(screen.getByText('Carrossel de vídeos')).toBeInTheDocument();
     expect(screen.getByText('2 · 1 processando')).toBeInTheDocument();
     expect(screen.getByText('Categoria (Presentes)')).toBeInTheDocument();
     const rows = screen.getAllByRole('row');
     expect(within(rows[1]).getByText('Bastidores')).toBeInTheDocument();
+  });
+
+  it('says whether each highlight is really on the store and why not', () => {
+    const noVideo: AdminStoryHighlight = { ...second, id: 'h3', title: 'Vazio', active: true },
+      waiting: AdminStoryHighlight = {
+        ...first,
+        id: 'h4',
+        title: 'Aguardando',
+        position: 3,
+        videos: [first.videos[0]],
+      },
+      broken: AdminStoryHighlight = {
+        ...first,
+        id: 'h5',
+        title: 'Quebrado',
+        position: 4,
+        videos: [{ ...first.videos[1], status: 'failed' }],
+      },
+      hidden: AdminStoryHighlight = {
+        ...first,
+        id: 'h6',
+        title: 'Escondido',
+        position: 5,
+        videos: [{ ...first.videos[1], active: false }],
+      };
+    adminData.value = { stories: [first, second, noVideo, waiting, broken, hidden], products };
+    render(<StoriesManager />);
+    const status = (title: string) =>
+      within(screen.getByRole('row', { name: new RegExp('^\\s*' + title) })).getByText(
+        /Na loja|Inativo|Sem vídeo|Vídeo processando|Vídeo falhou/,
+      ).textContent;
+    expect(status('Bastidores')).toBe('Na loja');
+    expect(status('Presentes')).toBe('Inativo');
+    expect(status('Vazio')).toBe('Sem vídeo');
+    expect(status('Aguardando')).toBe('Vídeo processando');
+    expect(status('Quebrado')).toBe('Vídeo falhou');
+    expect(status('Escondido')).toBe('Sem vídeo');
+  });
+
+  it('opens the videos of a highlight right after creating it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(uploadMedia).mockResolvedValueOnce({
+      id: 'c9',
+      name: 'capa.png',
+      kind: 'image',
+      mime: 'image/png',
+      size: 10,
+      storage: 'bunny-storage',
+      status: 'ready',
+      created: '2026-11-16T00:00:00.000Z',
+      url: '/assets/capa-9.webp',
+    });
+    const created: AdminStoryHighlight = {
+      ...second,
+      id: 'h9',
+      title: 'Novidades',
+      active: true,
+      position: 2,
+      placements: ['home_top'],
+      categories: [],
+    };
+    run.mockImplementationOnce(async () => {
+      adminData.value = { stories: [second, first, created], products };
+    });
+    const view = render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Novo destaque' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Título/), 'Novidades');
+    await user.upload(
+      within(dialog).getByLabelText('Capa'),
+      new File(['x'], 'capa.png', { type: 'image/png' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar destaque' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    view.rerender(<StoriesManager />);
+    const videos = await screen.findByRole('dialog', { name: 'Vídeos' });
+    expect(
+      within(videos).getByText(
+        'Envie ao menos um vídeo: sem vídeo pronto, o destaque não aparece na loja.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('reorders with the full list of ids', async () => {
@@ -120,7 +219,8 @@ describe('stories manager', () => {
       title: 'Bastidores',
       coverAssetId: 'c1',
       active: true,
-      placements: ['home', 'product'],
+      format: 'stories',
+      placements: ['home_top', 'home_middle'],
       categories: [],
     });
   });
@@ -142,7 +242,7 @@ describe('stories manager', () => {
     expect(within(dialog).getByText('12,5%')).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Vídeos novos ficam alguns minutos em processamento no Bunny e só aparecem na loja quando ficam prontos. Mudanças podem levar até 1 minuto para aparecer na loja.',
+        'Vídeos novos ficam alguns minutos em processamento no Bunny e só aparecem na loja quando ficam prontos.',
       ),
     ).toBeInTheDocument();
   });
@@ -221,6 +321,148 @@ describe('stories manager', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Subir Presentes' })).toBeEnabled(),
     );
+  });
+
+  it('says a highlight without places only shows on the product page', () => {
+    const productOnly: AdminStoryHighlight = { ...first, placements: [] };
+    expect(storefrontStatus(productOnly)).toBe('Só na página do produto');
+    expect(storefrontStatus({ ...productOnly, active: false })).toBe('Inativo');
+    expect(storefrontStatus({ ...productOnly, videos: [first.videos[0]] })).toBe(
+      'Vídeo processando',
+    );
+    adminData.value = { stories: [productOnly], products };
+    render(<StoriesManager />);
+    const row = screen.getByRole('row', { name: /^\s*Bastidores/ });
+    expect(within(row).getAllByText('Só na página do produto')).toHaveLength(2);
+  });
+
+  it('saves the format and no place, with a hint about the product page', async () => {
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Editar Bastidores' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Stories (bolinhas)')).toBeChecked();
+    await user.click(within(dialog).getByLabelText('Carrossel de vídeos'));
+    const hint = 'Sem lugar na loja: os vídeos ainda aparecem na página das peças marcadas.';
+    expect(within(dialog).queryByText(hint)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText('Início · topo'));
+    await user.click(within(dialog).getByLabelText('Início · meio'));
+    expect(within(dialog).getByText(hint)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar destaque' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toMatchObject({
+      type: 'story.save',
+      id: 'h1',
+      format: 'carousel',
+      placements: [],
+      categories: [],
+    });
+  });
+
+  it('sends the places in the store order with the new home slots', async () => {
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Editar Bastidores' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('Início · final'));
+    await user.click(within(dialog).getByLabelText('Início · abaixo do banner'));
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar destaque' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toMatchObject({
+      placements: ['home_top', 'home_below_banner', 'home_middle', 'home_bottom'],
+    });
+  });
+
+  it('starts a new highlight as stories on top of the home', async () => {
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    await user.click(screen.getByRole('button', { name: 'Novo destaque' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Stories (bolinhas)')).toBeChecked();
+    expect(within(dialog).getByLabelText('Início · topo')).toBeChecked();
+    expect(within(dialog).getByLabelText('Categoria')).not.toBeChecked();
+  });
+
+  it('saves the product page bubble setting', async () => {
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    const card = screen.getByRole('region', { name: 'Página do produto' });
+    const toggle = within(card).getByRole('switch', {
+      name: 'Mostrar bolinha de vídeo na página do produto',
+    });
+    expect(toggle).toBeChecked();
+    expect(within(card).getByLabelText('Direita')).toBeChecked();
+    await user.click(within(card).getByLabelText('Esquerda'));
+    await user.click(within(card).getByRole('button', { name: 'Salvar página do produto' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toEqual({
+      type: 'story.settings',
+      productPage: { enabled: true, position: 'left' },
+    });
+  });
+
+  it('reads the stored product page setting and can turn it off', async () => {
+    const user = userEvent.setup();
+    adminData.value = {
+      stories: [second, first],
+      products,
+      storySettings: { productPage: { enabled: true, position: 'left' } },
+    };
+    render(<StoriesManager />);
+    const card = screen.getByRole('region', { name: 'Página do produto' });
+    expect(within(card).getByLabelText('Esquerda')).toBeChecked();
+    await user.click(within(card).getByRole('switch'));
+    expect(within(card).getByLabelText('Direita')).toBeDisabled();
+    await user.click(within(card).getByRole('button', { name: 'Salvar página do produto' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0][0]).toEqual({
+      type: 'story.settings',
+      productPage: { enabled: false, position: 'left' },
+    });
+  });
+
+  it('shows the video commerce funnel for all videos and for each video', async () => {
+    const user = userEvent.setup();
+    render(<StoriesManager />);
+    const metric = (label: string) =>
+      screen
+        .getAllByText(label)
+        .find((el) => el.closest('.admin-stat'))!
+        .closest('.admin-stat')!;
+    expect(within(metric('Impressões') as HTMLElement).getByText('40')).toBeInTheDocument();
+    expect(within(metric('Visualizações') as HTMLElement).getByText('8')).toBeInTheDocument();
+    expect(
+      within(metric('Assistidos até o fim') as HTMLElement).getByText('5'),
+    ).toBeInTheDocument();
+    expect(within(metric('Taxa de clique') as HTMLElement).getByText('12,5%')).toBeInTheDocument();
+    expect(within(metric('Sacola') as HTMLElement).getByText('1')).toBeInTheDocument();
+    expect(within(metric('Receita') as HTMLElement).getByText(brl(12990))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Vídeos de Bastidores' }));
+    const dialog = await screen.findByRole('dialog');
+    const line = within(dialog).getByText('Embalando').closest('li')!;
+    for (const label of [
+      'Impressões',
+      'Visualizações',
+      'Assistidos até o fim',
+      'Cliques em produto',
+      'Sacola',
+      'Pedidos',
+      'Receita',
+      'Taxa de clique',
+    ])
+      expect(within(line).getByText(label, { exact: false })).toBeInTheDocument();
+    expect(within(line).getByText(brl(12990))).toBeInTheDocument();
+  });
+
+  it('reads 0 for counters missing from an older snapshot', () => {
+    const { impressions, completes, carts, orders, revenueCents, ...old } = first.videos[1];
+    void [impressions, completes, carts, orders, revenueCents];
+    adminData.value = {
+      stories: [{ ...first, videos: [old] }],
+      products,
+    };
+    render(<StoriesManager />);
+    expect(screen.getByText(brl(0))).toBeInTheDocument();
   });
 
   describe('video adder', () => {

@@ -245,36 +245,81 @@ describe('HTTP reviews', () => {
 });
 
 describe('HTTP stories', () => {
-  const highlight = {
-    id: 'h1',
-    title: 'Bastidores',
-    coverUrl: 'https://cdn.test/c.webp',
-    placements: ['home'],
-    categories: [],
-    videos: [{ id: 'v1', caption: '', source: { type: 'file', src: '/a.mp4' }, products: [] }],
+  const video = { id: 'v1', caption: '', source: { type: 'file', src: '/a.mp4' }, products: [] };
+  const feed = {
+    collections: [
+      {
+        id: 'h1',
+        title: 'Bastidores',
+        coverUrl: 'https://cdn.test/c.webp',
+        format: 'stories',
+        placements: ['home_top'],
+        categories: [],
+        videos: [video],
+      },
+    ],
+    productPage: { enabled: true, position: 'right', videos: [video], byProduct: { p1: ['v1'] } },
   };
-  it('lists highlights from the stories endpoint', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ data: [highlight] }));
+  it('reads the stories feed', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ data: feed }));
     const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
-    expect(await g.stories()).toEqual([highlight]);
+    expect(await g.stories()).toEqual(feed);
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/stories');
   });
-  it('sends events with keepalive and resolves on 204', async () => {
+  it('rejects a payload that is not a feed', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ data: [] }));
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    await expect(g.stories()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  it('posts a batch of events with keepalive and resolves on 204', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
-    await expect(g.storyEvent({ videoId: 'v1', type: 'view' })).resolves.toBeUndefined();
+    const events = [
+      { videoId: 'v1', type: 'play' },
+      { videoId: 'v1', type: 'add_to_cart' },
+    ] as const;
+    await expect(g.storyEvents([...events])).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/stories/events');
     expect(fetcher.mock.calls[0][1]).toMatchObject({ method: 'POST', keepalive: true });
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
-      videoId: 'v1',
-      type: 'view',
-    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ events });
   });
-  it('ignores a malformed event without calling the API', async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it('splits more than 50 events into batches of 50', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
-    await expect(g.storyEvent({ videoId: '', type: 'like' } as never)).resolves.toBeUndefined();
+    await g.storyEvents(
+      Array.from({ length: 120 }, (_, i) => ({ videoId: 'v' + i, type: 'impression' as const })),
+    );
+    const sizes = fetcher.mock.calls.map(
+      (call) => JSON.parse(String(call[1]?.body)).events.length as number,
+    );
+    expect(sizes).toEqual([50, 50, 20]);
+  });
+  it('starts every batch at once, so leaving the page does not drop the later ones', async () => {
+    const fetcher = vi.fn<typeof fetch>(() => new Promise<Response>(() => {}));
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    void g.storyEvents(
+      Array.from({ length: 120 }, (_, i) => ({ videoId: 'v' + i, type: 'impression' as const })),
+    );
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+  });
+  it('drops malformed events and skips the call when none is left', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
+    await expect(
+      g.storyEvents([
+        { videoId: '', type: 'like' } as never,
+        { videoId: 'v1', type: 'view' } as never,
+      ]),
+    ).resolves.toBeUndefined();
     expect(fetcher).not.toHaveBeenCalled();
+    await g.storyEvents([
+      { videoId: 'v1', type: 'like' } as never,
+      { videoId: 'v2', type: 'play' },
+    ]);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      events: [{ videoId: 'v2', type: 'play' }],
+    });
   });
   it('never rejects on a rate limit, a server error or a network failure', async () => {
     for (const fetcher of [
@@ -285,7 +330,9 @@ describe('HTTP stories', () => {
       vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')),
     ]) {
       const g = new HttpGateway(new HttpClient('/api/v1', fetcher));
-      await expect(g.storyEvent({ videoId: 'v1', type: 'click' })).resolves.toBeUndefined();
+      await expect(
+        g.storyEvents([{ videoId: 'v1', type: 'product_click' }]),
+      ).resolves.toBeUndefined();
       expect(fetcher).toHaveBeenCalledTimes(1);
     }
   });

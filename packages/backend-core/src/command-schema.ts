@@ -11,6 +11,7 @@ import {
   groupBuyInputSchema,
   storyHighlightInputSchema,
   storyVideoInputSchema,
+  storySettingsSchema,
   STORY_LIMITS,
   crmSettingsSchema,
   marketingCampaignInputSchema,
@@ -183,6 +184,7 @@ export const commandSchema = z.discriminatedUnion('type', [
     ids: z.array(z.string().uuid()).max(STORY_LIMITS.videosPerHighlight),
   }),
   z.object({ type: z.literal('story.video.delete'), id: z.string().uuid() }),
+  z.object({ type: z.literal('story.settings'), ...storySettingsSchema.shape }),
   z.object({ type: z.literal('crm.settings'), settings: crmSettingsSchema }),
   // The campaign input (with its refinements) is parsed again by CrmService.saveCampaign.
   z.object({ type: z.literal('crm.campaign.save'), campaign: marketingCampaignInputSchema }),
