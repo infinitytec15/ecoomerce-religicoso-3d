@@ -23,7 +23,7 @@ import {
   type StoryVideoPublic,
 } from '@maos-em-oracao/contracts';
 import type { Context } from './context';
-import { rateLimit } from './context';
+import { rateLimit, settings } from './context';
 import { CatalogService } from './catalog';
 import { type Actor, permit, requireValue, DomainError, data, json, audit } from './shared';
 
@@ -481,16 +481,18 @@ export class StoriesService {
     const videos = new Map<string, PublicVideo>(),
       covers = new Map<string, string>();
     if (!rows.length) return { videos, covers };
-    const [assetRows, products] = await Promise.all([
+    const [assetRows, products, onDemand] = await Promise.all([
       this.ctx.db.mediaAsset.findMany({ where: { id: { in: assetIds(rows) }, state: 'ready' } }),
       this.catalog.visible([
         ...new Set(rows.flatMap((h) => h.videos.flatMap((v) => v.productIds))),
       ]),
+      // Same rule as checkout: made to order sells at stock 0; only the 'stock' policy needs it.
+      settings(this.ctx.db).then((s) => s.workspace.inventoryPolicy !== 'stock'),
     ]);
     const assets = new Map(assetRows.map((asset) => [asset.id, asset])),
       card = (id: string): StoryProduct[] => {
         const p = products.get(id);
-        return p && p.stock > 0
+        return p && (onDemand || p.stock > 0)
           ? [{ id: p.id, name: p.name, priceCents: p.priceCents, image: p.image ?? '' }]
           : [];
       };

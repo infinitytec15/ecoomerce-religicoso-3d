@@ -93,11 +93,28 @@ describe('demo stories feed', () => {
     ]);
   });
 
-  it('only sells products that are active, not archived and in stock', () => {
+  it('made to order sells at stock 0, as checkout does', () => {
+    const seed = createSeed(),
+      state = {
+        ...seed,
+        workspace: { ...seed.workspace, inventoryPolicy: 'on-demand' as const },
+        products: seed.products.map((p) => ({ ...p, stock: 0 })),
+      },
+      feed = publicStoriesFeed(state);
+    expect(feed.collections.flatMap((c) => c.videos.map((v) => v.id)).sort()).toEqual([
+      'video-demo-1',
+      'video-demo-2',
+      'video-demo-3',
+      'video-demo-4',
+    ]);
+  });
+
+  it('under the stock policy only sells products that are active, not archived and in stock', () => {
     const seed = createSeed(),
       [first, second] = seed.products,
       state = {
         ...seed,
+        workspace: { ...seed.workspace, inventoryPolicy: 'stock' as const },
         products: seed.products.map((p) =>
           p.id === first.id
             ? { ...p, stock: 0 }

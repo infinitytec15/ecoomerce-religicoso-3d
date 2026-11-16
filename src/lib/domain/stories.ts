@@ -49,10 +49,18 @@ const byPosition = <T extends { position: number }>(list: T[]) =>
 
 type StoryProducts = Pick<InventoryProduct, 'id' | 'name' | 'priceCents' | 'image'>;
 
-/** Products a video can sell: active, not archived and in stock. */
-function sellableProducts(products: InventoryProduct[]): Map<string, StoryProducts> {
+/**
+ * Products a video can sell: active, not archived and, under the 'stock' policy, in stock (made
+ * to order sells at stock 0, as checkout does).
+ */
+function sellableProducts(
+  products: InventoryProduct[],
+  policy: 'on-demand' | 'stock' = 'on-demand',
+): Map<string, StoryProducts> {
   return new Map(
-    products.filter((p) => p.active && !p.archived && p.stock > 0).map((p) => [p.id, p]),
+    products
+      .filter((p) => p.active && !p.archived && (policy !== 'stock' || p.stock > 0))
+      .map((p) => [p.id, p]),
   );
 }
 
@@ -152,9 +160,10 @@ function productPageFeed(
  * highlight (active or not), newest first, indexed by product.
  */
 export function publicStoriesFeed(
-  state: Pick<Operations, 'stories' | 'products' | 'storySettings'>,
+  state: Pick<Operations, 'stories' | 'products' | 'storySettings'> &
+    Partial<Pick<Operations, 'workspace'>>,
 ): StoriesFeed {
-  const sellable = sellableProducts(state.products),
+  const sellable = sellableProducts(state.products, state.workspace?.inventoryPolicy),
     settings = state.storySettings ?? DEFAULT_STORY_SETTINGS;
   return {
     collections: byPosition(state.stories).flatMap((h) => publicCollection(h, sellable)),

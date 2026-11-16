@@ -160,6 +160,15 @@ async function register(client, label) {
   assert.equal(r.status, 200, r.body?.error?.code);
   return { email, password, user: r.body.data };
 }
+/** Sets the workspace inventory policy; returns a function that puts the previous one back. */
+async function inventoryPolicy(policy) {
+  const row = await ctx.db.appSetting.findUniqueOrThrow({ where: { key: 'workspace' } });
+  await ctx.db.appSetting.update({
+    where: { key: 'workspace' },
+    data: { data: { ...row.data, inventoryPolicy: policy } },
+  });
+  return () => ctx.db.appSetting.update({ where: { key: 'workspace' }, data: { data: row.data } });
+}
 /** A signed-in team member whose only permission is marketing (invited and accepted by the owner). */
 async function marketingMember(owner, label) {
   const email = label + '-' + runId + '@example.test',
@@ -3092,12 +3101,17 @@ try {
       assert.deepEqual(await stories(), []);
       assert.equal((await admin())[0].videos[0].status, 'processing');
       await ctx.db.mediaAsset.update({ where: { id: videoId }, data: { state: 'ready' } });
-      // 7. A video sells: without stock or with only archived products it leaves the store, and a
-      // collection left without videos leaves with it.
+      // 7. A video sells. Made to order sells at stock 0 (as checkout does); under the 'stock'
+      // policy a product without stock leaves the store, and a collection left without videos
+      // leaves with it. Archived products always leave.
       await ctx.db.product.update({ where: { id: p1.id }, data: { stock: 0 } });
+      const restorePolicy = await inventoryPolicy('on-demand');
+      assert.equal((await stories()).length, 1);
+      await inventoryPolicy('stock');
       assert.deepEqual(await stories(), []);
       await ctx.db.product.update({ where: { id: p1.id }, data: { stock: 5 } });
       assert.equal((await stories()).length, 1);
+      await restorePolicy();
       await owner.command({ type: 'product.archive', id: p1.id });
       assert.deepEqual(await stories(), []);
       // The archived product stays linked; only the sellable one is shown.
@@ -3363,7 +3377,9 @@ try {
         v3 = await clip(off, [pb.id]),
         v4 = await clip(carousel, [pc.id]),
         mine = new Set([v1, v2, v3, v4]);
+      const restorePolicy = await inventoryPolicy('stock');
       let pub = await feed();
+      await restorePolicy();
       assert.equal(storiesFeedSchema.safeParse(pub).success, true);
       const shown = pub.collections.find((h) => h.id === carousel);
       assert.equal(shown.format, 'carousel');
