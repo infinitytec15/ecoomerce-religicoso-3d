@@ -12,6 +12,7 @@ import { centsFromInput } from '@/lib/domain/format';
 import { IS_DEMO } from '@/lib/api/config';
 import type { WorkspaceSettings } from '@/lib/domain/types';
 import { defaultReviewSettings } from '@maos-em-oracao/contracts';
+import { McpKeysPanel } from './mcp-keys';
 // The URL only changes by navigation, which remounts this page.
 const noSubscription = () => () => {};
 const groups = [
@@ -22,7 +23,10 @@ const groups = [
   'Mídia e arquivos',
   'Comunidade e oração',
   'Notificações',
+  'Integrações com IA',
 ];
+/** Has its own forms, so it renders beside the settings form instead of inside it. */
+const AI_TAB = groups.length - 1;
 export function WorkspaceSettingsPanel() {
   const data = useAdminData(),
     action = useAdminAction(),
@@ -61,7 +65,12 @@ export function WorkspaceSettingsPanel() {
             </button>
           ))}
         </nav>
-        <section className="admin-panel">
+        {tab === AI_TAB && (
+          <section className="admin-panel">
+            <McpKeysPanel />
+          </section>
+        )}
+        <section className="admin-panel" hidden={tab === AI_TAB}>
           <Form
             onInvalid={(event) => {
               const target = event.target as HTMLElement,

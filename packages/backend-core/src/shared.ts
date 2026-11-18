@@ -22,6 +22,8 @@ export type Actor = Session & {
   customerId?: string;
   guestOrderId?: string;
   owner: boolean;
+  /** Set when the request authenticated with an MCP API key instead of a session. */
+  apiKeyId?: string;
 };
 export const permissions: Permission[] = [
   'orders',

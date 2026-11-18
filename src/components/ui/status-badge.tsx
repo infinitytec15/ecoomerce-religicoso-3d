@@ -30,6 +30,8 @@ const danger = [
   'Manutenção',
   'Descadastrado',
   'Vídeo falhou',
+  'Revogada',
+  'Expirada',
 ];
 export function StatusBadge({ status }: { status: string }) {
   const tone = success.includes(status)

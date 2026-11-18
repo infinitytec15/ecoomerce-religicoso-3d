@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { CLIENT_IP_HEADER, trustedForwardedIp } from '@maos-em-oracao/contracts';
+import { expireCatalog } from '@/lib/api/catalog-cache';
 /**
  * Admin mutations change what the storefront renders (products, settings, stories, group buys);
  * the server pages cache those reads under the `catalog` tag. Customer orders are left out on
@@ -8,17 +8,9 @@ import { CLIENT_IP_HEADER, trustedForwardedIp } from '@maos-em-oracao/contracts'
  * send every page view to the API. Stock and group-buy counts they move refresh within 60 s,
  * and checkout re-checks stock anyway.
  */
-const catalogWrites = /^admin\//;
-/** The change already happened upstream: a cache failure must not turn it into an error. */
-function expireCatalog() {
-  try {
-    revalidateTag('catalog', { expire: 0 });
-  } catch (error) {
-    console.warn('Cache da vitrine não foi renovado:', (error as Error | null)?.message);
-  }
-}
+const catalogWrites = /^admin\/(?!api-keys)/;
 const routes =
-  /^(checkout\/estimate|catalog\/products(?:\/[a-zA-Z0-9_-]+(?:\/reviews)?)?|reviews(?:\/opt-out|\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content))?)?|group-buys(?:\/[a-zA-Z0-9_-]+)?|stories(?:\/events)?|store\/settings|auth\/(session|login|register|logout|recover|verify|reset|email-change|guest-order)|account(?:\/(?:profile|marketing))?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/(unsubscribe|confirm))?|marketing\/(?:unsubscribe|one-click)|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|crm\/(?:preview|contacts(?:\/import)?)|overview|integrations|jobs|webhooks|reports\/[a-zA-Z0-9_-]+|exports(?:\/[a-zA-Z0-9_-]+(?:\/download)?)?|resources\/[a-zA-Z0-9_-]+|orders\/[a-zA-Z0-9_-]+\/(fiscal|shipment)|integrations\/melhor-envio\/authorize|media\/[a-zA-Z0-9_-]+\/(status|original)|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content|renew))?))$/;
+  /^(checkout\/estimate|catalog\/products(?:\/[a-zA-Z0-9_-]+(?:\/reviews)?)?|reviews(?:\/opt-out|\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content))?)?|group-buys(?:\/[a-zA-Z0-9_-]+)?|stories(?:\/events)?|store\/settings|auth\/(session|login|register|logout|recover|verify|reset|email-change|guest-order)|account(?:\/(?:profile|marketing))?|orders(?:\/[a-zA-Z0-9_-]+\/payment)?|subscriptions(?:\/[a-zA-Z0-9_-]+)?|shipping\/quotes|support\/tickets(?:\/[a-zA-Z0-9_-]+\/messages)?|community\/prayers(?:\/[a-zA-Z0-9_-]+(?:\/(reaction|report))?)?|newsletter(?:\/(unsubscribe|confirm))?|marketing\/(?:unsubscribe|one-click)|team\/invitations\/[a-zA-Z0-9_-]+(?:\/accept)?|admin\/(operations|commands|api-keys(?:\/[a-zA-Z0-9_-]+\/revoke)?|crm\/(?:preview|contacts(?:\/import)?)|overview|integrations|jobs|webhooks|reports\/[a-zA-Z0-9_-]+|exports(?:\/[a-zA-Z0-9_-]+(?:\/download)?)?|resources\/[a-zA-Z0-9_-]+|orders\/[a-zA-Z0-9_-]+\/(fiscal|shipment)|integrations\/melhor-envio\/authorize|media\/[a-zA-Z0-9_-]+\/(status|original)|media\/uploads(?:\/[a-zA-Z0-9_-]+\/(complete|content|renew))?))$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params,
     pathname = path.join('/');

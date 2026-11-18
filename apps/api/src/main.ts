@@ -38,6 +38,7 @@ import type { ApiRequest } from './request';
 import { CONTEXT, ContextModule } from './context.module';
 import { OperationsModule } from './operations.module';
 import { WebhooksModule } from './webhooks.module';
+import { McpModule } from './mcp.module';
 import {
   IdentityModule,
   CatalogModule,
@@ -134,6 +135,7 @@ class ApiErrors implements ExceptionFilter {
     CrmModule,
     OperationsModule,
     WebhooksModule,
+    McpModule,
   ],
   controllers: [HealthController],
 })
@@ -169,8 +171,12 @@ export async function bootstrap() {
             (ctx.config.NODE_ENV !== 'production' && /^\/docs(?:\/|$|-json)/.test(path));
         if (!exempt && !constantEqual(req.get('x-bff-secret') || '', ctx.config.BFF_SHARED_SECRET))
           throw new DomainError('FORBIDDEN', 'Acesso permitido somente pelo gateway da loja.', 403);
+        // MCP clients (Claude, ChatGPT) authenticate with a Bearer API key, never with the
+        // session cookie, so there is no cross-site request to guard with the Origin check.
+        const mcp = path === '/api/v1/mcp';
         if (
           !exempt &&
+          !mcp &&
           !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
           req.get('origin') !== new URL(ctx.config.PUBLIC_WEB_URL).origin
         )

@@ -22,6 +22,28 @@ model User {
   customer     Customer?
   sessions     Session[]
   tokens       EmailToken[]
+  apiKeys      ApiKey[]
+}
+
+/// Key an AI assistant (Claude, ChatGPT) uses to reach the MCP endpoint on behalf of `user`.
+/// Only the HMAC of the key is stored; the raw value is shown once, when it is created.
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String
+  /// First characters of the raw key, so the owner can tell keys apart.
+  prefix      String
+  keyHash     String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Acts with every permission of its creator (owner included); otherwise only `permissions`.
+  fullAccess  Boolean   @default(true)
+  permissions String[]  @default([])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Customer {
