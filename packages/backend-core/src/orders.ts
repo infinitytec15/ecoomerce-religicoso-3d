@@ -370,7 +370,10 @@ export class OrdersService {
           label: q.label,
           carrier: q.carrier,
           cents: amount,
-          estimate: `${q.days} dias úteis de transporte + ${lead} dias de produção`,
+          estimate: `Chega em até ${q.days + lead} dias úteis · ${lead} de produção + ${q.days} de transporte`,
+          productionDays: lead,
+          transitDays: q.days,
+          totalDays: q.days + lead,
           expiresAt: expires.toISOString(),
         };
       }),
@@ -581,6 +584,7 @@ export class OrdersService {
             consentAt: new Date().toISOString(),
             termsVersion: '2026-11-09',
             ...(group ? { groupBuy: json(group.snapshot) } : {}),
+            ...(input.attribution ? { attribution: json(input.attribution) } : {}),
           },
           items: {
             create: items.map((i) => ({

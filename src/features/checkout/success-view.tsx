@@ -13,6 +13,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PrayingWait } from '@/components/ui/praying-wait';
 import { errorMessage } from '@/lib/api/contracts';
+import { track, trackedItem } from '@/lib/tracking/events';
 const MercadoPagoChallenge = dynamic(() => import('./mercado-pago-challenge'), {
   ssr: false,
   loading: () => <p role="status">Preparando a confirmação do banco…</p>,
@@ -53,6 +54,23 @@ export function SuccessView({ orderId }: { orderId?: string }) {
   useEffect(() => {
     if (awaiting && payment.dataUpdatedAt) void refetchAccount();
   }, [awaiting, payment.dataUpdatedAt, refetchAccount]);
+  // Purchase counts only once the money is in (a Pix may never be paid), and once per order.
+  useEffect(() => {
+    if (!order || charge?.status !== 'Pago') return;
+    const key = 'meo-purchase-tracked-' + order.id;
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, '1');
+    } catch {
+      // Without storage a reload could repeat it; Meta still dedupes by the order id.
+    }
+    track({
+      name: 'Purchase',
+      orderId: order.id,
+      items: order.items.map(trackedItem),
+      valueCents: order.totalCents,
+    });
+  }, [order, charge?.status]);
   if (!session.isPending && session.data?.role !== 'customer')
     return (
       <main id="main" className="container">

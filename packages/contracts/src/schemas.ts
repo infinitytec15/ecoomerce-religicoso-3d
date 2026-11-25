@@ -41,6 +41,28 @@ export const orderItemSchema = z.object({
   /** Story video the line was put in the bag from; credits the sale to that video. */
   videoId: z.string().min(1).max(64).optional(),
 });
+const attributionText = z.string().trim().max(300).optional();
+/**
+ * Where the buyer came from (ad campaign, link) and the Meta browser ids. Sent by the
+ * storefront on checkout and kept on the order for reports and the Conversions API.
+ */
+export const attributionSchema = z.object({
+  utmSource: attributionText,
+  utmMedium: attributionText,
+  utmCampaign: attributionText,
+  utmContent: attributionText,
+  utmTerm: attributionText,
+  fbclid: attributionText,
+  gclid: attributionText,
+  fbp: attributionText,
+  fbc: attributionText,
+  landingPage: attributionText,
+  referrer: attributionText,
+  userAgent: z.string().max(500).optional(),
+  /** The buyer accepted marketing cookies, so the order may be reported to ad platforms. */
+  marketingConsent: z.boolean().optional(),
+});
+export type Attribution = z.infer<typeof attributionSchema>;
 export const checkoutSchema = z.object({
   items: z.array(orderItemSchema).min(1).max(50),
   address: addressSchema,
@@ -52,10 +74,11 @@ export const checkoutSchema = z.object({
   payment: z.enum(['card', 'pix', 'split']),
   pixCents: z.number().int().nonnegative(),
   installments: z.number().int().min(1).max(3),
-  consent: z.literal(true, 'Confirme a simulação para continuar.'),
+  consent: z.literal(true, 'Confirme os termos para continuar.'),
   idempotencyKey: z.string().uuid(),
   groupBuyId: z.string().min(1).max(64).optional(),
   marketingOptIn: z.boolean().default(false),
+  attribution: attributionSchema.optional(),
 });
 export const subscriptionSchema = z.object({
   paymentToken: paymentTokenSchema.optional(),

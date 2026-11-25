@@ -79,12 +79,13 @@ export function Home({
             sizes="(max-width:760px) 100vw, 58vw"
             preload
           />
-          <Link className="scene-note" href="/produto/cruz-essencial">
+          <Link className="scene-note" href="/produto/peca-9474f6b2">
             <span className="scene-note-icon">
               <Icon name="cross" />
             </span>
             <span>
-              Um cantinho para estar com Deus.<small>Conheça a Cruz Essencial</small>
+              Um cantinho para estar com Deus.
+              <small>Conheça o Kit Ore e confie + Mini Jesus</small>
             </span>
             <Icon name="arrow" />
           </Link>

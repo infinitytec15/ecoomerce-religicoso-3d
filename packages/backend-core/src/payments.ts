@@ -4,6 +4,7 @@ import { ProviderError, type PaymentResult } from '@maos-em-oracao/integrations'
 import type { Context } from './context';
 import { Notifications } from './notifications';
 import { GroupBuysService } from './group-buys';
+import { MetaConversionsService } from './meta-conversions';
 import { data, json, requireValue, DomainError, audit } from './shared';
 import { orderInclude } from './projections';
 import { digest } from './security';
@@ -419,6 +420,7 @@ export class PaymentsService {
         await tx.order.update({ where: { id: order.id }, data: { status: 'Confirmado' } });
         // Paid after an expiry gave the coupon use back: the order keeps its discount.
         await reclaimCoupon(tx, order.id, false);
+        await new MetaConversionsService(this.ctx).enqueue(tx, order, this.mail);
         // Campaign before stock, the same lock order as the group checkout.
         if (order.groupBuyId) await lock(tx, 'group-buy/' + order.groupBuyId);
         const reservations = await tx.stockReservation.findMany({ where: { orderId: order.id } });

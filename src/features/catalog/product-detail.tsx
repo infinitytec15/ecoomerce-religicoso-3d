@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { EMPTY_STORIES_FEED, unitPriceCents, type StoriesFeed } from '@maos-em-o
 import { useCatalog, useGateway } from '@/lib/api/query';
 import { useCartStore } from '@/lib/store/cart';
 import { IS_DEMO } from '@/lib/api/config';
+import { track } from '@/lib/tracking/events';
 import { ProductGallery } from './product-media';
 import { ProductImage } from '@/components/ui/product-image';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,17 @@ export function ProductDetail({
     router = useRouter(),
     notify = useNotify(),
     kit = p.kitSummary,
-    price = unitPriceCents(p, size);
+    price = unitPriceCents(p, size),
+    viewed = useRef('');
+  useEffect(() => {
+    // Once per product: catalog refetches hand back a new object for the same piece.
+    if (viewed.current === p.id) return;
+    viewed.current = p.id;
+    track({
+      name: 'ViewContent',
+      item: { id: p.id, name: p.name, priceCents: unitPriceCents(p, 0), quantity: 1 },
+    });
+  }, [p]);
   function buy(immediate = false) {
     add(cartLine(p, quantity, color, size, dedication));
     if (immediate) router.push('/checkout');

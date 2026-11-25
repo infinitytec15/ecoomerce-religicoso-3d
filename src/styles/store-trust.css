@@ -1,0 +1,131 @@
+/* Cookie notice, WhatsApp button and the legal policy pages. */
+.cookie-banner {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  /* Above the floating buttons (800) and the verse card (950): the choice comes first. */
+  z-index: 960;
+  width: min(760px, calc(100vw - 32px));
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.cookie-banner-text p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.cookie-banner-text a {
+  color: var(--olive);
+  text-decoration: underline;
+}
+.cookie-banner-options {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.cookie-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+@media (max-width: 560px) {
+  .cookie-banner-actions .btn {
+    flex: 1 1 100%;
+  }
+}
+.whatsapp-button {
+  position: fixed;
+  right: 22px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 800;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #1f8f4e;
+  color: #fff;
+  box-shadow: 0 6px 20px #12442a40;
+  transition: transform 180ms var(--ease);
+}
+.whatsapp-button:hover {
+  transform: scale(1.06);
+}
+.whatsapp-button:focus-visible {
+  outline: 3px solid var(--olive);
+  outline-offset: 3px;
+}
+.whatsapp-button svg {
+  width: 28px;
+  height: 28px;
+}
+/* The product video bubble sits right above the WhatsApp button on the right. */
+.product-video-bubble.right {
+  bottom: max(88px, calc(env(safe-area-inset-bottom) + 72px));
+}
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-button {
+    transition: none;
+  }
+}
+.footer-link-button {
+  display: block;
+  margin-top: 13px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #5d6555;
+  cursor: pointer;
+  text-align: left;
+}
+.footer-link-button:hover {
+  text-decoration: underline;
+}
+.policy {
+  max-width: 760px;
+  padding-top: 40px;
+  padding-bottom: 80px;
+  line-height: 1.65;
+}
+.policy h1 {
+  margin-bottom: 6px;
+}
+.policy .policy-updated {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 28px;
+}
+.policy h2 {
+  font-size: 1.15rem;
+  margin: 34px 0 10px;
+  scroll-margin-top: 90px;
+}
+.policy ul,
+.policy ol {
+  padding-left: 20px;
+}
+.policy .text-btn {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+}
+.policy li {
+  margin: 6px 0;
+}
+.policy a {
+  color: var(--olive);
+  text-decoration: underline;
+}

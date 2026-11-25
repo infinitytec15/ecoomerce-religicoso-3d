@@ -19,6 +19,7 @@ import type {
 } from './stories';
 import type { AdminCrm, CrmSettings, MarketingCampaignInput } from './crm';
 import type { Kit, KitSummary } from './kits';
+import type { Attribution } from './schemas';
 export type {
   MediaAsset,
   AssetKind,
@@ -403,6 +404,8 @@ export interface CheckoutInput {
   groupBuyId?: string;
   /** Opt-in to e-mail marketing given at checkout. */
   marketingOptIn?: boolean;
+  /** Campaign (UTM) and Meta browser ids of the visit that ended in this order. */
+  attribution?: Attribution;
 }
 export interface SubscribeInput {
   profile: FaithProfile;
@@ -428,6 +431,12 @@ export interface ShippingQuote {
   label: string;
   cents: number;
   estimate: string;
+  /** Working days to print the order, before it is handed to the carrier. */
+  productionDays?: number;
+  /** Working days the carrier takes after pickup. */
+  transitDays?: number;
+  /** productionDays + transitDays: what the customer actually waits. */
+  totalDays?: number;
   quoteId?: string;
   serviceId?: string;
   carrier?: string;

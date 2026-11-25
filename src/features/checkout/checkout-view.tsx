@@ -28,6 +28,8 @@ import { PrayingWait } from '@/components/ui/praying-wait';
 import { EmptyState, Notice } from '@/components/ui/states';
 import { Steps } from '@/components/ui/steps';
 import { PriceSummary } from './price-summary';
+import { track, trackedItem } from '@/lib/tracking/events';
+import { currentAttribution } from '@/lib/tracking/attribution';
 const contactSchema = z.object({
   name: z.string().trim().min(3, 'Informe seu nome completo.'),
   email: z.email('Informe um e-mail válido.'),
@@ -104,6 +106,17 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
     setPrefilled(true);
     setAddress({ ...emptyAddress, ...saved, state: saved.state || emptyAddress.state });
   }
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    const lines = groupLine ? [groupLine] : cartItems;
+    if (checkoutTracked.current || !lines.length) return;
+    checkoutTracked.current = true;
+    track({
+      name: 'InitiateCheckout',
+      items: lines.map(trackedItem),
+      valueCents: lines.reduce((n, i) => n + i.unitCents * i.quantity, 0),
+    });
+  }, [cartItems, groupLine]);
   // Quote shipping as soon as the delivery CEP is complete (and again if the cart changes).
   useEffect(() => {
     if (step !== 1 || cepDigits.length !== 8) return;
@@ -199,6 +212,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
         shippingQuoteId: rates.find((r) => r.id === shipping)?.quoteId,
         shippingServiceId: rates.find((r) => r.id === shipping)?.serviceId,
         idempotencyKey: key.current,
+        attribution: currentAttribution(),
       });
     } catch (error) {
       if (groupBuyId && error instanceof ApiError && groupBuyErrors[error.code])
@@ -538,6 +552,7 @@ export function CheckoutView({ groupBuy }: { groupBuy?: { id: string; line: Cart
           coupon={IS_DEMO && !groupBuyId ? coupon : ''}
           quotedTotals={totals}
           shippingPending={!rates.length}
+          deliveryQuote={rates.find((r) => r.id === shipping)}
         >
           {!groupBuyId && (
             <>

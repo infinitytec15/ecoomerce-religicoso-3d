@@ -1387,6 +1387,15 @@ small {
 .summary .money-line {
   font-size: 0.8rem;
 }
+.money-line.delivery-time small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.money-line.delivery-time strong {
+  text-align: right;
+  white-space: nowrap;
+}
 .summary .total {
   font-size: 1.08rem;
 }

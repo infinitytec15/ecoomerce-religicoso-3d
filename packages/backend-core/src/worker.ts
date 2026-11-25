@@ -17,6 +17,7 @@ import { MediaService } from './media';
 import { ReportsService } from './reports';
 import { GroupBuysService } from './group-buys';
 import { CrmService } from './crm';
+import { MetaConversionsService } from './meta-conversions';
 import { unseal, recipientHash, normalizeEmail } from './security';
 import { data, requireValue, DomainError, audit } from './shared';
 import { classifyEmailEvent, isEngagementEvent, resendTag } from '@maos-em-oracao/emails/resend';
@@ -240,6 +241,9 @@ export class WorkerEngine {
             String(payload.orderId),
             String(payload.reason),
           );
+          break;
+        case 'meta-purchase':
+          await new MetaConversionsService(this.ctx).purchase(String(payload.orderId));
           break;
         case 'payment-create-pix':
           await new PaymentsService(this.ctx).start(String(payload.orderId));

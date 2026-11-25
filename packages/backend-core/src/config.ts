@@ -28,6 +28,14 @@ const schema = z.object({
   MP_WEBHOOK_SECRET: z.string().optional(),
   PAYMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
   SPLIT_PAYMENT_ENABLED: z.enum(['true', 'false']).default('false'),
+  /** Meta Conversions API: paid orders are sent server-side when both are set. */
+  META_PIXEL_ID: z
+    .string()
+    .regex(/^\d{10,20}$/)
+    .optional(),
+  META_CAPI_TOKEN: z.string().min(20).optional(),
+  /** Events Manager "Test events" code; set only while testing. */
+  META_TEST_EVENT_CODE: z.string().max(40).optional(),
   ME_ACCESS_TOKEN: z.string().optional(),
   ME_CLIENT_ID: z.string().optional(),
   ME_CLIENT_SECRET: z.string().optional(),

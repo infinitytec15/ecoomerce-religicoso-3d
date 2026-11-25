@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { CartItem } from '@/lib/domain/types';
+import { track, trackedItem } from '@/lib/tracking/events';
 interface CartStore {
   items: CartItem[];
   favorites: string[];
@@ -20,7 +21,8 @@ export const useCartStore = create<CartStore>()(
       items: [],
       favorites: [],
       isOpen: false,
-      add: (item) =>
+      add: (item) => {
+        track({ name: 'AddToCart', item: trackedItem(item) });
         set((s) => {
           const found = s.items.find((x) => x.key === item.key);
           return {
@@ -39,7 +41,8 @@ export const useCartStore = create<CartStore>()(
                 )
               : [...s.items, item],
           };
-        }),
+        });
+      },
       change: (key, quantity) =>
         set((s) => ({
           items: s.items.map((x) =>

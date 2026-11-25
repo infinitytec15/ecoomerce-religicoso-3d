@@ -3,16 +3,20 @@ import type { NextConfig } from 'next';
  * Hosts the storefront needs: Mercado Pago card fields (SDK script, iframes, API calls), Bunny
  * (images and HLS from *.b-cdn.net, tus uploads, player embed) and YouTube embeds. Next's
  * hydration scripts are inline, hence 'unsafe-inline' for scripts (pages are cached, so no nonce).
+ * Meta Pixel and GA4 load only after cookie consent (src/components/tracking).
  */
+const TRACKING_SCRIPTS = 'https://connect.facebook.net https://www.googletagmanager.com';
+const TRACKING_CONNECT =
+  'https://www.facebook.com https://connect.facebook.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com';
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://sdk.mercadopago.com https://*.mlstatic.com",
+  `script-src 'self' 'unsafe-inline' https://sdk.mercadopago.com https://*.mlstatic.com ${TRACKING_SCRIPTS}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https://*.b-cdn.net",
   "worker-src 'self' blob:",
   "font-src 'self' data:",
-  "connect-src 'self' blob: https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://*.mercadolivre.com https://*.mlstatic.com https://*.b-cdn.net https://video.bunnycdn.com",
+  `connect-src 'self' blob: https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://*.mercadolivre.com https://*.mlstatic.com https://*.b-cdn.net https://video.bunnycdn.com ${TRACKING_CONNECT}`,
   'frame-src https://*.mercadopago.com https://*.mercadopago.com.br https://*.mercadolibre.com https://*.mercadolivre.com https://iframe.mediadelivery.net https://www.youtube-nocookie.com',
   "object-src 'none'",
   "base-uri 'self'",

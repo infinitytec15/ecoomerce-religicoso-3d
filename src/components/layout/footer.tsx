@@ -3,6 +3,7 @@ import { Logo } from './logo';
 import { Icon } from '@/components/ui/icon';
 import { PrayerInvite } from './prayer-invite';
 import { DevCredit } from './dev-credit';
+import { CookieSettingsLink } from '@/components/tracking/cookie-banner';
 export function Footer() {
   return (
     <footer className="footer">
@@ -28,7 +29,7 @@ export function Footer() {
             <h3>Estamos por aqui</h3>
             <Link href="/suporte">Central de ajuda</Link>
             <Link href="/suporte/entrega">Frete e entrega</Link>
-            <Link href="/suporte/trocas">Trocas e devoluções</Link>
+            <Link href="/politica-de-trocas">Trocas e devoluções</Link>
             <Link href="/suporte/cuidados">Cuidados com as peças</Link>
           </div>
           <div>
@@ -36,7 +37,8 @@ export function Footer() {
             <Link href="/conta">Minha conta</Link>
             <Link href="/conta/pedidos">Meus pedidos</Link>
             <Link href="/favoritos">Meus favoritos</Link>
-            <Link href="/suporte/privacidade">Privacidade e dados</Link>
+            <Link href="/politica-de-privacidade">Privacidade e dados</Link>
+            <CookieSettingsLink />
             <Link href="/clube">Clube Cesta com Jesus</Link>
             <Link href="/admin">Painel administrador</Link>
           </div>

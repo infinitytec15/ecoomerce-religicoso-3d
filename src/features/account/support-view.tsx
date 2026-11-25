@@ -7,15 +7,15 @@ import { IS_DEMO } from '@/lib/api/config';
 const faqs = [
   [
     'Como funciona a impressão 3D?',
-    'O conceito utiliza camadas de PLA para criar peças decorativas. As linhas sutis da impressão fazem parte da textura. As imagens do catálogo são ilustrativas.',
+    'Cada peça é impressa camada por camada em PLA, um plástico de origem vegetal. As linhas sutis da impressão fazem parte da textura, e pode haver pequenas variações de cor em relação às fotos.',
   ],
   [
     'Posso pagar uma parte no Pix e outra no cartão?',
-    'No checkout, escolha Pix + cartão, defina a parte no Pix e divida o restante em até 3 parcelas. No modo demonstrativo, a confirmação é simulada.',
+    'No checkout, escolha Pix + cartão, defina a parte no Pix e divida o restante em até 3 parcelas.',
   ],
   [
     'Como funciona a entrega?',
-    'Informe seu CEP no produto ou checkout para consultar as opções de entrega e o prazo estimado de produção. No modo demonstrativo, os preços e prazos são ilustrativos.',
+    'Informe seu CEP no produto ou checkout para consultar as opções de entrega e o prazo estimado de produção. O prazo total soma a produção da peça e o transporte.',
   ],
   [
     'É possível personalizar minha peça?',
@@ -23,15 +23,17 @@ const faqs = [
   ],
   [
     'Como funcionam trocas e devoluções?',
-    'Esta demonstração não gera compras reais. A política comercial precisa ser definida pelo lojista antes do lançamento de vendas reais. Para conversar, abra um atendimento.',
+    'Você pode desistir da compra em até 7 dias após receber o pedido, como prevê o Código de Defesa do Consumidor. Se a peça chegar com defeito ou danificada, também resolvemos. Para pedir troca ou devolução, abra um atendimento informando o número do pedido.',
   ],
   [
     'Como cuidar das peças?',
-    'Use um pano macio e seco. Evite calor, sol direto e produtos abrasivos. Os objetos apresentados são conceitos decorativos.',
+    'Use um pano macio e seco. Evite calor, sol direto e produtos abrasivos.',
   ],
   [
     'Quais dados ficam salvos?',
-    'No modo demonstrativo, favoritos, carrinho, perfil fictício e pedidos são guardados neste navegador. Senhas e dados de cartão não são armazenados. No modo integrado, a API é responsável por sua conta e seus registros.',
+    IS_DEMO
+      ? 'Neste ambiente de testes, favoritos, carrinho, perfil e pedidos ficam guardados neste navegador. Senhas e dados de cartão não são armazenados.'
+      : 'Guardamos os dados da sua conta, endereços e pedidos para processar compras e entregas. Os dados do cartão são tratados pelo Mercado Pago e não ficam salvos na loja. Para corrigir ou apagar seus dados, abra um atendimento.',
   ],
 ];
 export function SupportView({ topic = '' }: { topic?: string }) {

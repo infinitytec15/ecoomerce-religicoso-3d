@@ -11,6 +11,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: base + '/produtos', changeFrequency: 'weekly', priority: 0.9 },
     { url: base + '/clube', changeFrequency: 'monthly', priority: 0.8 },
     { url: base + '/compra-coletiva', changeFrequency: 'daily', priority: 0.7 },
+    { url: base + '/politica-de-trocas', changeFrequency: 'yearly', priority: 0.3 },
+    { url: base + '/politica-de-privacidade', changeFrequency: 'yearly', priority: 0.3 },
     ...groupBuys.map((g) => ({
       url: base + '/compra-coletiva/' + g.id,
       changeFrequency: 'daily' as const,
